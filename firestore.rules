@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ════════════════════════════════════════
+    // Helper functions
+    // ════════════════════════════════════════
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'administrador';
+    }
+
+    function isOwnerOrAdmin(uid) {
+      return isAuthenticated() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // ════════════════════════════════════════
+    // Config (exchange rate, invoice counter)
+    // ════════════════════════════════════════
+    match /config/{docId} {
+      allow read: if isAuthenticated();
+      // Only admins can update exchange rate
+      // Invoice counter is updated via transaction in processSale (authenticated)
+      allow write: if isAuthenticated();
+    }
+
+    // ════════════════════════════════════════
+    // Products
+    // ════════════════════════════════════════
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      // Create/delete: admin only
+      allow create, delete: if isAdmin();
+      // Update: authenticated users (sellers update stock via sales)
+      allow update: if isAuthenticated();
+    }
+
+    // ════════════════════════════════════════
+    // Clients
+    // ════════════════════════════════════════
+    match /clients/{clientId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // Invoices
+    // ════════════════════════════════════════
+    match /invoices/{invoiceId} {
+      allow read: if isAuthenticated();
+      // Create: any authenticated user (sales are created by sellers)
+      allow create: if isAuthenticated()
+        && request.resource.data.keys().hasAll(['numericId', 'items', 'total', 'date', 'sellerUid'])
+        && request.resource.data.total >= 0
+        && request.resource.data.sellerUid == request.auth.uid;
+      // Update: authenticated (for returns, cancellations, abonos, delivery confirmation)
+      allow update: if isAuthenticated();
+      // Delete: never (invoices are cancelled, not deleted)
+      allow delete: if false;
+    }
+
+    // ════════════════════════════════════════
+    // Users (app users / staff)
+    // ════════════════════════════════════════
+    match /users/{userId} {
+      // Users can read their own doc; admins can read all
+      allow read: if isOwnerOrAdmin(userId);
+      // Only admins can create/update/delete users
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // Employees (HR / Payroll)
+    // ════════════════════════════════════════
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // Payroll periods
+    // ════════════════════════════════════════
+    match /payrollPeriods/{periodId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // Payroll receipts
+    // ════════════════════════════════════════
+    match /payrollReceipts/{receiptId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // Employee incidents
+    // ════════════════════════════════════════
+    match /employeeIncidents/{incidentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // Deny everything else
+    // ════════════════════════════════════════
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

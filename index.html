@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>POS Alonzo</title>
+    <script>
+      (function() {
+        try {
+          const theme = localStorage.getItem('pos-alonzo-theme');
+          const supportDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (theme === 'dark' || (!theme && supportDark)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      html { background-color: #f8fafc; }
+      html.dark { background-color: #080c16; }
+      body { margin: 0; padding: 0; }
+      #root { min-height: 100vh; }
+    </style>
+    <meta name="theme-color" content="#102a43" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="POS Alonzo" />
+    <meta name="description" content="Sistema de gestión operativa - Punto de Venta, Inventario, Reportes y más" />
+    <link rel="apple-touch-icon" href="/images/Alonzo.JPG" />
+    <link rel="icon" type="image/jpeg" href="/images/Alonzo.JPG" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
