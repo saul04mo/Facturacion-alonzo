@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { collection, doc, onSnapshot, orderBy, query, limit } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAppStore } from '@/store/appStore';
-import type { Product, AppUser, Invoice, Employee } from '@/types';
+import type { Product, AppUser, Invoice, Employee, Coupon, Promotion } from '@/types';
 
 export function useFirestoreListeners() {
   const currentUser = useAppStore((s) => s.currentUser);
@@ -11,6 +11,8 @@ export function useFirestoreListeners() {
   const setInvoices = useAppStore((s) => s.setInvoices);
   const setUsers = useAppStore((s) => s.setUsers);
   const setEmployees = useAppStore((s) => s.setEmployees);
+  const setCoupons = useAppStore((s) => s.setCoupons);
+  const setPromotions = useAppStore((s) => s.setPromotions);
   const setExchangeRate = useAppStore((s) => s.setExchangeRate);
   const setLoading = useAppStore((s) => s.setLoading);
 
@@ -78,6 +80,20 @@ export function useFirestoreListeners() {
       })
     );
 
+    // Coupons
+    unsubs.push(
+      onSnapshot(collection(db, 'coupons'), (snap) => {
+        setCoupons(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Coupon[]);
+      })
+    );
+
+    // Promotions
+    unsubs.push(
+      onSnapshot(collection(db, 'promotions'), (snap) => {
+        setPromotions(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Promotion[]);
+      })
+    );
+
     return () => unsubs.forEach((u) => u());
-  }, [currentUser, setProducts, setClients, setInvoices, setUsers, setEmployees, setExchangeRate, setLoading]);
+  }, [currentUser, setProducts, setClients, setInvoices, setUsers, setEmployees, setCoupons, setPromotions, setExchangeRate, setLoading]);
 }

@@ -3,12 +3,13 @@ import { useAppStore } from '@/store/appStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { ROUTES } from '@/config/constants';
 import type { PermissionKey } from '@/config/constants';
-import { ShoppingCart, FileText, Package, Users, Truck, BarChart3, Shield, Settings, X, Tag, Wallet } from 'lucide-react';
+import { ShoppingCart, FileText, Package, Users, Truck, BarChart3, Shield, Settings, X, Tag, Wallet, LayoutDashboard } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
     title: 'PRINCIPAL',
     items: [
+      { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: <LayoutDashboard size={18} />, permission: 'canAccessVentas' },
       { path: ROUTES.POS, label: 'Ventas', icon: <ShoppingCart size={18} />, permission: 'canAccessVentas' },
       { path: ROUTES.INVOICES, label: 'Facturas', icon: <FileText size={18} />, permission: 'canAccessFacturas' },
       { path: ROUTES.CLIENTS, label: 'Clientes', icon: <Users size={18} />, permission: 'canAccessClientes' },

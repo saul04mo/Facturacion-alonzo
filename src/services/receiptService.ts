@@ -113,10 +113,27 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   const generalDiscount = calcDiscountAmount(subtotal - totalDiscountAmount, invoice.totalDiscount);
   totalDiscountAmount += generalDiscount;
 
+  // Promo & coupon discounts
+  const promoDiscount = (invoice.appliedPromotions || []).reduce((sum: number, p: any) => sum + (p.discountAmount || 0), 0);
+  const couponDiscount = invoice.appliedCoupon?.discountAmount || 0;
+  const couponFreeShipping = invoice.appliedCoupon?.freeShipping || false;
+  const promoFreeShipping = (invoice.appliedPromotions || []).some((p: any) => p.type === 'free_shipping');
+
   const subtotalAfterDiscount = subtotal - totalDiscountAmount;
-  const deliveryCost = invoice.deliveryCostUsd || 0;
-  const grandTotalUSD = subtotalAfterDiscount + deliveryCost;
+  const deliveryCost = (couponFreeShipping || promoFreeShipping) ? 0 : (invoice.deliveryCostUsd || 0);
+  const grandTotalUSD = Math.max(0, subtotalAfterDiscount - promoDiscount - couponDiscount + deliveryCost);
   const grandTotalVES = grandTotalUSD * rate;
+
+  // Build promo/coupon lines for receipt
+  let promoHtml = '';
+  if (invoice.appliedPromotions?.length) {
+    invoice.appliedPromotions.forEach((p: any) => {
+      promoHtml += `<tr><td class="label" style="color:#7c3aed;">⚡ ${p.name || 'Promo'}:</td><td class="value" style="color:#7c3aed;">-${(p.discountAmount * rate).toFixed(2)}</td></tr>`;
+    });
+  }
+  if (invoice.appliedCoupon && couponDiscount > 0) {
+    promoHtml += `<tr><td class="label" style="color:#059669;">🎟 Cupón ${invoice.appliedCoupon.code}:</td><td class="value" style="color:#059669;">-${(couponDiscount * rate).toFixed(2)}</td></tr>`;
+  }
 
   // Payments
   let paymentsHtml = '';
@@ -202,6 +219,7 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
       <table class="totals-table">
         <tr><td class="label">SubTotal:</td><td class="value">${(subtotal * rate).toFixed(2)}</td></tr>
         <tr><td class="label">Descuento:</td><td class="value">${(totalDiscountAmount * rate).toFixed(2)}</td></tr>
+        ${promoHtml}
         ${deliveryRowHtml}
         <tr class="total-row"><td class="label">Total Bs:</td><td class="value">${grandTotalVES.toFixed(2)}</td></tr>
         <tr class="total-row"><td class="label">REF:</td><td class="value">${grandTotalUSD.toFixed(2)}</td></tr>

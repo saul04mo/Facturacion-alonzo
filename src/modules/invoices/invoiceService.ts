@@ -3,6 +3,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { batchRestoreStock, validateStock } from '@/utils/stockUtils';
+import { recordCouponUsage } from '@/services/promotionService';
 import type { CurrentSale, AppUser, Product, Invoice, ClientSnapshot } from '@/types';
 
 // ================================
@@ -120,6 +121,9 @@ export async function processSale(opts: {
       deliveryCostUsd: sale.deliveryCostUsd,
       deliveryPaidInStore: sale.deliveryPaidInStore,
       observation: sale.observation || null,
+      // ── Promo / Coupon audit trail ──
+      appliedCoupon: sale.appliedCoupon || null,
+      appliedPromotions: sale.appliedPromotions || [],
     };
 
     const newInvoiceRef = doc(collection(db, 'invoices'));
@@ -127,6 +131,15 @@ export async function processSale(opts: {
 
     return nextId;
   });
+
+  // ── Post-transaction: record coupon usage (non-critical) ──
+  if (sale.appliedCoupon?.couponId) {
+    try {
+      await recordCouponUsage(sale.appliedCoupon.couponId, sale.clientId);
+    } catch (err) {
+      console.warn('Failed to record coupon usage:', err);
+    }
+  }
 
   return { numericId: newNumericId };
 }

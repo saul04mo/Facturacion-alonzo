@@ -9,15 +9,19 @@ import { PaymentPanel } from './PaymentPanel';
 import { DiscountModal } from './DiscountModal';
 import { ClientFormModal } from '@/modules/clients/ClientsPage';
 import { calcDiscountAmount } from '@/utils/discountUtils';
+import { validateCoupon, calculateCouponDiscount, evaluatePromotions } from '@/services/promotionService';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { normalizeClient } from '@/types';
+import type { AppliedPromotion } from '@/types';
 import {
   ShoppingCart, Search, Tag, Plus, Minus, X, Trash2,
-  Truck, Users, Edit,
+  Truck, Users, Edit, Ticket, Zap, Gift, CheckCircle2,
 } from 'lucide-react';
 
 export function CartPanel() {
   const products = useAppStore((s) => s.products);
+  const coupons = useAppStore((s) => s.coupons);
+  const promotions = useAppStore((s) => s.promotions);
   const currentSale = useAppStore((s) => s.currentSale);
   const setCurrentSale = useAppStore((s) => s.setCurrentSale);
   const resetCurrentSale = useAppStore((s) => s.resetCurrentSale);
@@ -29,6 +33,8 @@ export function CartPanel() {
   const [clientNotFound, setClientNotFound] = useState(false);
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [isSearchingClient, setIsSearchingClient] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponError, setCouponError] = useState('');
 
   // Re-fetch client if cart has one but it's not loaded locally
   useEffect(() => {
@@ -88,9 +94,62 @@ export function CartPanel() {
 
     const itemDiscountsTotal = items.reduce((sum: number, item: any) => sum + item.discountAmt, 0);
     const totalDiscountAmt = calcDiscountAmount(subtotal, currentSale.totalDiscount);
-    const total = Math.max(0, subtotal - totalDiscountAmt + (Number(currentSale.deliveryCostUsd) || 0));
-    return { items, subtotal, itemDiscountsTotal, totalDiscountAmt, total: total || 0 };
-  }, [currentSale, products]);
+    const subtotalAfterDiscounts = Math.max(0, subtotal - totalDiscountAmt);
+
+    // ── Auto-evaluate promotions ──
+    const deliveryCost = Number(currentSale.deliveryCostUsd) || 0;
+    const autoPromotions = evaluatePromotions(promotions, currentSale.items, products, subtotalAfterDiscounts, deliveryCost);
+    const promoDiscount = autoPromotions.reduce((sum, p) => sum + p.discountAmount, 0);
+    const hasFreeShipping = autoPromotions.some((p) => p.type === 'free_shipping');
+
+    // ── Coupon discount ──
+    const couponDiscount = currentSale.appliedCoupon?.discountAmount || 0;
+    const couponFreeShipping = currentSale.appliedCoupon?.freeShipping || false;
+    const effectiveDeliveryCost = (hasFreeShipping || couponFreeShipping) ? 0 : deliveryCost;
+
+    const total = Math.max(0, subtotalAfterDiscounts - promoDiscount - couponDiscount + effectiveDeliveryCost);
+
+    return {
+      items, subtotal, itemDiscountsTotal, totalDiscountAmt,
+      autoPromotions, promoDiscount,
+      couponDiscount, effectiveDeliveryCost,
+      freeShipping: hasFreeShipping || couponFreeShipping,
+      total: total || 0,
+    };
+  }, [currentSale, products, promotions]);
+
+  // ── Sync auto-promotions to currentSale ──
+  useEffect(() => {
+    const prevIds = (currentSale.appliedPromotions || []).map((p) => p.promotionId).sort().join(',');
+    const newIds = cartDetails.autoPromotions.map((p: AppliedPromotion) => p.promotionId).sort().join(',');
+    if (prevIds !== newIds) {
+      setCurrentSale({ ...currentSale, appliedPromotions: cartDetails.autoPromotions });
+    }
+  }, [cartDetails.autoPromotions]);
+
+  // ── Coupon handlers ──
+  function handleApplyCoupon() {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return;
+    setCouponError('');
+
+    const validation = validateCoupon(code, coupons, cartDetails.subtotal, currentSale.clientId, currentSale.items, products);
+    if (!validation.valid) {
+      setCouponError(validation.error || 'Cupón inválido.');
+      return;
+    }
+
+    const applied = calculateCouponDiscount(validation.coupon!, cartDetails.subtotal - cartDetails.totalDiscountAmt, currentSale.items, products);
+    setCurrentSale({ ...currentSale, appliedCoupon: applied });
+    setCouponCode('');
+    toast.success(`¡Cupón ${applied.code} aplicado! Ahorras ${format(applied.discountAmount)}`);
+  }
+
+  function handleRemoveCoupon() {
+    setCurrentSale({ ...currentSale, appliedCoupon: null });
+    setCouponError('');
+    toast.info('Cupón removido.');
+  }
 
   function updateQty(index: number, delta: number) {
     const newItems = [...currentSale.items];
@@ -284,7 +343,53 @@ export function CartPanel() {
         </div>
       </div>
 
-      {/* Totals */}
+      {/* ═══ Coupon Input ═══ */}
+      {currentSale.items.length > 0 && (
+        <div className="px-4 py-3 border-t border-surface-200 bg-surface-50/50 flex-shrink-0">
+          {currentSale.appliedCoupon ? (
+            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 animate-fade-in">
+              <div className="flex items-center gap-2 min-w-0">
+                <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-display font-bold text-emerald-700 truncate">{currentSale.appliedCoupon.code}</p>
+                  <p className="text-[10px] text-emerald-600">{currentSale.appliedCoupon.description}</p>
+                </div>
+              </div>
+              <button onClick={handleRemoveCoupon} className="p-1 text-emerald-400 hover:text-accent-red transition-colors flex-shrink-0">
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-display font-medium text-navy-700 mb-1">
+                <Ticket size={12} className="inline mr-1 text-pink-500" />
+                ¿Tienes un cupón?
+              </label>
+              <div className="flex gap-2">
+                <input
+                  value={couponCode}
+                  onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleApplyCoupon()}
+                  className="input-field text-xs py-1.5 font-mono uppercase flex-1"
+                  placeholder="Ej. VERANO20"
+                />
+                <button
+                  onClick={handleApplyCoupon}
+                  disabled={!couponCode.trim()}
+                  className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50 bg-pink-600 hover:bg-pink-700"
+                >
+                  Aplicar
+                </button>
+              </div>
+              {couponError && (
+                <p className="text-accent-red text-[10px] mt-1 font-medium">{couponError}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Totals ═══ */}
       <div className="p-4 border-t border-surface-200 space-y-2 flex-shrink-0 flex flex-col">
         <div className="flex justify-between text-sm text-navy-500">
           <span>Subtotal</span>
@@ -302,6 +407,43 @@ export function CartPanel() {
             <span className="font-mono">-{format(cartDetails.totalDiscountAmt)}</span>
           </div>
         )}
+
+        {/* ── Applied Promotions ── */}
+        {cartDetails.autoPromotions.length > 0 && (
+          <div className="space-y-1 pt-1">
+            {cartDetails.autoPromotions.map((promo: AppliedPromotion) => (
+              <div key={promo.promotionId} className="flex items-center justify-between text-[11px] text-purple-600 bg-purple-50/50 rounded px-2 py-1">
+                <span className="flex items-center gap-1 min-w-0 truncate">
+                  <Zap size={10} className="flex-shrink-0" />
+                  {promo.description}
+                </span>
+                <span className="font-mono font-semibold flex-shrink-0 ml-2">-{format(promo.discountAmount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Applied Coupon Discount ── */}
+        {currentSale.appliedCoupon && currentSale.appliedCoupon.discountAmount > 0 && (
+          <div className="flex items-center justify-between text-[11px] text-emerald-600 bg-emerald-50/50 rounded px-2 py-1">
+            <span className="flex items-center gap-1 min-w-0 truncate">
+              <Gift size={10} className="flex-shrink-0" />
+              Cupón {currentSale.appliedCoupon.code}
+            </span>
+            <span className="font-mono font-semibold flex-shrink-0 ml-2">-{format(currentSale.appliedCoupon.discountAmount)}</span>
+          </div>
+        )}
+
+        {/* ── Free shipping badge ── */}
+        {cartDetails.freeShipping && currentSale.deliveryCostUsd > 0 && (
+          <div className="flex items-center justify-between text-[11px] text-blue-600 bg-blue-50/50 rounded px-2 py-1">
+            <span className="flex items-center gap-1">
+              <Truck size={10} /> ¡Envío gratis aplicado!
+            </span>
+            <span className="font-mono font-semibold">-{format(currentSale.deliveryCostUsd)}</span>
+          </div>
+        )}
+
         <div className="flex justify-end pt-1">
           <button onClick={() => setShowDiscountModal(true)} className="flex items-center gap-1.5 text-xs font-medium text-blue-500 hover:text-blue-600 transition-colors">
             <Tag size={12} /> {cartDetails.totalDiscountAmt > 0 ? 'Editar Descuento' : 'Aplicar Descuento General'}

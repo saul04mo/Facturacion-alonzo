@@ -4,10 +4,63 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { Search, Tag, Package, Percent } from 'lucide-react';
+import { Search, Tag, Package, Percent, Ticket, Zap } from 'lucide-react';
+import { CouponsTab } from './CouponsTab';
+import { PromotionsTab } from './PromotionsTab';
 import type { Product } from '@/types';
 
+type OfferTab = 'products' | 'coupons' | 'promotions';
+
 export function OffersPage() {
+  const [activeTab, setActiveTab] = useState<OfferTab>('products');
+
+  const tabs: { id: OfferTab; label: string; icon: typeof Tag }[] = [
+    { id: 'products', label: 'Ofertas por Producto', icon: Tag },
+    { id: 'coupons', label: 'Cupones', icon: Ticket },
+    { id: 'promotions', label: 'Promociones', icon: Zap },
+  ];
+
+  return (
+    <div className="space-y-5 animate-fade-up">
+      {/* Header with Tabs */}
+      <div className="card p-5 hover-lift">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-1 h-12 bg-pink-500 rounded-full" />
+          <div className="flex-1">
+            <h1 className="text-xl font-display font-bold text-navy-900">Gestor de Ofertas y Promociones</h1>
+            <p className="text-navy-400 text-sm">Administra descuentos, cupones y promociones automáticas.</p>
+          </div>
+        </div>
+        <div className="flex gap-1 bg-surface-100 rounded-lg p-1">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-display font-medium transition-all ${
+                activeTab === id
+                  ? 'bg-white text-navy-900 shadow-sm'
+                  : 'text-navy-400 hover:text-navy-600'
+              }`}
+            >
+              <Icon size={14} />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'products' && <ProductOffersTab />}
+      {activeTab === 'coupons' && <CouponsTab />}
+      {activeTab === 'promotions' && <PromotionsTab />}
+    </div>
+  );
+}
+
+// ================================================================
+// PRODUCT OFFERS TAB (original OffersPage content)
+// ================================================================
+function ProductOffersTab() {
   const products = useAppStore((s) => s.products);
   const { format } = useCurrency();
   const toast = useToast();
@@ -113,15 +166,11 @@ export function OffersPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-up">
-      {/* Header */}
+    <div className="space-y-5">
+      {/* Search & Filter */}
       <div className="card p-5 hover-lift">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-1 h-12 bg-pink-500 rounded-full" />
-          <div className="flex-1">
-            <h1 className="text-xl font-display font-bold text-navy-900">Gestor de Ofertas</h1>
-            <p className="text-navy-400 text-sm">Hay {activeOffersCount} productos con promociones aplicadas actualmente.</p>
-          </div>
+        <div className="flex items-center gap-2 mb-3">
+          <p className="text-navy-400 text-sm">Hay {activeOffersCount} productos con ofertas aplicadas.</p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -275,13 +324,11 @@ function ProductRow({
   const [localType, setLocalType] = useState<'percentage' | 'fixed'>(currentOfferType);
 
   // Sync with external updates
-  import('react').then(React => {
-    React.useEffect(() => {
-      if (product.offer?.type) {
-        setLocalType(product.offer.type);
-      }
-    }, [product.offer?.type]);
-  });
+  useEffect(() => {
+    if (product.offer?.type) {
+      setLocalType(product.offer.type);
+    }
+  }, [product.offer?.type]);
 
   const hasOffer = currentOfferValue > 0;
   const minPrice = Math.min(...(product.variants?.map((v) => v.price) || [0]));

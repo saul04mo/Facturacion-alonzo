@@ -99,6 +99,9 @@ export interface CurrentSale {
   deliveryCostUsd: number;
   deliveryPaidInStore: boolean;
   observation: string | null;
+  // ── Promotions & Coupons ──
+  appliedCoupon: AppliedCoupon | null;
+  appliedPromotions: AppliedPromotion[];
 }
 
 // ================================
@@ -155,6 +158,9 @@ export interface Invoice {
   status: InvoiceStatus;
   date: Timestamp;
   abonos: Abono[];
+  // ── Promo / Coupon audit trail ──
+  appliedCoupon?: AppliedCoupon | null;
+  appliedPromotions?: AppliedPromotion[];
   returnDetails?: {
     reason: string;
     details: string | null;
@@ -169,6 +175,93 @@ export interface Abono {
   method: string;
   ref?: string;
   date: Timestamp;
+}
+
+// ================================
+// Coupon
+// ================================
+export type CouponScope = 'global' | 'category' | 'product';
+export type CouponDiscountType = 'percentage' | 'fixed';
+
+export interface Coupon {
+  id: string;
+  code: string;                    // Código que ingresa el cliente (uppercase, sin espacios)
+  description: string;
+  discountType: CouponDiscountType;
+  discountValue: number;           // % o monto fijo en USD
+  scope: CouponScope;
+  /** IDs de categorías o productos según el scope */
+  scopeTargets: string[];
+  minPurchase: number;             // Monto mínimo de compra en USD (0 = sin mínimo)
+  maxUsesTotal: number;            // Usos totales permitidos (0 = ilimitados)
+  maxUsesPerClient: number;        // Usos por cliente (0 = ilimitados)
+  usedCount: number;               // Contador global de usos
+  /** Map de clientId -> cantidad de usos */
+  usageByClient: Record<string, number>;
+  active: boolean;
+  startsAt: import('firebase/firestore').Timestamp | null;
+  expiresAt: import('firebase/firestore').Timestamp | null;
+  createdAt: import('firebase/firestore').Timestamp;
+  freeShipping: boolean;           // Si aplica envío gratis además del descuento
+}
+
+// ================================
+// Promotion (auto-applied rules)
+// ================================
+export type PromotionType =
+  | 'nxm'              // Compra N, paga M (ej: 2x1, 3x2)
+  | 'volume_discount'  // Compra X+ unidades y obtén Y% de descuento
+  | 'min_purchase'     // Gasta $X+ y obtén Y% de descuento en el total
+  | 'free_shipping'    // Envío gratis si el total >= X
+  | 'bundle';          // Compra producto A + B y obtén X% de descuento
+
+export interface Promotion {
+  id: string;
+  name: string;
+  description: string;
+  type: PromotionType;
+  active: boolean;
+  priority: number;            // Menor = se evalúa primero
+  /** Scope: 'global', o IDs de categorías/productos */
+  scope: CouponScope;
+  scopeTargets: string[];
+  // ── Parámetros según el tipo ──
+  /** NxM: compra `buyQty`, paga `payQty` */
+  buyQty: number;
+  payQty: number;
+  /** Volume: mínimo de unidades para activar */
+  minUnits: number;
+  /** Volume / MinPurchase: % o monto de descuento */
+  discountType: CouponDiscountType;
+  discountValue: number;
+  /** MinPurchase / FreeShipping: monto mínimo en USD */
+  minPurchase: number;
+  /** Bundle: IDs de productos que deben estar en el carrito */
+  bundleProductIds: string[];
+  // ── Vigencia ──
+  startsAt: import('firebase/firestore').Timestamp | null;
+  expiresAt: import('firebase/firestore').Timestamp | null;
+  createdAt: import('firebase/firestore').Timestamp;
+  stackable: boolean;          // ¿Se puede combinar con cupones/otros?
+}
+
+// ================================
+// Applied Promotion Result (para el carrito)
+// ================================
+export interface AppliedPromotion {
+  promotionId: string;
+  name: string;
+  type: PromotionType;
+  discountAmount: number;       // Monto ahorrado en USD
+  description: string;          // Texto legible para mostrar al usuario
+}
+
+export interface AppliedCoupon {
+  couponId: string;
+  code: string;
+  discountAmount: number;
+  description: string;
+  freeShipping: boolean;
 }
 
 // ================================

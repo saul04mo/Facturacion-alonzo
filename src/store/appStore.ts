@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppUser, Product, Client, Invoice, CurrentSale, Employee } from '@/types';
+import type { AppUser, Product, Client, Invoice, CurrentSale, Employee, Coupon, Promotion } from '@/types';
 import type { Currency } from '@/config/constants';
 
 type Theme = 'light' | 'dark';
@@ -51,12 +51,18 @@ interface AppState {
 
   employees: Employee[];
   setEmployees: (employees: Employee[]) => void;
+
+  coupons: Coupon[];
+  setCoupons: (coupons: Coupon[]) => void;
+  promotions: Promotion[];
+  setPromotions: (promotions: Promotion[]) => void;
 }
 
 const INITIAL_SALE: CurrentSale = {
   items: [], clientId: null, total: 0, payments: [],
   totalDiscount: { type: 'none', value: 0 }, deliveryType: 'pickup',
   deliveryCostUsd: 0, deliveryPaidInStore: true, observation: null,
+  appliedCoupon: null, appliedPromotions: [],
 };
 
 // Read saved theme from localStorage
@@ -115,4 +121,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   employees: [],
   setEmployees: (employees) => set({ employees }),
+
+  coupons: [],
+  setCoupons: (coupons) => set({ coupons }),
+  promotions: [],
+  setPromotions: (promotions) => set({ promotions }),
 }));

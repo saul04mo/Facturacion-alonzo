@@ -108,6 +108,25 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════
+    // Coupons
+    // ════════════════════════════════════════
+    match /coupons/{couponId} {
+      allow read: if isAuthenticated();
+      // Only admins can create/delete coupons
+      allow create, delete: if isAdmin();
+      // Authenticated users can update (for usage tracking via increment)
+      allow update: if isAuthenticated();
+    }
+
+    // ════════════════════════════════════════
+    // Promotions
+    // ════════════════════════════════════════
+    match /promotions/{promotionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
     // Deny everything else
     // ════════════════════════════════════════
     match /{document=**} {

@@ -9,6 +9,7 @@ import { ToastProvider } from '@/components/Toast';
 import { ROUTES } from '@/config/constants';
 
 const POSPage = lazy(() => import('@/modules/pos/POSPage').then((m) => ({ default: m.POSPage })));
+const DashboardPage = lazy(() => import('@/modules/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const InvoicesPage = lazy(() => import('@/modules/invoices/InvoicesPage').then((m) => ({ default: m.InvoicesPage })));
 const InventoryPage = lazy(() => import('@/modules/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })));
 const ClientsPage = lazy(() => import('@/modules/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
@@ -29,6 +30,7 @@ export function App() {
             <Route path={ROUTES.LOGIN} element={<LoginPage />} />
 
             <Route element={<RequireAuth><Layout /></RequireAuth>}>
+              <Route path={ROUTES.DASHBOARD} element={<DashboardPage />} />
               <Route path={ROUTES.POS} element={<POSPage />} />
               <Route path={ROUTES.INVOICES} element={<InvoicesPage />} />
               <Route path={ROUTES.INVENTORY} element={<InventoryPage />} />
@@ -41,7 +43,7 @@ export function App() {
               <Route path={ROUTES.PAYROLL} element={<PayrollPage />} />
             </Route>
 
-            <Route path="*" element={<Navigate to={ROUTES.POS} replace />} />
+            <Route path="*" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
           </Routes>
         </Suspense>
       </AuthProvider>
