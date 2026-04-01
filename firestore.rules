@@ -5,129 +5,146 @@ service cloud.firestore {
     // ════════════════════════════════════════
     // Helper functions
     // ════════════════════════════════════════
-    function isAuthenticated() {
+    function isAuth() {
       return request.auth != null;
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
+      return isAuth() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'administrador';
     }
 
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
     function isOwnerOrAdmin(uid) {
-      return isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      return isOwner(uid) || isAdmin();
+    }
+
+    // App/Web sales use sellerUid = 'APP' or 'WEB'
+    function isAppOrWebSale() {
+      return request.resource.data.sellerUid in ['APP', 'WEB'];
     }
 
     // ════════════════════════════════════════
-    // Config (exchange rate, invoice counter)
+    // 1. CONFIG (exchange rate, counters)
     // ════════════════════════════════════════
     match /config/{docId} {
-      allow read: if isAuthenticated();
-      // Only admins can update exchange rate
-      // Invoice counter is updated via transaction in processSale (authenticated)
-      allow write: if isAuthenticated();
+      allow read: if isAuth();
+      allow write: if isAuth(); // counter updated via transaction
     }
 
     // ════════════════════════════════════════
-    // Products
+    // 2. PRODUCTS
     // ════════════════════════════════════════
     match /products/{productId} {
-      allow read: if isAuthenticated();
-      // Create/delete: admin only
+      allow read: if isAuth();
       allow create, delete: if isAdmin();
-      // Update: authenticated users (sellers update stock via sales)
-      allow update: if isAuthenticated();
+      allow update: if isAuth(); // sellers update stock via sales
     }
 
     // ════════════════════════════════════════
-    // Clients
+    // 3. CLIENTS
     // ════════════════════════════════════════
     match /clients/{clientId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
+      // Anyone auth can read (needed for RIF lookup)
+      allow read: if isAuth();
+      // Users can create/update ONLY their own doc
+      allow create: if isOwner(clientId) || isAdmin();
+      allow update: if isOwner(clientId) || isAdmin();
       allow delete: if isAdmin();
     }
 
     // ════════════════════════════════════════
-    // Invoices
+    // 4. INVOICES
     // ════════════════════════════════════════
     match /invoices/{invoiceId} {
-      allow read: if isAuthenticated();
-      // Create: any authenticated user (sales are created by sellers)
-      allow create: if isAuthenticated()
-        && request.resource.data.keys().hasAll(['numericId', 'items', 'total', 'date', 'sellerUid'])
+      // Auth users can read their own invoices or admins read all
+      allow read: if isAuth();
+
+      // Create: POS sellers (sellerUid == auth.uid) OR App/Web (sellerUid == 'APP'/'WEB')
+      allow create: if isAuth()
+        && request.resource.data.keys().hasAll(['numericId', 'items', 'total', 'date', 'status'])
         && request.resource.data.total >= 0
-        && request.resource.data.sellerUid == request.auth.uid;
-      // Update: authenticated (for returns, cancellations, abonos, delivery confirmation)
-      allow update: if isAuthenticated();
-      // Delete: never (invoices are cancelled, not deleted)
+        && request.resource.data.items.size() > 0
+        && (
+          request.resource.data.sellerUid == request.auth.uid  // POS seller
+          || isAppOrWebSale()                                   // App/Web sale
+        );
+
+      // Update: auth users (for status changes, payments, linking)
+      allow update: if isAuth();
+
+      // Never delete invoices
       allow delete: if false;
     }
 
     // ════════════════════════════════════════
-    // Users (app users / staff)
-    // ════════════════════════════════════════
-    match /users/{userId} {
-      // Users can read their own doc; admins can read all
-      allow read: if isOwnerOrAdmin(userId);
-      // Only admins can create/update/delete users
-      allow write: if isAdmin();
-    }
-
-    // ════════════════════════════════════════
-    // Employees (HR / Payroll)
-    // ════════════════════════════════════════
-    match /employees/{employeeId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // ════════════════════════════════════════
-    // Payroll periods
-    // ════════════════════════════════════════
-    match /payrollPeriods/{periodId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // ════════════════════════════════════════
-    // Payroll receipts
-    // ════════════════════════════════════════
-    match /payrollReceipts/{receiptId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // ════════════════════════════════════════
-    // Employee incidents
-    // ════════════════════════════════════════
-    match /employeeIncidents/{incidentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // ════════════════════════════════════════
-    // Coupons
+    // 5. COUPONS
     // ════════════════════════════════════════
     match /coupons/{couponId} {
-      allow read: if isAuthenticated();
-      // Only admins can create/delete coupons
+      allow read: if isAuth();
       allow create, delete: if isAdmin();
-      // Authenticated users can update (for usage tracking via increment)
-      allow update: if isAuthenticated();
+      // Auth users can update (usedCount increment, usageByClient)
+      allow update: if isAuth()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['usedCount', 'usageByClient']);
     }
 
     // ════════════════════════════════════════
-    // Promotions
+    // 6. PROMOTIONS
     // ════════════════════════════════════════
     match /promotions/{promotionId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuth();
       allow write: if isAdmin();
     }
 
     // ════════════════════════════════════════
-    // Deny everything else
+    // 7. WISHLISTS
+    // ════════════════════════════════════════
+    match /wishlists/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // ════════════════════════════════════════
+    // 8. USERS (POS staff)
+    // ════════════════════════════════════════
+    match /users/{userId} {
+      allow read: if isOwnerOrAdmin(userId);
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // 9. EMPLOYEES / PAYROLL
+    // ════════════════════════════════════════
+    match /employees/{id} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+    match /payrollPeriods/{id} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+    match /payrollReceipts/{id} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+    match /employeeIncidents/{id} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // 10. BANNERS (home carousel)
+    // ════════════════════════════════════════
+    match /banners/{bannerId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
+    // DENY EVERYTHING ELSE
     // ════════════════════════════════════════
     match /{document=**} {
       allow read, write: if false;
