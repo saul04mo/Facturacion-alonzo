@@ -170,13 +170,17 @@ export function DashboardPage() {
     const valid = invoices.filter((inv) => inv.status !== 'Cancelado' && inv.status !== 'Devolución' && isThisMonth(toDate(inv.date), now));
     const map: Record<string, { name: string; qty: number; revenue: number }> = {};
     valid.forEach((inv) => (inv.items || []).forEach((item: any) => {
-      const k = item.productId || item.productName || item.titulo;
-      if (!map[k]) map[k] = { name: item.productName || item.titulo || item.name || k, qty: 0, revenue: 0 };
-      map[k].qty += item.quantity || item.qty || 0;
-      map[k].revenue += (item.priceAtSale || item.price || 0) * (item.quantity || item.qty || 0);
+      const pid = item.productId;
+      if (!pid) return;
+      // Look up real product name from products array
+      const realProduct = products.find((p) => p.id === pid);
+      const displayName = realProduct?.name || item.productName || item.titulo || item.name || pid;
+      if (!map[pid]) map[pid] = { name: displayName, qty: 0, revenue: 0 };
+      map[pid].qty += item.quantity || item.qty || 0;
+      map[pid].revenue += (item.priceAtSale || item.price || 0) * (item.quantity || item.qty || 0);
     }));
     return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  }, [invoices]);
+  }, [invoices, products]);
   const topMaxRev = topProducts[0]?.revenue || 1;
 
   // ── Low Stock ──
