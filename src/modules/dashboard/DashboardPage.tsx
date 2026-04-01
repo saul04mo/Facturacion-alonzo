@@ -177,7 +177,9 @@ export function DashboardPage() {
       const displayName = realProduct?.name || item.productName || item.titulo || item.name || pid;
       if (!map[pid]) map[pid] = { name: displayName, qty: 0, revenue: 0 };
       map[pid].qty += item.quantity || item.qty || 0;
-      map[pid].revenue += (item.priceAtSale || item.price || 0) * (item.quantity || item.qty || 0);
+      const unitPrice = parseFloat(item.priceAtSale) || parseFloat(item.price) || parseFloat(item.precio) || 0;
+      const qty = item.quantity || item.qty || 0;
+      map[pid].revenue += item.rowTotal ? parseFloat(item.rowTotal) : (unitPrice * qty);
     }));
     return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
   }, [invoices, products]);
