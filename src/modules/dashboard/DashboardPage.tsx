@@ -296,26 +296,24 @@ export function DashboardPage() {
               <p className="text-[10px] text-navy-400">total 7 días</p>
             </div>
           </div>
-          <div className="flex items-end gap-3 h-44">
+          <div className="flex items-end gap-3" style={{ height: '176px' }}>
             {dailySales.map((day, i) => {
-              const pct = (day.revenue / maxRev) * 100;
+              const barHeight = Math.max((day.revenue / maxRev) * 140, 6);
               const isToday = i === dailySales.length - 1;
               return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-navy-900 text-white text-[9px] font-mono px-2 py-1 rounded-md whitespace-nowrap shadow-lg">
+                <div key={i} className="flex-1 flex flex-col items-center justify-end group" style={{ height: '176px' }}>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-navy-900 text-white text-[9px] font-mono px-2 py-1 rounded-md whitespace-nowrap shadow-lg mb-1.5 z-10">
                     {format(day.revenue)} · {day.count}v
                   </div>
-                  <div className="w-full relative">
-                    <div
-                      className={`w-full rounded-t-lg transition-all duration-700 ease-out min-h-[6px] ${
-                        isToday
-                          ? 'bg-gradient-to-t from-blue-600 to-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.3)]'
-                          : 'bg-gradient-to-t from-surface-300 to-surface-200 group-hover:from-blue-400 group-hover:to-blue-300'
-                      }`}
-                      style={{ height: `${Math.max(pct, 4)}%`, maxHeight: '176px' }}
-                    />
-                  </div>
-                  <div className="text-center">
+                  <div
+                    className={`w-full rounded-t-lg transition-all duration-700 ease-out ${
+                      isToday
+                        ? 'bg-gradient-to-t from-blue-600 to-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.3)]'
+                        : 'bg-gradient-to-t from-surface-300 to-surface-200 group-hover:from-blue-400 group-hover:to-blue-300'
+                    }`}
+                    style={{ height: `${barHeight}px` }}
+                  />
+                  <div className="text-center mt-2 flex-shrink-0">
                     <p className={`text-[11px] font-display font-semibold ${isToday ? 'text-blue-600' : 'text-navy-400'}`}>{day.label}</p>
                     <p className={`text-[10px] font-mono ${isToday ? 'text-blue-500' : 'text-navy-300'}`}>{day.day}</p>
                   </div>
