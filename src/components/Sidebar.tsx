@@ -13,7 +13,7 @@ const NAV_GROUPS = [
       { path: ROUTES.POS, label: 'Ventas', icon: <ShoppingCart size={18} />, permission: 'canAccessVentas' },
       { path: ROUTES.INVOICES, label: 'Facturas', icon: <FileText size={18} />, permission: 'canAccessFacturas' },
       { path: ROUTES.CLIENTS, label: 'Clientes', icon: <Users size={18} />, permission: 'canAccessClientes' },
-      { path: ROUTES.CRM, label: 'CRM Marketing', icon: <Crown size={18} />, permission: 'canAccessClientes' },
+      { path: ROUTES.CRM, label: 'CRM Marketing', icon: <Crown size={18} />, permission: 'canAccessCRM' },
       { path: ROUTES.DELIVERY, label: 'Delivery', icon: <Truck size={18} />, permission: 'canAccessDelivery' },
       { path: ROUTES.INVENTORY, label: 'Inventario', icon: <Package size={18} />, permission: 'canAccessInventario' },
       { path: ROUTES.OFFERS, label: 'Ofertas', icon: <Tag size={18} />, permission: 'canManageOffers' },
@@ -30,7 +30,7 @@ const NAV_GROUPS = [
     items: [
       { path: ROUTES.USERS, label: 'Usuarios', icon: <Shield size={18} />, permission: 'canManageUsers' },
       { path: ROUTES.PAYROLL, label: 'Nómina', icon: <Wallet size={18} />, permission: 'canAccessNomina' },
-      { path: ROUTES.SETTINGS, label: 'Configuración General', icon: <Settings size={18} />, permission: 'canAccessVentas', adminOnly: true },
+      { path: ROUTES.SETTINGS, label: 'Configuración General', icon: <Settings size={18} />, permission: 'canAccessSettings' },
     ]
   }
 ];

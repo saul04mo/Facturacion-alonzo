@@ -20,6 +20,7 @@ export const ALL_PERMISSIONS = {
   canAccessVentas: 'Acceder a Ventas',
   canAccessInventario: 'Acceder a Inventario',
   canAccessClientes: 'Acceder a Clientes',
+  canAccessCRM: 'Acceder a CRM Marketing',
   canAccessDelivery: 'Acceder a Delivery',
   canAccessFacturas: 'Acceder a Facturas',
   canManageUsers: 'Gestionar Usuarios',
@@ -38,6 +39,7 @@ export const ALL_PERMISSIONS = {
   canAccessInformes: 'Acceder a Informes',
   canManageOffers: 'Gestionar Ofertas',
   canAccessNomina: 'Acceder a Nómina',
+  canAccessSettings: 'Acceder a Configuración',
 } as const;
 
 export type PermissionKey = keyof typeof ALL_PERMISSIONS;
@@ -45,12 +47,12 @@ export type PermissionKey = keyof typeof ALL_PERMISSIONS;
 export const DEFAULT_PERMISSIONS: Record<string, Record<PermissionKey, boolean>> = {
   vendedor: {
     canAccessDashboard: true, canAccessVentas: true, canAccessInventario: true, canAccessClientes: true,
-    canAccessDelivery: false, canAccessFacturas: true, canManageUsers: false,
+    canAccessCRM: false, canAccessDelivery: false, canAccessFacturas: true, canManageUsers: false,
     canCreateProducts: false, canEditProducts: false, canDeleteProducts: false,
     canCreateClients: true, canEditClients: true, canDeleteClients: false,
     canProcessReturns: false, canEditInvoices: false, canApplyDiscounts: true,
     canUpdateExchangeRate: false, canConfirmDeliveryPayment: false, canAddAbono: false,
-    canAccessInformes: false, canManageOffers: false, canAccessNomina: false,
+    canAccessInformes: false, canManageOffers: false, canAccessNomina: false, canAccessSettings: false,
   },
   administrador: Object.keys(ALL_PERMISSIONS).reduce(
     (acc, key) => ({ ...acc, [key]: true }), {} as Record<PermissionKey, boolean>,
