@@ -5,10 +5,11 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { updateExchangeRate } from '@/modules/invoices/invoiceService';
 import { formatDateLong, currentTimeVE, todayVE } from '@/utils/dateUtils';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   Settings, DollarSign, RefreshCw, Check, AlertTriangle,
   Database, Users, Package, FileText, TrendingUp,
-  Globe, Sun, Moon, Monitor, Clock, MapPin,
+  Globe, Sun, Moon, Monitor, Clock, MapPin, Zap,
 } from 'lucide-react';
 
 export function SettingsPage() {
@@ -26,6 +27,7 @@ export function SettingsPage() {
   const [newRate, setNewRate] = useState(String(exchangeRate));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [fetchingBcv, setFetchingBcv] = useState(false);
   const [veTime, setVeTime] = useState(currentTimeVE());
 
   useEffect(() => {
@@ -42,6 +44,23 @@ export function SettingsPage() {
   }
 
   const rateChanged = parseFloat(newRate) !== exchangeRate;
+
+  async function handleFetchBcv() {
+    setFetchingBcv(true);
+    try {
+      const functions = getFunctions();
+      const refreshRate = httpsCallable(functions, 'refreshBcvRate');
+      const result = await refreshRate();
+      const data = result.data as { rate: number; updatedAt: string };
+      setNewRate(String(data.rate));
+      toast.success(`Tasa BCV actualizada: Bs. ${data.rate.toFixed(2)}`);
+    } catch (err: any) {
+      console.error('BCV fetch error:', err);
+      toast.error(err?.message || 'No se pudo obtener la tasa BCV. Intenta más tarde.');
+    } finally {
+      setFetchingBcv(false);
+    }
+  }
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -163,6 +182,18 @@ export function SettingsPage() {
                 <p className="text-4xl font-mono font-bold text-emerald-700 dark:text-emerald-300 mt-1">{exchangeRate.toFixed(2)}</p>
                 <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-1">Bs. por cada 1 USD</p>
               </div>
+
+              {/* BCV Auto-fetch button */}
+              {can('canUpdateExchangeRate') && (
+                <button onClick={handleFetchBcv} disabled={fetchingBcv}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl font-display font-semibold text-sm transition-colors">
+                  {fetchingBcv ? (
+                    <><RefreshCw size={16} className="animate-spin" /> Consultando BCV...</>
+                  ) : (
+                    <><Zap size={16} /> Obtener Tasa BCV Automática</>
+                  )}
+                </button>
+              )}
 
               {can('canUpdateExchangeRate') ? (
                 <div className="space-y-3">
