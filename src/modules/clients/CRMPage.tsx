@@ -124,8 +124,9 @@ export function CRMPage() {
 
       // Products
       (inv.items || []).forEach((item: any) => {
-        const pName = item.productName || item.titulo || item.name || 'Producto';
-        const qty = item.quantity || item.qty || 1;
+        const realProduct = item.productId ? products.find((p: any) => p.id === item.productId) : null;
+        const pName = realProduct?.name || item.productName || item.titulo || item.name || item.producto || item.nombre || 'Producto';
+        const qty = item.quantity || item.qty || item.cantidad || 1;
         c.products[pName] = (c.products[pName] || 0) + qty;
       });
 
@@ -136,13 +137,31 @@ export function CRMPage() {
         total: inv.total || 0,
         status: inv.status || 'Creada',
         deliveryType: inv.deliveryType || 'pickup',
-        items: (inv.items || []).map((item: any) => ({
-          name: item.productName || item.titulo || item.name || 'Producto',
-          qty: item.quantity || item.qty || 1,
-          price: parseFloat(item.priceAtSale) || parseFloat(item.price) || parseFloat(item.precio) || 0,
-          size: item.size || item.selectedSize || '',
-          color: item.color || item.selectedColor || '',
-        })),
+        items: (inv.items || []).map((item: any) => {
+          // Look up real product name from products array
+          const realProduct = item.productId ? products.find((p: any) => p.id === item.productId) : null;
+          const name = realProduct?.name || item.productName || item.titulo || item.name || item.producto || item.nombre || 'Producto';
+          
+          // Parse price - could be number or string
+          const rawPrice = item.priceAtSale ?? item.price ?? item.precio ?? item.monto ?? 0;
+          const price = typeof rawPrice === 'number' ? rawPrice : parseFloat(rawPrice) || 0;
+          
+          const qty = item.quantity || item.qty || item.cantidad || 1;
+          
+          // Parse size/color from variantLabel ("M / Negro") or individual fields
+          let size = item.size || item.selectedSize || item.talla || '';
+          let color = item.color || item.selectedColor || '';
+          if (!size && !color && item.variantLabel) {
+            const parts = item.variantLabel.split('/').map((s: string) => s.trim());
+            size = parts[0] !== 'N/A' ? parts[0] : '';
+            color = parts[1] !== 'N/A' ? parts[1] : '';
+          }
+          
+          // Calculate row total - use explicit rowTotal if available
+          const rowTotal = item.rowTotal ? (typeof item.rowTotal === 'number' ? item.rowTotal : parseFloat(item.rowTotal) || 0) : price * qty;
+          
+          return { name, qty, price: rowTotal / (qty || 1), size, color };
+        }),
       });
     });
 
