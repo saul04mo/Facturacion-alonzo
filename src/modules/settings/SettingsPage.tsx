@@ -3,7 +3,7 @@ import { useAppStore } from '@/store/appStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
-import { updateExchangeRate } from '@/modules/invoices/invoiceService';
+import { updateExchangeRate, fetchExchangeRateHistory } from '@/modules/invoices/invoiceService';
 import { formatDateLong, currentTimeVE, todayVE } from '@/utils/dateUtils';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
@@ -28,6 +28,8 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [fetchingBcv, setFetchingBcv] = useState(false);
+  const [rateHistory, setRateHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [veTime, setVeTime] = useState(currentTimeVE());
 
   useEffect(() => {
@@ -59,6 +61,17 @@ export function SettingsPage() {
       toast.error(err?.message || 'No se pudo obtener la tasa BCV. Intenta más tarde.');
     } finally {
       setFetchingBcv(false);
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const data = await fetchExchangeRateHistory(30);
+      setRateHistory(data);
+      setShowHistory(true);
+    } catch (err) {
+      console.error('History error:', err);
+      toast.error('Error al cargar historial.');
     }
   }
 
@@ -237,6 +250,60 @@ export function SettingsPage() {
                 </div>
               )}
             </div>
+            {/* Rate History */}
+            <div className="px-6 py-3 border-t border-surface-200 bg-surface-50">
+              <button onClick={loadHistory}
+                className="text-xs text-blue-500 hover:text-blue-600 font-display font-medium flex items-center gap-1 transition-colors">
+                <Clock size={12} /> {showHistory ? 'Actualizar historial' : 'Ver historial de cambios'}
+              </button>
+            </div>
+            {showHistory && rateHistory.length > 0 && (
+              <div className="px-6 pb-4 max-h-64 overflow-y-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-surface-200">
+                      {['Fecha', 'Anterior', 'Nueva', 'Cambio', 'Método'].map((h) => (
+                        <th key={h} className="pb-2 text-[9px] font-display font-semibold text-navy-400 uppercase tracking-wider text-left">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-100">
+                    {rateHistory.map((entry: any) => {
+                      const ts = entry.timestamp?.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
+                      const change = entry.change || (entry.newRate - (entry.previousRate || 0));
+                      const isUp = change > 0;
+                      return (
+                        <tr key={entry.id} className="text-xs">
+                          <td className="py-2 text-navy-600">
+                            {ts.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })}{' '}
+                            <span className="text-navy-400">{ts.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
+                          </td>
+                          <td className="py-2 font-mono text-navy-500">
+                            {entry.previousRate ? entry.previousRate.toFixed(2) : '—'}
+                          </td>
+                          <td className="py-2 font-mono font-bold text-navy-900">
+                            {entry.newRate?.toFixed(2)}
+                          </td>
+                          <td className={`py-2 font-mono font-semibold ${isUp ? 'text-red-500' : change < 0 ? 'text-emerald-600' : 'text-navy-400'}`}>
+                            {change !== 0 ? `${isUp ? '+' : ''}${change.toFixed(2)}` : '—'}
+                          </td>
+                          <td className="py-2">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                              entry.method === 'scheduled' ? 'bg-blue-100 text-blue-700' :
+                              entry.method === 'manual' && entry.source === 'BCV-EUR' ? 'bg-violet-100 text-violet-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {entry.method === 'scheduled' ? '⏰ Auto' :
+                               entry.source === 'BCV-EUR' ? '⚡ BCV' : '✏️ Manual'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 

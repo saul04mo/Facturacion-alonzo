@@ -320,6 +320,41 @@ export async function fetchInvoicesByDateRange(
 // UPDATE EXCHANGE RATE
 // ================================
 export async function updateExchangeRate(newRate: number): Promise<void> {
-  const { setDoc } = await import('firebase/firestore');
-  await setDoc(doc(db, 'config', 'exchangeRate'), { value: newRate }, { merge: true });
+  const { setDoc, getDoc, addDoc, collection: col, Timestamp: Ts } = await import('firebase/firestore');
+  const { getAuth } = await import('firebase/auth');
+  
+  // Get previous rate
+  const prev = await getDoc(doc(db, 'config', 'exchangeRate'));
+  const prevRate = prev.exists() ? prev.data().value : null;
+
+  // Update current rate
+  await setDoc(doc(db, 'config', 'exchangeRate'), { 
+    value: newRate,
+    source: 'manual',
+    updatedAt: Ts.now(),
+  }, { merge: true });
+
+  // Log to history
+  const auth = getAuth();
+  await addDoc(col(db, 'exchangeRateHistory'), {
+    previousRate: prevRate,
+    newRate: newRate,
+    change: prevRate ? newRate - prevRate : 0,
+    source: 'manual',
+    method: 'manual',
+    updatedBy: auth.currentUser?.uid || 'unknown',
+    userName: auth.currentUser?.displayName || auth.currentUser?.email || 'POS',
+    timestamp: Ts.now(),
+  });
+}
+
+// ================================
+// EXCHANGE RATE HISTORY
+// ================================
+export async function fetchExchangeRateHistory(limitNum = 30): Promise<any[]> {
+  const { getDocs, query: q, orderBy: ob, limit: lim, collection: col } = await import('firebase/firestore');
+  const snap = await getDocs(
+    q(col(db, 'exchangeRateHistory'), ob('timestamp', 'desc'), lim(limitNum))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
