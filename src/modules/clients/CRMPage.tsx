@@ -75,6 +75,8 @@ export function CRMPage() {
   const [sortKey, setSortKey] = useState<'revenue' | 'orders' | 'lastPurchase' | 'name'>('revenue');
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [selectedClient, setSelectedClient] = useState<ClientAnalytics | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // ── Build client analytics from invoices ──
   const clientAnalytics = useMemo(() => {
@@ -241,6 +243,7 @@ export function CRMPage() {
   function handleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir((d) => d === 'desc' ? 'asc' : 'desc');
     else { setSortKey(key); setSortDir('desc'); }
+    setPage(1);
   }
 
   function whatsappLink(phone: string, name: string) {
@@ -283,16 +286,16 @@ export function CRMPage() {
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex gap-2 flex-wrap flex-1">
-            <SegBtn label="Todos" active={segFilter === 'all'} count={clientAnalytics.length} onClick={() => setSegFilter('all')} />
+            <SegBtn label="Todos" active={segFilter === 'all'} count={clientAnalytics.length} onClick={() => { setSegFilter('all'); setPage(1); }} />
             {(Object.keys(SEGMENT_CONFIG) as Array<keyof typeof SEGMENT_CONFIG>).map((seg) => (
               <SegBtn key={seg} label={SEGMENT_CONFIG[seg].label} active={segFilter === seg}
                 count={clientAnalytics.filter((c) => c.segment === seg).length}
-                onClick={() => setSegFilter(seg)} />
+                onClick={() => { setSegFilter(seg); setPage(1); }} />
             ))}
           </div>
           <div className="relative w-full sm:w-72">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
+            <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               className="input-field pl-9 text-sm" placeholder="Buscar nombre, CI o teléfono..." />
           </div>
         </div>
@@ -331,12 +334,13 @@ export function CRMPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
-              {filtered.slice(0, 50).map((c, i) => {
+              {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((c, i) => {
                 const seg = SEGMENT_CONFIG[c.segment];
+                const globalIdx = (page - 1) * PAGE_SIZE + i;
                 return (
                   <tr key={c.id} className="hover:bg-surface-50 transition-colors group">
                     <td className="px-4 py-3">
-                      <span className="text-xs font-mono text-navy-300">{i + 1}</span>
+                      <span className="text-xs font-mono text-navy-300">{globalIdx + 1}</span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -395,11 +399,52 @@ export function CRMPage() {
             </tbody>
           </table>
         </div>
-        {filtered.length > 50 && (
-          <div className="p-3 text-center text-xs text-navy-400 border-t border-surface-100">
-            Mostrando 50 de {filtered.length} clientes. Usa los filtros para refinar o exporta el CSV completo.
-          </div>
-        )}
+        {/* Pagination */}
+        {filtered.length > PAGE_SIZE && (() => {
+          const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+          const from = (page - 1) * PAGE_SIZE + 1;
+          const to = Math.min(page * PAGE_SIZE, filtered.length);
+          return (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-surface-200">
+              <span className="text-xs text-navy-400">
+                {from}–{to} de {filtered.length} clientes
+              </span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(1)} disabled={page === 1}
+                  className="px-2 py-1 text-[10px] font-display font-semibold rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-navy-500 hover:bg-surface-100">
+                  «
+                </button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                  className="px-2 py-1 text-[10px] font-display font-semibold rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-navy-500 hover:bg-surface-100">
+                  ‹ Anterior
+                </button>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  let p: number;
+                  if (totalPages <= 5) p = i + 1;
+                  else if (page <= 3) p = i + 1;
+                  else if (page >= totalPages - 2) p = totalPages - 4 + i;
+                  else p = page - 2 + i;
+                  return (
+                    <button key={p} onClick={() => setPage(p)}
+                      className={`w-7 h-7 rounded text-xs font-display font-semibold transition-colors ${
+                        p === page ? 'bg-blue-600 text-white' : 'text-navy-500 hover:bg-surface-100'
+                      }`}>
+                      {p}
+                    </button>
+                  );
+                })}
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                  className="px-2 py-1 text-[10px] font-display font-semibold rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-navy-500 hover:bg-surface-100">
+                  Siguiente ›
+                </button>
+                <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+                  className="px-2 py-1 text-[10px] font-display font-semibold rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-navy-500 hover:bg-surface-100">
+                  »
+                </button>
+              </div>
+            </div>
+          );
+        })()}
         {filtered.length === 0 && (
           <div className="p-16 text-center">
             <Users size={40} className="mx-auto text-navy-200 mb-3" />
