@@ -161,7 +161,9 @@ function PermissionsModal({
   open: boolean; onClose: () => void; user: AppUser;
 }) {
   const toast = useToast();
-  const initialPerms = user.permissions || DEFAULT_PERMISSIONS[user.rol] || DEFAULT_PERMISSIONS.vendedor;
+  // Merge: start with role defaults (all keys), then override with saved values
+  const roleDefaults = DEFAULT_PERMISSIONS[user.rol] || DEFAULT_PERMISSIONS.vendedor;
+  const initialPerms = { ...roleDefaults, ...(user.permissions || {}) };
   const [perms, setPerms] = useState<Record<PermissionKey, boolean>>({ ...initialPerms });
   const [saving, setSaving] = useState(false);
 
