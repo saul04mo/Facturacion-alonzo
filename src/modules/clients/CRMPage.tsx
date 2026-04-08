@@ -435,192 +435,194 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
   };
 
   return (
-    <Modal open={true} onClose={onClose} title="">
-      <div className="space-y-5 -mt-2 max-h-[75vh] overflow-y-auto pr-1 custom-scrollbar">
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center flex-shrink-0">
-            <span className="text-lg font-bold text-violet-700">{client.name.charAt(0)}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-display font-bold text-navy-900 truncate">{client.name}</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${seg.color}`}>
-                <seg.icon size={10} /> {seg.label}
-              </span>
-              {client.rif_ci && <span className="text-xs font-mono text-navy-400">CI: {client.rif_ci}</span>}
+    <Modal open={true} onClose={onClose} title="" size="xl">
+      <div className="flex flex-col lg:flex-row gap-5 -mt-2">
+        {/* ═══ LEFT: Client Info ═══ */}
+        <div className="lg:w-[45%] space-y-4 flex-shrink-0">
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center flex-shrink-0">
+              <span className="text-base font-bold text-violet-700">{client.name.charAt(0)}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-base font-display font-bold text-navy-900 truncate">{client.name}</h2>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${seg.color}`}>
+                  <seg.icon size={10} /> {seg.label}
+                </span>
+                {client.rif_ci && <span className="text-[10px] font-mono text-navy-400">CI: {client.rif_ci}</span>}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Contact Info */}
-        <div className="grid grid-cols-2 gap-2">
-          {client.phone && (
-            <div className="flex items-center gap-2 p-2.5 bg-surface-50 rounded-lg">
-              <Phone size={13} className="text-navy-400" />
-              <span className="text-sm text-navy-700">{client.phone}</span>
+          {/* Contact */}
+          <div className="grid grid-cols-2 gap-2">
+            {client.phone && (
+              <div className="flex items-center gap-2 p-2 bg-surface-50 rounded-lg">
+                <Phone size={12} className="text-navy-400" />
+                <span className="text-xs text-navy-700">{client.phone}</span>
+              </div>
+            )}
+            {client.email && (
+              <div className="flex items-center gap-2 p-2 bg-surface-50 rounded-lg">
+                <Mail size={12} className="text-navy-400" />
+                <span className="text-xs text-navy-700 truncate">{client.email}</span>
+              </div>
+            )}
+            {client.address && (
+              <div className="col-span-2 flex items-center gap-2 p-2 bg-surface-50 rounded-lg">
+                <MapPin size={12} className="text-navy-400 flex-shrink-0" />
+                <span className="text-xs text-navy-700 truncate">{client.address}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-4 gap-2">
+            <div className="text-center p-2 bg-blue-50 rounded-lg">
+              <p className="text-base font-display font-bold text-blue-700">{client.orders}</p>
+              <p className="text-[8px] text-blue-500 font-medium">Pedidos</p>
+            </div>
+            <div className="text-center p-2 bg-emerald-50 rounded-lg">
+              <p className="text-sm font-display font-bold text-emerald-700">{format(client.revenue)}</p>
+              <p className="text-[8px] text-emerald-500 font-medium">Total</p>
+            </div>
+            <div className="text-center p-2 bg-violet-50 rounded-lg">
+              <p className="text-sm font-display font-bold text-violet-700">{format(client.avgTicket)}</p>
+              <p className="text-[8px] text-violet-500 font-medium">Ticket</p>
+            </div>
+            <div className="text-center p-2 bg-amber-50 rounded-lg">
+              <p className="text-sm font-display font-bold text-amber-700">{client.daysSinceLast < 999 ? `${client.daysSinceLast}d` : '—'}</p>
+              <p className="text-[8px] text-amber-500 font-medium">Última</p>
+            </div>
+          </div>
+
+          {/* Monthly Chart */}
+          {client.monthlySpend.length > 1 && (
+            <div>
+              <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-2">Gasto Mensual</p>
+              <div className="flex items-end gap-1.5 h-14">
+                {client.monthlySpend.map((m, i) => {
+                  const h = Math.max((m.amount / maxMonthly) * 44, 4);
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                      <div className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t" style={{ height: `${h}px` }} title={format(m.amount)} />
+                      <span className="text-[7px] text-navy-400">{m.month.split('-')[1]}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
-          {client.email && (
-            <div className="flex items-center gap-2 p-2.5 bg-surface-50 rounded-lg">
-              <Mail size={13} className="text-navy-400" />
-              <span className="text-sm text-navy-700 truncate">{client.email}</span>
-            </div>
-          )}
-          {client.address && (
-            <div className="col-span-2 flex items-center gap-2 p-2.5 bg-surface-50 rounded-lg">
-              <MapPin size={13} className="text-navy-400 flex-shrink-0" />
-              <span className="text-sm text-navy-700 truncate">{client.address}</span>
-            </div>
-          )}
-        </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-4 gap-2">
-          <div className="text-center p-2.5 bg-blue-50 rounded-xl">
-            <p className="text-lg font-display font-bold text-blue-700">{client.orders}</p>
-            <p className="text-[9px] text-blue-500 font-medium">Pedidos</p>
-          </div>
-          <div className="text-center p-2.5 bg-emerald-50 rounded-xl">
-            <p className="text-base font-display font-bold text-emerald-700">{format(client.revenue)}</p>
-            <p className="text-[9px] text-emerald-500 font-medium">Total</p>
-          </div>
-          <div className="text-center p-2.5 bg-violet-50 rounded-xl">
-            <p className="text-base font-display font-bold text-violet-700">{format(client.avgTicket)}</p>
-            <p className="text-[9px] text-violet-500 font-medium">Prom.</p>
-          </div>
-          <div className="text-center p-2.5 bg-amber-50 rounded-xl">
-            <p className="text-base font-display font-bold text-amber-700">{client.daysSinceLast < 999 ? `${client.daysSinceLast}d` : '—'}</p>
-            <p className="text-[9px] text-amber-500 font-medium">Últ. Compra</p>
-          </div>
-        </div>
-
-        {/* Monthly Spend Chart */}
-        {client.monthlySpend.length > 1 && (
-          <div>
-            <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-2">Gasto Mensual</p>
-            <div className="flex items-end gap-2 h-16">
-              {client.monthlySpend.map((m, i) => {
-                const h = Math.max((m.amount / maxMonthly) * 52, 4);
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t transition-all"
-                      style={{ height: `${h}px` }} title={format(m.amount)} />
-                    <span className="text-[8px] text-navy-400">{m.month.split('-')[1]}</span>
+          {/* Fav Products */}
+          {client.favoriteProducts.length > 0 && (
+            <div>
+              <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-2">Más Comprados</p>
+              <div className="space-y-1">
+                {client.favoriteProducts.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-4 h-4 rounded flex items-center justify-center text-[8px] font-bold flex-shrink-0 ${
+                        i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-surface-100 text-navy-400'
+                      }`}>{i + 1}</span>
+                      <span className="text-xs text-navy-700 truncate">{p.name}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-navy-400 ml-1">{p.qty}u</span>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ═══ HISTORIAL DE PEDIDOS ═══ */}
-        <div>
+          {/* Actions */}
+          <div className="flex gap-2 pt-2 border-t border-surface-200">
+            {client.phone && (
+              <a href={whatsappLink(client.phone, client.name)} target="_blank" rel="noopener noreferrer"
+                className="btn-primary text-xs flex-1 flex items-center justify-center gap-1.5 py-2">
+                <MessageCircle size={13} /> WhatsApp
+              </a>
+            )}
+            {client.email && (
+              <a href={`mailto:${client.email}`}
+                className="btn-secondary text-xs flex-1 flex items-center justify-center gap-1.5 py-2">
+                <Mail size={13} /> Email
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* ═══ RIGHT: Order History ═══ */}
+        <div className="lg:w-[55%] lg:border-l lg:border-surface-200 lg:pl-5">
           <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-3">
             Historial de Pedidos ({client.orderHistory.length})
           </p>
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
             {client.orderHistory.map((order, idx) => {
               const isOpen = expandedOrder === idx;
               const statusColor = STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-600';
               return (
                 <div key={idx} className={`border rounded-lg overflow-hidden transition-colors ${isOpen ? 'border-blue-300' : 'border-surface-200'}`}>
-                  {/* Order header */}
                   <button
                     onClick={() => setExpandedOrder(isOpen ? null : idx)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors ${isOpen ? 'bg-blue-50' : 'hover:bg-surface-50'}`}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-left transition-colors ${isOpen ? 'bg-blue-50' : 'hover:bg-surface-50'}`}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="text-center w-14 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <div className="w-12 flex-shrink-0">
                         <p className="text-[10px] font-bold text-navy-900 font-mono">#{String(order.numericId).padStart(4, '0')}</p>
                         <p className="text-[8px] text-navy-400">
-                          {order.date.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: '2-digit' })}
+                          {order.date.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })}
                         </p>
                       </div>
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold ${statusColor}`}>
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-semibold ${statusColor}`}>
                         {order.status}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <div className="text-right">
-                        <p className="text-sm font-mono font-bold text-navy-900">{format(order.total)}</p>
-                        <p className="text-[9px] text-navy-400">{order.items.length} producto{order.items.length > 1 ? 's' : ''}</p>
+                        <p className="text-xs font-mono font-bold text-navy-900">{format(order.total)}</p>
+                        <p className="text-[8px] text-navy-400">{order.items.length} prod.</p>
                       </div>
-                      <ChevronRight size={14} className={`text-navy-300 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                      <ChevronRight size={12} className={`text-navy-300 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                     </div>
                   </button>
 
-                  {/* Order items (expandable) */}
                   {isOpen && (
                     <div className="px-3 py-2 border-t border-surface-100 bg-surface-50/50">
-                      <div className="space-y-1.5">
+                      <div className="space-y-1">
                         {order.items.map((item, iIdx) => (
-                          <div key={iIdx} className="flex items-center justify-between py-1">
+                          <div key={iIdx} className="flex items-center justify-between py-0.5">
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-display font-medium text-navy-900 truncate">{item.name}</p>
+                              <p className="text-[11px] font-display font-medium text-navy-900 truncate">{item.name}</p>
                               <p className="text-[9px] text-navy-400">
                                 {item.size && <span>{item.size}</span>}
-                                {item.size && item.color && <span> / </span>}
+                                {item.size && item.color && ' / '}
                                 {item.color && <span>{item.color}</span>}
-                                {(item.size || item.color) && <span> · </span>}
-                                Cant: {item.qty}
+                                {(item.size || item.color) && ' · '}
+                                x{item.qty}
                               </p>
                             </div>
-                            <span className="text-xs font-mono font-semibold text-navy-700 ml-2">
+                            <span className="text-[11px] font-mono font-semibold text-navy-700 ml-2">
                               {format(item.price * item.qty)}
                             </span>
                           </div>
                         ))}
                       </div>
-                      <div className="flex justify-between mt-2 pt-2 border-t border-surface-200">
-                        <span className="text-[10px] text-navy-400">
+                      <div className="flex justify-between mt-1.5 pt-1.5 border-t border-surface-200 text-[10px]">
+                        <span className="text-navy-400">
                           {order.deliveryType === 'delivery' ? '🚚 Delivery' : order.deliveryType === 'nacional' ? '📦 Nacional' : '🏪 Retiro'}
                         </span>
-                        <span className="text-xs font-mono font-bold text-navy-900">Total: {format(order.total)}</span>
+                        <span className="font-mono font-bold text-navy-900">{format(order.total)}</span>
                       </div>
                     </div>
                   )}
                 </div>
               );
             })}
+            {client.orderHistory.length === 0 && (
+              <p className="text-xs text-navy-400 py-8 text-center">Sin pedidos registrados.</p>
+            )}
           </div>
-        </div>
-
-        {/* Favorite Products */}
-        {client.favoriteProducts.length > 0 && (
-          <div>
-            <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-2">Productos Más Comprados</p>
-            <div className="space-y-1.5">
-              {client.favoriteProducts.map((p, i) => (
-                <div key={i} className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${
-                      i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-gray-100 text-gray-600' : 'bg-surface-100 text-navy-400'
-                    }`}>{i + 1}</span>
-                    <span className="text-sm text-navy-700 truncate">{p.name}</span>
-                  </div>
-                  <span className="text-xs font-mono text-navy-400 ml-2">{p.qty} uds</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-3 border-t border-surface-200 sticky bottom-0 bg-[var(--bg-card)]">
-          {client.phone && (
-            <a href={whatsappLink(client.phone, client.name)} target="_blank" rel="noopener noreferrer"
-              className="btn-primary text-sm flex-1 flex items-center justify-center gap-2">
-              <MessageCircle size={14} /> WhatsApp
-            </a>
-          )}
-          {client.email && (
-            <a href={`mailto:${client.email}`}
-              className="btn-secondary text-sm flex-1 flex items-center justify-center gap-2">
-              <Mail size={14} /> Email
-            </a>
-          )}
-          <button onClick={onClose} className="btn-secondary text-sm">Cerrar</button>
         </div>
       </div>
     </Modal>
