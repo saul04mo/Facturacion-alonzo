@@ -358,3 +358,15 @@ export async function fetchExchangeRateHistory(limitNum = 30): Promise<any[]> {
   );
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
+
+// ================================
+// FETCH INVOICE BY NUMERIC ID
+// ================================
+export async function fetchInvoiceByNumericId(numericId: number): Promise<any | null> {
+  const { getDocs, query: q, where, collection: col } = await import('firebase/firestore');
+  const snap = await getDocs(
+    q(col(db, 'invoices'), where('numericId', '==', numericId))
+  );
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+}

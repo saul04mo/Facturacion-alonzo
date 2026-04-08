@@ -5,14 +5,14 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { Modal } from '@/components/Modal';
-import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange } from './invoiceService';
+import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId } from './invoiceService';
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import type { Product } from '@/types';
 import {
   FileText, Filter, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon,
+  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon, Search, Hash,
 } from 'lucide-react';
 
 const STATUS_BADGES: Record<string, { class: string; label: string }> = {
@@ -62,6 +62,38 @@ export function InvoicesPage() {
   const [loading, setLoading] = useState(false);
   const [serverInvoices, setServerInvoices] = useState<any[] | null>(null);
   const [isSearchingServer, setIsSearchingServer] = useState(false);
+  const [quickSearch, setQuickSearch] = useState('');
+  const [isQuickSearching, setIsQuickSearching] = useState(false);
+
+  async function handleQuickSearch() {
+    const raw = quickSearch.trim().replace(/[^0-9]/g, '');
+    if (!raw) return toast.warning('Escribe un número de factura.');
+    const num = parseInt(raw);
+    if (isNaN(num) || num <= 0) return toast.warning('Número de factura inválido.');
+    setIsQuickSearching(true);
+    try {
+      // First check locally
+      const local = invoices.find((inv: any) => inv.numericId === num);
+      if (local) {
+        setDetailInvoice(local);
+        setQuickSearch('');
+        return;
+      }
+      // If not found locally, search in Firestore
+      const result = await fetchInvoiceByNumericId(num);
+      if (result) {
+        setDetailInvoice(result);
+        setQuickSearch('');
+      } else {
+        toast.warning(`No se encontró la factura #${num}`);
+      }
+    } catch (err) {
+      console.error('Quick search error:', err);
+      toast.error('Error al buscar factura.');
+    } finally {
+      setIsQuickSearching(false);
+    }
+  }
 
   async function applyFilters() { 
     setSearch(dSearch); 
@@ -186,10 +218,31 @@ export function InvoicesPage() {
             <div><h1 className="text-xl font-display font-bold text-navy-900">Historial de Facturas</h1>
               <p className="text-navy-400 text-sm">{filtered.length} facturas</p></div>
           </div>
-          <button onClick={() => setShowFilters(!showFilters)}
-            className={`btn-secondary text-sm ${showFilters ? 'border-purple-300 bg-purple-50' : ''}`}>
-            <Filter size={14} /> Filtros <ChevronDown size={14} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-          </button>
+          <div className="flex gap-2 items-center w-full sm:w-auto">
+            {/* Quick search by numericId */}
+            <div className="relative flex-1 sm:flex-initial sm:w-52">
+              <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+              <input
+                value={quickSearch}
+                onChange={(e) => setQuickSearch(e.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={(e) => e.key === 'Enter' && handleQuickSearch()}
+                className="input-field pl-8 pr-16 text-sm font-mono"
+                placeholder="Nº factura..."
+                inputMode="numeric"
+              />
+              <button
+                onClick={handleQuickSearch}
+                disabled={isQuickSearching}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-1 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white text-[10px] font-display font-semibold rounded transition-colors"
+              >
+                {isQuickSearching ? '...' : 'Buscar'}
+              </button>
+            </div>
+            <button onClick={() => setShowFilters(!showFilters)}
+              className={`btn-secondary text-sm ${showFilters ? 'border-purple-300 bg-purple-50' : ''}`}>
+              <Filter size={14} /> Filtros <ChevronDown size={14} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
         </div>
 
         {showFilters && (
