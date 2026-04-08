@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
@@ -69,10 +69,40 @@ const SEGMENT_CONFIG = {
 // CRM Page
 // ════════════════════════════════════════
 export function CRMPage() {
-  const invoices = useAppStore((s) => s.invoices);
+  const storeInvoices = useAppStore((s) => s.invoices);
   const products = useAppStore((s) => s.products);
   const { format } = useCurrency();
   const toast = useToast();
+
+  const [allInvoices, setAllInvoices] = useState<any[]>([]);
+  const [isLoadingAll, setIsLoadingAll] = useState(true);
+
+  // Load ALL invoices on mount (not just the 100 from the store)
+  useEffect(() => {
+    let mounted = true;
+    async function loadAll() {
+      try {
+        const { getDocs, query: q, collection: col, orderBy: ob } = await import('firebase/firestore');
+        const { db } = await import('@/config/firebase');
+        const snap = await getDocs(q(col(db, 'invoices'), ob('date', 'desc')));
+        if (mounted) {
+          setAllInvoices(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setIsLoadingAll(false);
+        }
+      } catch (err) {
+        console.error('CRM: Error loading all invoices:', err);
+        if (mounted) {
+          setAllInvoices(storeInvoices);
+          setIsLoadingAll(false);
+          toast.warning('No se pudieron cargar todas las facturas. Mostrando datos parciales.');
+        }
+      }
+    }
+    loadAll();
+    return () => { mounted = false; };
+  }, []);
+
+  const invoices = isLoadingAll ? storeInvoices : allInvoices;
 
   const [search, setSearch] = useState('');
   const [segFilter, setSegFilter] = useState<string>('all');
@@ -301,7 +331,16 @@ export function CRMPage() {
             </div>
             <div>
               <h1 className="text-xl font-display font-bold text-navy-900">CRM — Panel de Clientes</h1>
-              <p className="text-navy-400 text-sm">{kpis.total} clientes · Marketing & Retención</p>
+              <p className="text-navy-400 text-sm">
+                {isLoadingAll ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                    Cargando todas las facturas...
+                  </span>
+                ) : (
+                  <>{kpis.total} clientes · {allInvoices.length} facturas · Marketing & Retención</>
+                )}
+              </p>
             </div>
           </div>
           <button onClick={handleExport} className="btn-primary text-sm whitespace-nowrap">
