@@ -19,6 +19,7 @@ const OffersPage = lazy(() => import('@/modules/offers/OffersPage').then((m) => 
 const UsersPage = lazy(() => import('@/modules/users/UsersPage').then((m) => ({ default: m.UsersPage })));
 const SettingsPage = lazy(() => import('@/modules/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const PayrollPage = lazy(() => import('@/modules/payroll/PayrollPage').then((m) => ({ default: m.PayrollPage })));
+const CRMPage = lazy(() => import('@/modules/clients/CRMPage').then((m) => ({ default: m.CRMPage })));
 
 export function App() {
   return (
@@ -41,6 +42,7 @@ export function App() {
               <Route path={ROUTES.USERS} element={<UsersPage />} />
               <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />
               <Route path={ROUTES.PAYROLL} element={<PayrollPage />} />
+              <Route path={ROUTES.CRM} element={<CRMPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to={ROUTES.DASHBOARD} replace />} />

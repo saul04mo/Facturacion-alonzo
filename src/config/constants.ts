@@ -12,6 +12,7 @@ export const ROUTES = {
   SETTINGS: '/configuracion',
   OFFERS: '/ofertas',
   PAYROLL: '/nomina',
+  CRM: '/crm',
 } as const;
 
 export const ALL_PERMISSIONS = {
