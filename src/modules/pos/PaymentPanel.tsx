@@ -27,6 +27,7 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
   const { format } = useCurrency();
   const toast = useToast();
   const [processing, setProcessing] = useState(false);
+  const processingRef = useRef(false);
   const isPending = !currentSale.deliveryPaidInStore;
   const setIsPending = (val: boolean) => setCurrentSale({ ...currentSale, deliveryPaidInStore: !val });
 
@@ -64,6 +65,7 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
 
   async function handleCheckout() {
     if (!currentUser) return;
+    if (processingRef.current) return; // Ref guard — prevents double-click race condition
     if (!canProcess) {
       if (!isCreditSale && !isPending) {
         toast.warning(`Pago incompleto. Faltan ${format(remaining / exchangeRate)}`);
@@ -90,6 +92,7 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
         .filter((p) => p.amountVes > 0 || p.amountUsd > 0 || p.method === 'Crédito');
     }
 
+    processingRef.current = true; // Instant lock (synchronous, not async like setState)
     setProcessing(true);
     try {
       const result = await processSale({
@@ -102,9 +105,9 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
       toast.success(`Venta procesada. Factura FACT-${String(result.numericId).padStart(4, '0')} generada.`);
     } catch (err: any) {
       console.error('Error procesando venta:', err);
-      // Show the specific stock error if that's what it is
       toast.error(err?.message || 'Error al procesar la venta.');
     } finally {
+      processingRef.current = false;
       setProcessing(false);
     }
   }
