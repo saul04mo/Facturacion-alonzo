@@ -12,6 +12,15 @@ import {
 // ════════════════════════════════════════
 // Types
 // ════════════════════════════════════════
+interface ClientOrder {
+  numericId: number;
+  date: Date;
+  total: number;
+  status: string;
+  deliveryType: string;
+  items: { name: string; qty: number; price: number; size?: string; color?: string }[];
+}
+
 interface ClientAnalytics {
   id: string;
   name: string;
@@ -28,6 +37,7 @@ interface ClientAnalytics {
   favoriteProducts: { name: string; qty: number }[];
   segment: 'vip' | 'frecuente' | 'regular' | 'nuevo' | 'inactivo';
   monthlySpend: { month: string; amount: number }[];
+  orderHistory: ClientOrder[];
 }
 
 // ════════════════════════════════════════
@@ -73,7 +83,7 @@ export function CRMPage() {
     const map: Record<string, {
       name: string; rif_ci: string; phone: string; email: string; address: string;
       orders: number; revenue: number; dates: Date[]; products: Record<string, number>;
-      monthlyMap: Record<string, number>;
+      monthlyMap: Record<string, number>; invoicesList: ClientOrder[];
     }> = {};
 
     valid.forEach((inv: any) => {
@@ -88,7 +98,7 @@ export function CRMPage() {
         map[clientId] = {
           name: name, rif_ci: cs.rif_ci || cs.cedula || '', phone: cs.phone || '',
           email: cs.email || '', address: cs.address || cs.direccion || '',
-          orders: 0, revenue: 0, dates: [], products: {}, monthlyMap: {},
+          orders: 0, revenue: 0, dates: [], products: {}, monthlyMap: {}, invoicesList: [],
         };
       }
 
@@ -115,6 +125,22 @@ export function CRMPage() {
         const pName = item.productName || item.titulo || item.name || 'Producto';
         const qty = item.quantity || item.qty || 1;
         c.products[pName] = (c.products[pName] || 0) + qty;
+      });
+
+      // Order history
+      c.invoicesList.push({
+        numericId: inv.numericId || 0,
+        date: d,
+        total: inv.total || 0,
+        status: inv.status || 'Creada',
+        deliveryType: inv.deliveryType || 'pickup',
+        items: (inv.items || []).map((item: any) => ({
+          name: item.productName || item.titulo || item.name || 'Producto',
+          qty: item.quantity || item.qty || 1,
+          price: parseFloat(item.priceAtSale) || parseFloat(item.price) || parseFloat(item.precio) || 0,
+          size: item.size || item.selectedSize || '',
+          color: item.color || item.selectedColor || '',
+        })),
       });
     });
 
@@ -153,6 +179,7 @@ export function CRMPage() {
         address: c.address, orders: c.orders, revenue: c.revenue,
         avgTicket: c.orders > 0 ? c.revenue / c.orders : 0,
         lastPurchase, firstPurchase, daysSinceLast, favoriteProducts, segment, monthlySpend,
+        orderHistory: c.invoicesList.sort((a, b) => b.date.getTime() - a.date.getTime()),
       };
     });
   }, [invoices]);
@@ -398,10 +425,18 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
 }) {
   const seg = SEGMENT_CONFIG[client.segment];
   const maxMonthly = Math.max(...client.monthlySpend.map((m) => m.amount), 1);
+  const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
+  const STATUS_COLORS: Record<string, string> = {
+    'Finalizado': 'bg-emerald-100 text-emerald-700',
+    'Pendiente de pago': 'bg-amber-100 text-amber-700',
+    'Creada': 'bg-blue-100 text-blue-700',
+    'Cancelado': 'bg-red-100 text-red-600',
+    'Devolución': 'bg-gray-100 text-gray-600',
+  };
 
   return (
     <Modal open={true} onClose={onClose} title="">
-      <div className="space-y-6 -mt-2">
+      <div className="space-y-5 -mt-2 max-h-[75vh] overflow-y-auto pr-1 custom-scrollbar">
         {/* Header */}
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center flex-shrink-0">
@@ -419,54 +454,54 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
         </div>
 
         {/* Contact Info */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           {client.phone && (
-            <div className="flex items-center gap-2 p-3 bg-surface-50 rounded-lg">
-              <Phone size={14} className="text-navy-400" />
+            <div className="flex items-center gap-2 p-2.5 bg-surface-50 rounded-lg">
+              <Phone size={13} className="text-navy-400" />
               <span className="text-sm text-navy-700">{client.phone}</span>
             </div>
           )}
           {client.email && (
-            <div className="flex items-center gap-2 p-3 bg-surface-50 rounded-lg">
-              <Mail size={14} className="text-navy-400" />
+            <div className="flex items-center gap-2 p-2.5 bg-surface-50 rounded-lg">
+              <Mail size={13} className="text-navy-400" />
               <span className="text-sm text-navy-700 truncate">{client.email}</span>
             </div>
           )}
           {client.address && (
-            <div className="col-span-2 flex items-center gap-2 p-3 bg-surface-50 rounded-lg">
-              <MapPin size={14} className="text-navy-400 flex-shrink-0" />
+            <div className="col-span-2 flex items-center gap-2 p-2.5 bg-surface-50 rounded-lg">
+              <MapPin size={13} className="text-navy-400 flex-shrink-0" />
               <span className="text-sm text-navy-700 truncate">{client.address}</span>
             </div>
           )}
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-4 gap-3">
-          <div className="text-center p-3 bg-blue-50 rounded-xl">
+        <div className="grid grid-cols-4 gap-2">
+          <div className="text-center p-2.5 bg-blue-50 rounded-xl">
             <p className="text-lg font-display font-bold text-blue-700">{client.orders}</p>
-            <p className="text-[10px] text-blue-500 font-medium">Pedidos</p>
+            <p className="text-[9px] text-blue-500 font-medium">Pedidos</p>
           </div>
-          <div className="text-center p-3 bg-emerald-50 rounded-xl">
-            <p className="text-lg font-display font-bold text-emerald-700">{format(client.revenue)}</p>
-            <p className="text-[10px] text-emerald-500 font-medium">Total Gastado</p>
+          <div className="text-center p-2.5 bg-emerald-50 rounded-xl">
+            <p className="text-base font-display font-bold text-emerald-700">{format(client.revenue)}</p>
+            <p className="text-[9px] text-emerald-500 font-medium">Total</p>
           </div>
-          <div className="text-center p-3 bg-violet-50 rounded-xl">
-            <p className="text-lg font-display font-bold text-violet-700">{format(client.avgTicket)}</p>
-            <p className="text-[10px] text-violet-500 font-medium">Ticket Prom.</p>
+          <div className="text-center p-2.5 bg-violet-50 rounded-xl">
+            <p className="text-base font-display font-bold text-violet-700">{format(client.avgTicket)}</p>
+            <p className="text-[9px] text-violet-500 font-medium">Prom.</p>
           </div>
-          <div className="text-center p-3 bg-amber-50 rounded-xl">
-            <p className="text-lg font-display font-bold text-amber-700">{client.daysSinceLast < 999 ? `${client.daysSinceLast}d` : '—'}</p>
-            <p className="text-[10px] text-amber-500 font-medium">Últ. Compra</p>
+          <div className="text-center p-2.5 bg-amber-50 rounded-xl">
+            <p className="text-base font-display font-bold text-amber-700">{client.daysSinceLast < 999 ? `${client.daysSinceLast}d` : '—'}</p>
+            <p className="text-[9px] text-amber-500 font-medium">Últ. Compra</p>
           </div>
         </div>
 
         {/* Monthly Spend Chart */}
         {client.monthlySpend.length > 1 && (
           <div>
-            <p className="text-xs font-display font-semibold text-navy-400 uppercase tracking-wider mb-3">Gasto Mensual</p>
-            <div className="flex items-end gap-2 h-20">
+            <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-2">Gasto Mensual</p>
+            <div className="flex items-end gap-2 h-16">
               {client.monthlySpend.map((m, i) => {
-                const h = Math.max((m.amount / maxMonthly) * 64, 4);
+                const h = Math.max((m.amount / maxMonthly) * 52, 4);
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
                     <div className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t transition-all"
@@ -479,14 +514,91 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
           </div>
         )}
 
+        {/* ═══ HISTORIAL DE PEDIDOS ═══ */}
+        <div>
+          <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-3">
+            Historial de Pedidos ({client.orderHistory.length})
+          </p>
+          <div className="space-y-2">
+            {client.orderHistory.map((order, idx) => {
+              const isOpen = expandedOrder === idx;
+              const statusColor = STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-600';
+              return (
+                <div key={idx} className={`border rounded-lg overflow-hidden transition-colors ${isOpen ? 'border-blue-300' : 'border-surface-200'}`}>
+                  {/* Order header */}
+                  <button
+                    onClick={() => setExpandedOrder(isOpen ? null : idx)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors ${isOpen ? 'bg-blue-50' : 'hover:bg-surface-50'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-center w-14 flex-shrink-0">
+                        <p className="text-[10px] font-bold text-navy-900 font-mono">#{String(order.numericId).padStart(4, '0')}</p>
+                        <p className="text-[8px] text-navy-400">
+                          {order.date.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: '2-digit' })}
+                        </p>
+                      </div>
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold ${statusColor}`}>
+                        {order.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-sm font-mono font-bold text-navy-900">{format(order.total)}</p>
+                        <p className="text-[9px] text-navy-400">{order.items.length} producto{order.items.length > 1 ? 's' : ''}</p>
+                      </div>
+                      <ChevronRight size={14} className={`text-navy-300 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                    </div>
+                  </button>
+
+                  {/* Order items (expandable) */}
+                  {isOpen && (
+                    <div className="px-3 py-2 border-t border-surface-100 bg-surface-50/50">
+                      <div className="space-y-1.5">
+                        {order.items.map((item, iIdx) => (
+                          <div key={iIdx} className="flex items-center justify-between py-1">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-display font-medium text-navy-900 truncate">{item.name}</p>
+                              <p className="text-[9px] text-navy-400">
+                                {item.size && <span>{item.size}</span>}
+                                {item.size && item.color && <span> / </span>}
+                                {item.color && <span>{item.color}</span>}
+                                {(item.size || item.color) && <span> · </span>}
+                                Cant: {item.qty}
+                              </p>
+                            </div>
+                            <span className="text-xs font-mono font-semibold text-navy-700 ml-2">
+                              {format(item.price * item.qty)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between mt-2 pt-2 border-t border-surface-200">
+                        <span className="text-[10px] text-navy-400">
+                          {order.deliveryType === 'delivery' ? '🚚 Delivery' : order.deliveryType === 'nacional' ? '📦 Nacional' : '🏪 Retiro'}
+                        </span>
+                        <span className="text-xs font-mono font-bold text-navy-900">Total: {format(order.total)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Favorite Products */}
         {client.favoriteProducts.length > 0 && (
           <div>
-            <p className="text-xs font-display font-semibold text-navy-400 uppercase tracking-wider mb-3">Productos Favoritos</p>
-            <div className="space-y-2">
+            <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-2">Productos Más Comprados</p>
+            <div className="space-y-1.5">
               {client.favoriteProducts.map((p, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5">
-                  <span className="text-sm text-navy-700 truncate flex-1">{p.name}</span>
+                <div key={i} className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${
+                      i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-gray-100 text-gray-600' : 'bg-surface-100 text-navy-400'
+                    }`}>{i + 1}</span>
+                    <span className="text-sm text-navy-700 truncate">{p.name}</span>
+                  </div>
                   <span className="text-xs font-mono text-navy-400 ml-2">{p.qty} uds</span>
                 </div>
               ))}
@@ -495,7 +607,7 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
         )}
 
         {/* Actions */}
-        <div className="flex gap-2 pt-2 border-t border-surface-200">
+        <div className="flex gap-2 pt-3 border-t border-surface-200 sticky bottom-0 bg-[var(--bg-card)]">
           {client.phone && (
             <a href={whatsappLink(client.phone, client.name)} target="_blank" rel="noopener noreferrer"
               className="btn-primary text-sm flex-1 flex items-center justify-center gap-2">
