@@ -436,9 +436,9 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
 
   return (
     <Modal open={true} onClose={onClose} title="" size="xl">
-      <div className="flex flex-col lg:flex-row gap-5 -mt-2">
+      <div className="flex flex-col lg:flex-row gap-5 -mt-2 max-h-[70vh]">
         {/* ═══ LEFT: Client Info ═══ */}
-        <div className="lg:w-[45%] space-y-4 flex-shrink-0">
+        <div className="lg:w-[45%] space-y-4 flex-shrink-0 overflow-y-auto pr-1 custom-scrollbar">
           {/* Header */}
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center flex-shrink-0">
@@ -553,11 +553,11 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
         </div>
 
         {/* ═══ RIGHT: Order History ═══ */}
-        <div className="lg:w-[55%] lg:border-l lg:border-surface-200 lg:pl-5">
+        <div className="lg:w-[55%] lg:border-l lg:border-surface-200 lg:pl-5 overflow-y-auto custom-scrollbar">
           <p className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider mb-3">
             Historial de Pedidos ({client.orderHistory.length})
           </p>
-          <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
+          <div className="space-y-2 pr-1">
             {client.orderHistory.map((order, idx) => {
               const isOpen = expandedOrder === idx;
               const statusColor = STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-600';
