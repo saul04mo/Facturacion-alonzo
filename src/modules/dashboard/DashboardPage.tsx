@@ -298,13 +298,21 @@ export function DashboardPage() {
 
   async function handleFilter() {
     if (!dStart || !dEnd) return toast.warning('Selecciona ambas fechas.');
+    if (new Date(dStart) > new Date(dEnd)) return toast.warning('La fecha inicio debe ser antes que la final.');
     setLoadingFilter(true);
     try {
       const results = await fetchInvoicesByDateRange(dStart, dEnd);
-      setCustomInvoices(results);
-      toast.success(`Mostrando datos del rango seleccionado.`);
-    } catch {
-      toast.error('Error al filtrar.');
+      if (results.length === 0) {
+        toast.warning('No se encontraron facturas en ese rango.');
+        setCustomInvoices(results);
+      } else {
+        setCustomInvoices(results);
+        const totalRange = results.filter(i => i.status !== 'Cancelado' && i.status !== 'Devolución').reduce((s, i) => s + (i.total || 0), 0);
+        toast.success(`${results.length} facturas encontradas · ${format(totalRange)} en ventas`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al filtrar.');
+      console.error('Filter error:', err);
     } finally {
       setLoadingFilter(false);
     }

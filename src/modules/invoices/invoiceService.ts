@@ -295,15 +295,25 @@ export async function fetchInvoicesByDateRange(
   const start = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T23:59:59.999');
 
-  const invoicesQuery = q(
-    col(db, 'invoices'),
-    ob('date', 'desc'),
-    where('date', '>=', Ts.fromDate(start)),
-    where('date', '<=', Ts.fromDate(end)),
-  );
+  try {
+    // where clauses MUST come before orderBy in Firestore v9+
+    const invoicesQuery = q(
+      col(db, 'invoices'),
+      where('date', '>=', Ts.fromDate(start)),
+      where('date', '<=', Ts.fromDate(end)),
+      ob('date', 'desc'),
+    );
 
-  const snap = await getDocs(invoicesQuery);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Invoice[];
+    const snap = await getDocs(invoicesQuery);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Invoice[];
+  } catch (err: any) {
+    // If index is missing, Firestore throws with a link to create it
+    console.error('fetchInvoicesByDateRange error:', err);
+    if (err?.message?.includes('index')) {
+      throw new Error('Se requiere un índice en Firestore. Revisa la consola del navegador para el link.');
+    }
+    throw err;
+  }
 }
 
 // ================================
