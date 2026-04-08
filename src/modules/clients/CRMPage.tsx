@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
@@ -74,35 +74,63 @@ export function CRMPage() {
   const { format } = useCurrency();
   const toast = useToast();
 
-  const [allInvoices, setAllInvoices] = useState<any[]>([]);
-  const [isLoadingAll, setIsLoadingAll] = useState(true);
+  // Date filter — defaults to current month
+  const now = new Date();
+  const defaultStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const defaultEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  
+  const [dStart, setDStart] = useState(defaultStart);
+  const [dEnd, setDEnd] = useState(defaultEnd);
+  const [filteredInvoices, setFilteredInvoices] = useState<any[] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [rangeLabel, setRangeLabel] = useState('');
 
-  // Load ALL invoices on mount (not just the 100 from the store)
-  useEffect(() => {
-    let mounted = true;
-    async function loadAll() {
-      try {
-        const { getDocs, query: q, collection: col, orderBy: ob } = await import('firebase/firestore');
-        const { db } = await import('@/config/firebase');
-        const snap = await getDocs(q(col(db, 'invoices'), ob('date', 'desc')));
-        if (mounted) {
-          setAllInvoices(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-          setIsLoadingAll(false);
-        }
-      } catch (err) {
-        console.error('CRM: Error loading all invoices:', err);
-        if (mounted) {
-          setAllInvoices(storeInvoices);
-          setIsLoadingAll(false);
-          toast.warning('No se pudieron cargar todas las facturas. Mostrando datos parciales.');
-        }
-      }
+  async function handleLoadRange() {
+    if (!dStart || !dEnd) return toast.warning('Selecciona ambas fechas.');
+    if (new Date(dStart) > new Date(dEnd)) return toast.warning('Fecha inicio debe ser antes que fecha fin.');
+    setIsLoading(true);
+    try {
+      const { getDocs, query: q, where, orderBy: ob, collection: col, Timestamp: Ts } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      const start = new Date(dStart + 'T00:00:00');
+      const end = new Date(dEnd + 'T23:59:59.999');
+      const snap = await getDocs(
+        q(col(db, 'invoices'), where('date', '>=', Ts.fromDate(start)), where('date', '<=', Ts.fromDate(end)), ob('date', 'desc'))
+      );
+      const results = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setFilteredInvoices(results);
+      setRangeLabel(`${new Date(dStart).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })} — ${new Date(dEnd).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })}`);
+      setPage(1);
+      if (results.length === 0) toast.warning('No hay facturas en ese rango.');
+      else toast.success(`${results.length} facturas cargadas.`);
+    } catch (err: any) {
+      console.error('CRM range error:', err);
+      toast.error(err?.message?.includes('index') ? 'Se necesita un índice en Firestore. Revisa la consola.' : 'Error al cargar facturas.');
+    } finally {
+      setIsLoading(false);
     }
-    loadAll();
-    return () => { mounted = false; };
-  }, []);
+  }
 
-  const invoices = isLoadingAll ? storeInvoices : allInvoices;
+  async function handleLoadAll() {
+    setIsLoading(true);
+    try {
+      const { getDocs, query: q, collection: col, orderBy: ob } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      const snap = await getDocs(q(col(db, 'invoices'), ob('date', 'desc')));
+      const results = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setFilteredInvoices(results);
+      setRangeLabel('Todas las facturas');
+      setPage(1);
+      toast.success(`${results.length} facturas cargadas.`);
+    } catch (err) {
+      console.error('CRM load all error:', err);
+      toast.error('Error al cargar facturas.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const invoices = filteredInvoices || storeInvoices;
 
   const [search, setSearch] = useState('');
   const [segFilter, setSegFilter] = useState<string>('all');
@@ -332,20 +360,39 @@ export function CRMPage() {
             <div>
               <h1 className="text-xl font-display font-bold text-navy-900">CRM — Panel de Clientes</h1>
               <p className="text-navy-400 text-sm">
-                {isLoadingAll ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                    Cargando todas las facturas...
-                  </span>
-                ) : (
-                  <>{kpis.total} clientes · {allInvoices.length} facturas · Marketing & Retención</>
-                )}
+                {kpis.total} clientes · {invoices.length} facturas
+                {rangeLabel && <span className="ml-1 text-purple-500 font-medium">· {rangeLabel}</span>}
               </p>
             </div>
           </div>
           <button onClick={handleExport} className="btn-primary text-sm whitespace-nowrap">
             <Download size={14} /> Exportar CSV
           </button>
+        </div>
+        {/* Date Range Filter */}
+        <div className="mt-4 pt-4 border-t border-surface-200 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Desde</label>
+            <input type="date" value={dStart} onChange={(e) => setDStart(e.target.value)} className="input-field text-sm w-36" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Hasta</label>
+            <input type="date" value={dEnd} onChange={(e) => setDEnd(e.target.value)} className="input-field text-sm w-36" />
+          </div>
+          <button onClick={handleLoadRange} disabled={isLoading}
+            className="btn-primary text-sm h-[38px]">
+            {isLoading ? <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Cargando...</> : <><Filter size={14} /> Aplicar</>}
+          </button>
+          <button onClick={handleLoadAll} disabled={isLoading}
+            className="btn-secondary text-sm h-[38px]">
+            Todo el historial
+          </button>
+          {filteredInvoices && (
+            <button onClick={() => { setFilteredInvoices(null); setRangeLabel(''); setPage(1); }}
+              className="text-xs text-red-500 hover:text-red-600 font-display font-medium h-[38px] flex items-center">
+              Limpiar filtro
+            </button>
+          )}
         </div>
       </div>
 
