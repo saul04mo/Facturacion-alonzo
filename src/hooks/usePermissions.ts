@@ -8,10 +8,14 @@ import { DEFAULT_PERMISSIONS, type PermissionKey } from '@/config/constants';
 export function usePermissions() {
   const currentUser = useAppStore((s) => s.currentUser);
 
-  const permissions = currentUser?.permissions ??
-    (currentUser?.rol === 'administrador'
-      ? DEFAULT_PERMISSIONS.administrador
-      : DEFAULT_PERMISSIONS.vendedor);
+  const roleDefaults = currentUser?.rol === 'administrador'
+    ? DEFAULT_PERMISSIONS.administrador
+    : DEFAULT_PERMISSIONS.vendedor;
+
+  // Merge saved permissions with defaults — new permissions use role default
+  const permissions = currentUser?.permissions
+    ? { ...roleDefaults, ...currentUser.permissions }
+    : roleDefaults;
 
   function can(permission: PermissionKey): boolean {
     if (!currentUser) return false;

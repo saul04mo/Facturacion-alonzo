@@ -149,7 +149,7 @@ function UserFormModal({
 
 // Group permissions by category for better UX
 const PERMISSION_GROUPS = [
-  { label: 'Acceso a Módulos', keys: ['canAccessVentas', 'canAccessInventario', 'canAccessClientes', 'canAccessDelivery', 'canAccessFacturas', 'canAccessInformes', 'canManageUsers', 'canManageOffers', 'canAccessNomina'] as PermissionKey[] },
+  { label: 'Acceso a Módulos', keys: ['canAccessDashboard', 'canAccessVentas', 'canAccessInventario', 'canAccessClientes', 'canAccessDelivery', 'canAccessFacturas', 'canAccessInformes', 'canManageUsers', 'canManageOffers', 'canAccessNomina'] as PermissionKey[] },
   { label: 'Productos', keys: ['canCreateProducts', 'canEditProducts', 'canDeleteProducts'] as PermissionKey[] },
   { label: 'Clientes', keys: ['canCreateClients', 'canEditClients', 'canDeleteClients'] as PermissionKey[] },
   { label: 'Operaciones', keys: ['canProcessReturns', 'canEditInvoices', 'canApplyDiscounts', 'canUpdateExchangeRate', 'canConfirmDeliveryPayment', 'canAddAbono'] as PermissionKey[] },

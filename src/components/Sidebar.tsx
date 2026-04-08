@@ -9,7 +9,7 @@ const NAV_GROUPS = [
   {
     title: 'PRINCIPAL',
     items: [
-      { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: <LayoutDashboard size={18} />, permission: 'canAccessVentas' },
+      { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: <LayoutDashboard size={18} />, permission: 'canAccessDashboard' },
       { path: ROUTES.POS, label: 'Ventas', icon: <ShoppingCart size={18} />, permission: 'canAccessVentas' },
       { path: ROUTES.INVOICES, label: 'Facturas', icon: <FileText size={18} />, permission: 'canAccessFacturas' },
       { path: ROUTES.CLIENTS, label: 'Clientes', icon: <Users size={18} />, permission: 'canAccessClientes' },
