@@ -19,6 +19,10 @@ interface ClientOrder {
   status: string;
   deliveryType: string;
   items: { name: string; qty: number; price: number; size?: string; color?: string }[];
+  subtotal: number;
+  discountType: string;
+  discountValue: number;
+  exchangeRate: number;
 }
 
 interface ClientAnalytics {
@@ -165,6 +169,17 @@ export function CRMPage() {
           
           return { name, qty, price, size, color };
         }),
+        subtotal: (inv.items || []).reduce((s: number, item: any) => {
+          const realProduct = item.productId ? products.find((p: any) => p.id === item.productId) : null;
+          const variant = realProduct?.variants?.[item.variantIndex];
+          const rawPrice = item.priceAtSale ?? variant?.price ?? item.price ?? item.precio ?? 0;
+          const price = typeof rawPrice === 'number' ? rawPrice : parseFloat(rawPrice) || 0;
+          const qty = item.quantity || item.qty || 1;
+          return s + (price * qty);
+        }, 0),
+        discountType: inv.totalDiscount?.type || 'none',
+        discountValue: inv.totalDiscount?.value || 0,
+        exchangeRate: inv.exchangeRate || 0,
       });
     });
 
@@ -675,11 +690,43 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
                           </div>
                         ))}
                       </div>
-                      <div className="flex justify-between mt-1.5 pt-1.5 border-t border-surface-200 text-[10px]">
-                        <span className="text-navy-400">
-                          {order.deliveryType === 'delivery' ? '🚚 Delivery' : order.deliveryType === 'nacional' ? '📦 Nacional' : '🏪 Retiro'}
-                        </span>
-                        <span className="font-mono font-bold text-navy-900">{format(order.total)}</span>
+                      {/* Breakdown */}
+                      <div className="mt-1.5 pt-1.5 border-t border-surface-200 space-y-0.5 text-[10px]">
+                        <div className="flex justify-between">
+                          <span className="text-navy-400">
+                            {order.deliveryType === 'delivery' ? '🚚 Delivery' : order.deliveryType === 'nacional' ? '📦 Nacional' : '🏪 Retiro'}
+                          </span>
+                          <span className="text-navy-400">Subtotal: {format(order.subtotal)}</span>
+                        </div>
+                        {order.discountValue > 0 && (
+                          <div className="flex justify-between text-red-500">
+                            <span>
+                              Descuento ({order.discountType === 'percentage' ? `${order.discountValue}%` : 'fijo'})
+                            </span>
+                            <span className="font-mono font-semibold">
+                              -{format(order.discountType === 'percentage' ? order.subtotal * order.discountValue / 100 : order.discountValue)}
+                              {order.exchangeRate > 0 && (
+                                <span className="text-red-400 font-normal ml-1">
+                                  (Bs. {(order.discountType === 'percentage'
+                                    ? (order.subtotal * order.discountValue / 100) * order.exchangeRate
+                                    : order.discountValue * order.exchangeRate
+                                  ).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold text-navy-900 pt-0.5">
+                          <span>Total</span>
+                          <span className="font-mono">
+                            {format(order.total)}
+                            {order.exchangeRate > 0 && (
+                              <span className="text-navy-400 font-normal ml-1">
+                                (Bs. {(order.total * order.exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                              </span>
+                            )}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}
