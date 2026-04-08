@@ -124,6 +124,7 @@ export async function processSale(opts: {
       // ── Promo / Coupon audit trail ──
       appliedCoupon: sale.appliedCoupon || null,
       appliedPromotions: sale.appliedPromotions || [],
+      stockDeducted: true, // Stock deducted in this transaction
     };
 
     const newInvoiceRef = doc(collection(db, 'invoices'));
@@ -233,7 +234,7 @@ export async function addAbono(opts: {
   ref?: string;
   exchangeRate: number;
 }): Promise<void> {
-  const { invoiceId, invoice, amount, methodName, ref: refValue, exchangeRate } = opts;
+  const { invoiceId, amount, methodName, ref: refValue, exchangeRate } = opts;
   const method = PAYMENT_METHODS.find((m) => m.name === methodName);
 
   let amountVes: number, amountUsd: number;
@@ -250,25 +251,32 @@ export async function addAbono(opts: {
     ...(refValue ? { ref: refValue } : {}),
   };
 
-  const updatedAbonos = [...(invoice.abonos || []), newAbono];
-  let totalAbonos = updatedAbonos.reduce((acc, a) => acc + a.amountVes, 0);
+  // Use transaction to prevent race conditions with concurrent abonos
+  await runTransaction(db, async (transaction) => {
+    const invoiceRef = doc(db, 'invoices', invoiceId);
+    const invoiceSnap = await transaction.get(invoiceRef);
+    if (!invoiceSnap.exists()) throw new Error('Factura no encontrada.');
+    
+    const invoiceData = invoiceSnap.data();
+    const updatedAbonos = [...(invoiceData.abonos || []), newAbono];
+    let totalAbonos = updatedAbonos.reduce((acc: number, a: any) => acc + a.amountVes, 0);
 
-  // Include initial payments that aren't "Crédito"
-  if (invoice.payments && Array.isArray(invoice.payments)) {
-    totalAbonos += invoice.payments.reduce((acc, p) => {
-      if (p.method === 'Crédito') return acc;
-      return acc + (p.amountVes || 0);
-    }, 0);
-  }
+    // Include initial payments that aren't "Crédito"
+    if (invoiceData.payments && Array.isArray(invoiceData.payments)) {
+      totalAbonos += invoiceData.payments.reduce((acc: number, p: any) => {
+        if (p.method === 'Crédito') return acc;
+        return acc + (p.amountVes || 0);
+      }, 0);
+    }
 
-  const totalVes = invoice.total * (invoice.exchangeRate || 1);
+    const totalVes = invoiceData.total * (invoiceData.exchangeRate || 1);
+    let newStatus = invoiceData.status;
+    if (totalAbonos >= totalVes - 0.01) newStatus = 'Finalizado';
 
-  let newStatus = invoice.status;
-  if (totalAbonos >= totalVes - 0.01) newStatus = 'Finalizado';
-
-  await updateDoc(doc(db, 'invoices', invoiceId), {
-    abonos: updatedAbonos,
-    status: newStatus,
+    transaction.update(invoiceRef, {
+      abonos: updatedAbonos,
+      status: newStatus,
+    });
   });
 }
 
