@@ -41,7 +41,11 @@ export function SettingsPage() {
     const rate = parseFloat(newRate);
     if (isNaN(rate) || rate <= 0) return toast.warning('Tasa inválida.');
     setSaving(true); setSaved(false);
-    try { await updateExchangeRate(rate); setSaved(true); setTimeout(() => setSaved(false), 3000); }
+    try {
+      const userName = currentUser ? `${currentUser.nombre} ${currentUser.apellido}`.trim() : 'POS';
+      await updateExchangeRate(rate, userName);
+      setSaved(true); setTimeout(() => setSaved(false), 3000);
+    }
     catch { toast.error('Error al actualizar tasa.'); } finally { setSaving(false); }
   }
 
@@ -296,6 +300,9 @@ export function SettingsPage() {
                               {entry.method === 'scheduled' ? '⏰ Auto' :
                                entry.source === 'BCV-EUR' ? '⚡ BCV' : '✏️ Manual'}
                             </span>
+                            {entry.userName && entry.method === 'manual' && entry.source !== 'BCV-EUR' && (
+                              <span className="block text-[8px] text-navy-400 mt-0.5">{entry.userName}</span>
+                            )}
                           </td>
                         </tr>
                       );

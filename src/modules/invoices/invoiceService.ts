@@ -319,7 +319,7 @@ export async function fetchInvoicesByDateRange(
 // ================================
 // UPDATE EXCHANGE RATE
 // ================================
-export async function updateExchangeRate(newRate: number): Promise<void> {
+export async function updateExchangeRate(newRate: number, userName?: string): Promise<void> {
   const { setDoc, getDoc, addDoc, collection: col, Timestamp: Ts } = await import('firebase/firestore');
   const { getAuth } = await import('firebase/auth');
   
@@ -343,7 +343,7 @@ export async function updateExchangeRate(newRate: number): Promise<void> {
     source: 'manual',
     method: 'manual',
     updatedBy: auth.currentUser?.uid || 'unknown',
-    userName: auth.currentUser?.displayName || auth.currentUser?.email || 'POS',
+    userName: userName || 'POS',
     timestamp: Ts.now(),
   });
 }
