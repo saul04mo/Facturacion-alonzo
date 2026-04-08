@@ -174,16 +174,20 @@ export async function processReturn(opts: {
 
   const isPartial = returnItems && returnItems.length < invoice.items.length;
 
+  const returnDetailsData: Record<string, any> = {
+    reason,
+    details: details || null,
+    date: Timestamp.now(),
+    processedBy: `${currentUser.nombre} ${currentUser.apellido}`,
+    partial: isPartial || false,
+  };
+  if (isPartial && returnItems) {
+    returnDetailsData.returnedItems = returnItems;
+  }
+
   batch.update(doc(db, 'invoices', invoiceId), {
     status: isPartial ? invoice.status : 'Devolución',
-    returnDetails: {
-      reason,
-      details: details || null,
-      date: Timestamp.now(),
-      processedBy: `${currentUser.nombre} ${currentUser.apellido}`,
-      partial: isPartial || false,
-      returnedItems: isPartial ? returnItems : undefined,
-    },
+    returnDetails: returnDetailsData,
   });
   await batch.commit();
 }
@@ -208,6 +212,13 @@ export async function cancelInvoice(opts: {
 // APPROVE WEB ORDER
 // ================================
 export async function approveWebOrder(invoiceId: string): Promise<void> {
+  await updateDoc(doc(db, 'invoices', invoiceId), { status: 'Finalizado' });
+}
+
+// ================================
+// MARK INVOICE AS PAID (MANUAL OVERRIDE)
+// ================================
+export async function markInvoiceAsPaid(invoiceId: string): Promise<void> {
   await updateDoc(doc(db, 'invoices', invoiceId), { status: 'Finalizado' });
 }
 

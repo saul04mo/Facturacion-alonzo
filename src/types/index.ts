@@ -33,6 +33,8 @@ export interface Product {
   category: string;
   gender: 'Hombre' | 'Mujer';
   imageUrl?: string;
+  /** Additional product images (gallery) */
+  imageUrls?: string[];
   variants: ProductVariant[];
   offer?: {
     type: 'percentage' | 'fixed';

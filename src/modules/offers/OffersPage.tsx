@@ -1,10 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { Search, Tag, Package, Percent, Ticket, Zap } from 'lucide-react';
+import { Search, Tag, Package, Percent, Ticket, Zap, Check, X } from 'lucide-react';
 import { CouponsTab } from './CouponsTab';
 import { PromotionsTab } from './PromotionsTab';
 import type { Product } from '@/types';
@@ -322,19 +322,60 @@ function ProductRow({
   const currentOfferType = product.offer?.type || 'percentage';
   
   const [localType, setLocalType] = useState<'percentage' | 'fixed'>(currentOfferType);
+  const [localValue, setLocalValue] = useState<string>(currentOfferValue === 0 ? '' : currentOfferValue.toString());
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync with external updates
+  // Sync with external updates (e.g. after Firestore confirms)
   useEffect(() => {
     if (product.offer?.type) {
       setLocalType(product.offer.type);
     }
   }, [product.offer?.type]);
 
+  useEffect(() => {
+    // Only sync if the input is NOT focused (user not actively editing)
+    if (document.activeElement !== inputRef.current) {
+      setLocalValue(currentOfferValue === 0 ? '' : currentOfferValue.toString());
+    }
+  }, [currentOfferValue]);
+
+  const parsedLocal = localValue === '' ? 0 : parseFloat(localValue);
+  const hasLocalChanges = !isNaN(parsedLocal) && (parsedLocal !== currentOfferValue || localType !== currentOfferType);
+  
   const hasOffer = currentOfferValue > 0;
   const minPrice = Math.min(...(product.variants?.map((v) => v.price) || [0]));
-  const discountPrice = hasOffer 
-    ? (localType === 'percentage' ? minPrice - (minPrice * (currentOfferValue / 100)) : minPrice - currentOfferValue)
+  
+  // Use local values for preview when editing
+  const previewValue = hasLocalChanges ? parsedLocal : currentOfferValue;
+  const previewType = hasLocalChanges ? localType : currentOfferType;
+  const hasPreviewOffer = previewValue > 0;
+  const discountPrice = hasPreviewOffer 
+    ? (previewType === 'percentage' ? minPrice - (minPrice * (previewValue / 100)) : minPrice - previewValue)
     : minPrice;
+
+  function handleConfirm() {
+    const val = localValue === '' ? 0 : parseFloat(localValue);
+    if (!isNaN(val)) {
+      handleUpdateOffer(product, localType, val);
+    }
+  }
+
+  function handleCancel() {
+    setLocalValue(currentOfferValue === 0 ? '' : currentOfferValue.toString());
+    setLocalType(currentOfferType);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleConfirm();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel();
+      inputRef.current?.blur();
+    }
+  }
 
   return (
     <div className={`p-4 flex flex-col md:flex-row items-start md:items-center gap-4 transition-colors hover-lift ${hasOffer ? 'bg-pink-50/30 shadow-sm' : 'hover:bg-surface-50'}`}>
@@ -347,9 +388,9 @@ function ProductRow({
             <Package size={20} className="text-navy-300" />
           </div>
         )}
-        {hasOffer && (
+        {hasPreviewOffer && (
           <div className="absolute inset-x-0 bottom-0 bg-accent-red text-white text-[9px] font-bold text-center py-0.5">
-            -{localType === 'percentage' ? `${currentOfferValue}%` : `$${currentOfferValue}`}
+            -{previewType === 'percentage' ? `${previewValue}%` : `$${previewValue}`}
           </div>
         )}
       </div>
@@ -367,20 +408,20 @@ function ProductRow({
       
       {/* Prices pre-viz */}
       <div className="w-full md:w-32 text-left md:text-right hidden sm:block">
-        {hasOffer ? (
+        {hasPreviewOffer ? (
           <div>
             <p className="text-[10px] text-navy-400 line-through">{format(minPrice)}</p>
-            <p className="text-sm font-mono font-bold text-accent-red">{format(discountPrice)}</p>
+            <p className={`text-sm font-mono font-bold ${hasLocalChanges ? 'text-amber-500' : 'text-accent-red'}`}>{format(discountPrice)}</p>
           </div>
         ) : (
           <p className="text-sm font-mono font-semibold text-navy-900">{format(minPrice)}</p>
         )}
-        <p className="text-[10px] text-navy-300">Precio Base</p>
+        <p className="text-[10px] text-navy-300">{hasLocalChanges ? 'Vista previa' : 'Precio Base'}</p>
       </div>
 
       {/* Offer Controller */}
-      <div className="w-full md:w-56 bg-white border border-surface-200 rounded-lg p-2 shadow-sm flex items-center justify-between">
-        <div>
+      <div className={`w-full md:w-auto bg-white border rounded-lg p-2 shadow-sm flex items-center gap-2 transition-all ${hasLocalChanges ? 'border-amber-400 ring-1 ring-amber-200' : 'border-surface-200'}`}>
+        <div className="min-w-[52px]">
           <p className="text-[10px] font-display font-semibold text-navy-500 uppercase mb-0.5">Descuento</p>
           {hasOffer ? (
             <span className="text-xs font-bold text-accent-red flex items-center gap-1">
@@ -395,11 +436,7 @@ function ProductRow({
           <select 
             value={localType}
             onChange={(e) => {
-              const newType = e.target.value as 'percentage' | 'fixed';
-              setLocalType(newType);
-              if (currentOfferValue > 0) {
-                handleUpdateOffer(product, newType, currentOfferValue);
-              }
+              setLocalType(e.target.value as 'percentage' | 'fixed');
             }}
             disabled={updatingId === product.id}
             className="w-10 h-8 bg-surface-100 border-r border-surface-200 text-xs font-semibold text-center outline-none disabled:opacity-50"
@@ -408,20 +445,43 @@ function ProductRow({
             <option value="fixed">$</option>
           </select>
           <input 
+            ref={inputRef}
             type="number"
             min="0"
-            value={currentOfferValue === 0 ? '' : currentOfferValue}
-            onChange={(e) => {
-              const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-              if (!isNaN(val)) {
-                handleUpdateOffer(product, localType, val);
-              }
-            }}
+            value={localValue}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="0"
             disabled={updatingId === product.id}
-            className="w-12 h-8 text-center font-mono font-bold text-sm bg-transparent border-none focus:ring-0 text-navy-900 disabled:opacity-50"
+            className="w-14 h-8 text-center font-mono font-bold text-sm bg-transparent border-none focus:ring-0 text-navy-900 disabled:opacity-50 outline-none"
           />
         </div>
+
+        {/* Confirm / Cancel buttons */}
+        {hasLocalChanges && (
+          <div className="flex items-center gap-1 animate-fade-up">
+            <button
+              onClick={handleConfirm}
+              disabled={updatingId === product.id}
+              className="w-7 h-7 flex items-center justify-center rounded-md bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-sm disabled:opacity-50"
+              title="Confirmar cambio"
+            >
+              <Check size={14} strokeWidth={3} />
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={updatingId === product.id}
+              className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-200 hover:bg-surface-300 text-navy-500 transition-all disabled:opacity-50"
+              title="Cancelar"
+            >
+              <X size={14} strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
+        
+        {updatingId === product.id && (
+          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+        )}
       </div>
     </div>
   );

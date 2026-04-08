@@ -15,7 +15,6 @@ export function usePermissions() {
 
   function can(permission: PermissionKey): boolean {
     if (!currentUser) return false;
-    if (currentUser.rol === 'administrador') return true;
     return permissions?.[permission] ?? false;
   }
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -6,8 +6,9 @@ import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
 import { Pagination } from '@/components/Pagination';
 import { saveProduct, deleteProduct } from './inventoryService';
+import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, ChevronUp, AlertTriangle, Filter } from 'lucide-react';
+import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, ChevronUp, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle } from 'lucide-react';
 
 // ============================
 // VARIANT EDITOR (Modal)
@@ -18,30 +19,94 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
   };
   const remove = (i: number) => onChange(variants.filter((_, idx) => idx !== i));
   const add = () => onChange([...variants, { size: '', color: '', price: 0, stock: 0 }]);
+
+  function generateBarcodeForVariant(i: number) {
+    const code = generateBarcode();
+    update(i, 'barcode', code);
+  }
+
+  function generateAllBarcodes() {
+    const copy = variants.map(v => ({
+      ...v,
+      barcode: v.barcode || generateBarcode(),
+    }));
+    onChange(copy);
+  }
+
+  const missingBarcodes = variants.filter(v => !v.barcode).length;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <label className="text-sm font-display font-semibold text-navy-700">Variantes</label>
-        <button type="button" onClick={add} className="btn-ghost text-xs"><Plus size={14} /> Agregar</button>
+        <div className="flex gap-2">
+          {variants.length > 0 && missingBarcodes > 0 && (
+            <button type="button" onClick={generateAllBarcodes}
+              className="btn-ghost text-xs text-amber-600 hover:bg-amber-50 gap-1">
+              <Barcode size={13} /> Generar Códigos ({missingBarcodes})
+            </button>
+          )}
+          <button type="button" onClick={add} className="btn-ghost text-xs"><Plus size={14} /> Agregar</button>
+        </div>
       </div>
       {variants.length === 0 && <p className="text-sm text-navy-300 text-center py-4">Agrega al menos una variante.</p>}
       {variants.map((v, i) => (
-        <div key={i} className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end p-3 bg-surface-50 rounded-lg border border-surface-200">
-          <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Talla</label>
-            <input value={v.size} onChange={(e) => update(i, 'size', e.target.value)} className="input-field text-sm py-1.5" /></div>
-          <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Color</label>
-            <input value={v.color} onChange={(e) => update(i, 'color', e.target.value)} className="input-field text-sm py-1.5" /></div>
-          <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Precio ($)</label>
-            <input type="number" step="0.01" value={v.price || ''} onChange={(e) => update(i, 'price', parseFloat(e.target.value) || 0)} className="input-field text-sm py-1.5" /></div>
-          <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Stock</label>
-            <input type="number" value={v.stock} onChange={(e) => update(i, 'stock', parseInt(e.target.value) || 0)} className="input-field text-sm py-1.5" /></div>
-          <div className="flex justify-end">
-            <button type="button" onClick={() => remove(i)} className="btn-ghost p-1.5 text-accent-red hover:bg-red-50"><Trash2 size={14} /></button>
+        <div key={i} className="p-3 bg-surface-50 rounded-lg border border-surface-200 space-y-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+            <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Talla</label>
+              <input value={v.size} onChange={(e) => update(i, 'size', e.target.value)} className="input-field text-sm py-1.5" /></div>
+            <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Color</label>
+              <input value={v.color} onChange={(e) => update(i, 'color', e.target.value)} className="input-field text-sm py-1.5" /></div>
+            <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Precio ($)</label>
+              <input type="number" step="0.01" value={v.price || ''} onChange={(e) => update(i, 'price', parseFloat(e.target.value) || 0)} className="input-field text-sm py-1.5" /></div>
+            <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Stock</label>
+              <input type="number" value={v.stock} onChange={(e) => update(i, 'stock', parseInt(e.target.value) || 0)} className="input-field text-sm py-1.5" /></div>
           </div>
+          {/* Barcode Row */}
+          <div className="flex items-center gap-2 pt-1 border-t border-surface-200">
+            <Barcode size={13} className="text-navy-300 flex-shrink-0" />
+            <input
+              value={v.barcode || ''}
+              onChange={(e) => update(i, 'barcode', e.target.value)}
+              placeholder="Código de barras"
+              className="input-field text-sm py-1 font-mono flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => generateBarcodeForVariant(i)}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-display font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors flex-shrink-0"
+              title="Generar código aleatorio"
+            >
+              <Shuffle size={11} /> Generar
+            </button>
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="btn-ghost p-1.5 text-accent-red hover:bg-red-50 flex-shrink-0"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          {/* Barcode preview */}
+          {v.barcode && (
+            <div className="flex justify-center bg-white rounded-md border border-surface-100 py-1">
+              <BarcodeRenderer value={v.barcode} width={1.2} height={30} fontSize={9} />
+            </div>
+          )}
         </div>
       ))}
     </div>
   );
+}
+
+// ============================
+// IMAGE GALLERY ITEM
+// ============================
+interface GalleryImage {
+  id: string;
+  url: string;
+  file?: File;
+  isExisting: boolean;
 }
 
 // ============================
@@ -54,20 +119,113 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
   const [gender, setGender] = useState(product?.gender || 'Hombre');
   const [category, setCategory] = useState(product?.category || '');
   const [variants, setVariants] = useState<ProductVariant[]>(product?.variants || [{ size: '', color: '', price: 0, stock: 0 }]);
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const categories = useMemo(() => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(), [products]);
-  useState(() => { setName(product?.name || ''); setGender(product?.gender || 'Hombre'); setCategory(product?.category || ''); setVariants(product?.variants || [{ size: '', color: '', price: 0, stock: 0 }]); setImageFile(null); });
+
+  // Multi-image state
+  const existingUrls = product?.imageUrls?.length 
+    ? product.imageUrls 
+    : (product?.imageUrl ? [product.imageUrl] : []);
+  
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>(
+    existingUrls.map((url, i) => ({ id: `existing-${i}`, url, isExisting: true }))
+  );
+  const [removedUrls, setRemovedUrls] = useState<string[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
+  useState(() => {
+    setName(product?.name || '');
+    setGender(product?.gender || 'Hombre');
+    setCategory(product?.category || '');
+    setVariants(product?.variants || [{ size: '', color: '', price: 0, stock: 0 }]);
+  });
+
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const newImages: GalleryImage[] = Array.from(files)
+      .filter(f => f.type.startsWith('image/'))
+      .map((file, i) => ({
+        id: `new-${Date.now()}-${i}-${file.name}`,
+        url: URL.createObjectURL(file),
+        file,
+        isExisting: false,
+      }));
+    if (newImages.length === 0) {
+      toast.warning('Solo se permiten archivos de imagen.');
+      return;
+    }
+    setGalleryImages(prev => [...prev, ...newImages]);
+  }, [toast]);
+
+  function removeImage(id: string) {
+    setGalleryImages(prev => {
+      const img = prev.find(g => g.id === id);
+      if (img?.isExisting) {
+        setRemovedUrls(r => [...r, img.url]);
+      } else if (img?.url) {
+        URL.revokeObjectURL(img.url);
+      }
+      return prev.filter(g => g.id !== id);
+    });
+  }
+
+  function handleDragStart(idx: number) {
+    setDragIdx(idx);
+  }
+
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) return;
+    setGalleryImages(prev => {
+      const copy = [...prev];
+      const [dragged] = copy.splice(dragIdx, 1);
+      copy.splice(idx, 0, dragged);
+      return copy;
+    });
+    setDragIdx(idx);
+  }
+
+  function handleDropZone(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    setDragIdx(null);
+    if (e.dataTransfer.files.length > 0) {
+      addFiles(e.dataTransfer.files);
+    }
+  }
+
   async function handleSave() {
     if (!name.trim()) return toast.warning('El nombre es obligatorio.');
     if (variants.length === 0) return toast.warning('Agrega al menos una variante.');
     setSaving(true);
-    try { await saveProduct(product?.id || null, { name, gender, category, variants, imageFile, currentImageUrl: product?.imageUrl }); onClose(); }
-    catch (err) { console.error(err); toast.error('Error al guardar producto.'); } finally { setSaving(false); }
+    try {
+      const existingImageUrls = galleryImages.filter(g => g.isExisting).map(g => g.url);
+      const newImageFiles = galleryImages.filter(g => !g.isExisting && g.file).map(g => g.file!);
+      const primaryUrl = galleryImages.length > 0 && galleryImages[0].isExisting ? galleryImages[0].url : undefined;
+
+      await saveProduct(product?.id || null, {
+        name,
+        gender,
+        category,
+        variants,
+        currentImageUrl: primaryUrl,
+        existingImageUrls,
+        newImageFiles,
+        removedImageUrls: removedUrls,
+      });
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al guardar producto.');
+    } finally {
+      setSaving(false);
+    }
   }
+
   return (
     <Modal open={open} onClose={onClose} title={product ? 'Editar Producto' : 'Nuevo Producto'} size="lg">
-      <div className="space-y-5">
+      <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Nombre</label>
             <input value={name} onChange={(e) => setName(e.target.value)} className="input-field" /></div>
@@ -75,14 +233,101 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
             <select value={gender} onChange={(e) => setGender(e.target.value as 'Hombre' | 'Mujer')} className="input-field">
               <option value="Hombre">Hombre</option><option value="Mujer">Mujer</option></select></div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Categoría</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className="input-field">
-              <option value="">-- Selecciona --</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Imagen</label>
-            <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-              className="input-field text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-display file:font-semibold file:bg-navy-900 file:text-white" /></div>
+        <div>
+          <label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Categoría</label>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="input-field">
+            <option value="">-- Selecciona --</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select>
         </div>
+
+        {/* Multi-Image Gallery Upload */}
+        <div>
+          <label className="block text-sm font-display font-medium text-navy-700 mb-1.5">
+            Imágenes <span className="text-navy-400 font-normal">({galleryImages.length} {galleryImages.length === 1 ? 'imagen' : 'imágenes'})</span>
+          </label>
+
+          {/* Image Previews */}
+          {galleryImages.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 mb-3">
+              {galleryImages.map((img, idx) => (
+                <div
+                  key={img.id}
+                  draggable
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDragEnd={() => setDragIdx(null)}
+                  className={`group relative aspect-square rounded-lg border-2 overflow-hidden transition-all cursor-grab active:cursor-grabbing ${
+                    idx === 0 ? 'border-amber-400 ring-2 ring-amber-200' : 'border-surface-200 hover:border-surface-300'
+                  } ${dragIdx === idx ? 'opacity-50 scale-95' : 'opacity-100'}`}
+                >
+                  <img src={img.url} alt="" className="w-full h-full object-cover" />
+                  {/* Primary badge */}
+                  {idx === 0 && (
+                    <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-md shadow-sm">
+                      PRINCIPAL
+                    </div>
+                  )}
+                  {/* Drag handle */}
+                  <div className="absolute top-1 right-7 p-0.5 bg-black/40 rounded text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical size={12} />
+                  </div>
+                  {/* Delete button */}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); removeImage(img.id); }}
+                    className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <XIcon size={11} />
+                  </button>
+                  {/* New badge */}
+                  {!img.isExisting && (
+                    <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-emerald-500 text-white text-[9px] font-bold rounded-md shadow-sm">
+                      NUEVA
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Drop Zone */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
+            onDragLeave={() => setIsDraggingOver(false)}
+            onDrop={handleDropZone}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+              isDraggingOver
+                ? 'border-amber-400 bg-amber-50/50 scale-[1.01]'
+                : 'border-surface-300 hover:border-navy-400 hover:bg-surface-50'
+            }`}
+          >
+            <ImagePlus size={28} className={`mx-auto mb-2 ${isDraggingOver ? 'text-amber-500' : 'text-navy-300'}`} />
+            <p className="text-sm text-navy-500 font-display">
+              <span className="font-semibold text-navy-700">Haz clic para seleccionar</span> o arrastra imágenes aquí
+            </p>
+            <p className="text-[10px] text-navy-400 mt-1">JPG, PNG, WEBP — puedes subir múltiples imágenes a la vez</p>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                addFiles(e.target.files);
+                e.target.value = '';
+              }
+            }}
+            className="hidden"
+          />
+          {galleryImages.length > 1 && (
+            <p className="text-[10px] text-navy-400 mt-2 flex items-center gap-1">
+              <GripVertical size={10} />
+              Arrastra las imágenes para reordenar. La primera será la imagen principal del producto.
+            </p>
+          )}
+        </div>
+
         <VariantEditor variants={variants} onChange={setVariants} />
         <div className="flex justify-end gap-3 pt-4 border-t border-surface-200">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
@@ -96,7 +341,7 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
 // ============================
 // VARIANT DETAIL PANEL
 // ============================
-function ProductVariantsPanel({ product }: { product: Product }) {
+function ProductVariantsPanel({ product, onPrintBarcode }: { product: Product; onPrintBarcode?: (product: Product, variantIndex?: number) => void }) {
   const { format } = useCurrency();
   const byColor: Record<string, (ProductVariant & { idx: number })[]> = {};
   product.variants?.forEach((v, idx) => {
@@ -104,8 +349,23 @@ function ProductVariantsPanel({ product }: { product: Product }) {
     if (!byColor[key]) byColor[key] = [];
     byColor[key].push({ ...v, idx });
   });
+
+  const hasAnyBarcode = product.variants?.some(v => v.barcode);
+
   return (
     <div className="px-4 pb-4 animate-fade-up">
+      {/* Print all barcodes for this product */}
+      {hasAnyBarcode && onPrintBarcode && (
+        <div className="mb-3 flex justify-end">
+          <button
+            onClick={() => onPrintBarcode(product)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-display font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+          >
+            <Printer size={13} /> Imprimir Códigos de Barras
+          </button>
+        </div>
+      )}
+
       <div className="bg-surface-50 rounded-lg border border-surface-200 overflow-hidden">
         {Object.entries(byColor).map(([color, variants]) => (
           <div key={color}>
@@ -120,15 +380,36 @@ function ProductVariantsPanel({ product }: { product: Product }) {
               {variants.map((v) => {
                 const isLow = v.stock <= 5;
                 return (
-                  <div key={v.idx} className={`grid grid-cols-4 gap-4 px-4 py-2.5 text-sm ${isLow ? 'bg-red-50/60' : ''}`}>
-                    <div><span className="text-[10px] text-navy-400 font-display uppercase block">Talla</span>
-                      <span className="font-display font-medium text-navy-800">{v.size || 'N/A'}</span></div>
-                    <div><span className="text-[10px] text-navy-400 font-display uppercase block">Precio</span>
-                      <span className="font-mono font-semibold text-navy-900">{format(v.price)}</span></div>
-                    <div><span className="text-[10px] text-navy-400 font-display uppercase block">Stock</span>
-                      <span className={`font-mono font-semibold ${isLow ? 'text-accent-red' : 'text-navy-900'}`}>{v.stock} {isLow && <AlertTriangle size={11} className="inline ml-0.5" />}</span></div>
-                    <div><span className="text-[10px] text-navy-400 font-display uppercase block">Valor</span>
-                      <span className="font-mono text-navy-600">{format(v.price * v.stock)}</span></div>
+                  <div key={v.idx} className={`px-4 py-2.5 text-sm ${isLow ? 'bg-red-50/60' : ''}`}>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Talla</span>
+                        <span className="font-display font-medium text-navy-800">{v.size || 'N/A'}</span></div>
+                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Precio</span>
+                        <span className="font-mono font-semibold text-navy-900">{format(v.price)}</span></div>
+                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Stock</span>
+                        <span className={`font-mono font-semibold ${isLow ? 'text-accent-red' : 'text-navy-900'}`}>{v.stock} {isLow && <AlertTriangle size={11} className="inline ml-0.5" />}</span></div>
+                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Valor</span>
+                        <span className="font-mono text-navy-600">{format(v.price * v.stock)}</span></div>
+                    </div>
+                    {/* Barcode display */}
+                    {v.barcode && (
+                      <div className="mt-2 flex items-center gap-3 p-2 bg-white rounded-md border border-surface-100">
+                        <BarcodeRenderer value={v.barcode} width={1} height={25} fontSize={8} />
+                        <div className="flex-1">
+                          <span className="text-[10px] text-navy-400 font-display uppercase block">Código</span>
+                          <span className="text-xs font-mono font-semibold text-navy-700">{v.barcode}</span>
+                        </div>
+                        {onPrintBarcode && (
+                          <button
+                            onClick={() => onPrintBarcode(product, v.idx)}
+                            className="p-1.5 text-navy-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
+                            title="Imprimir este código"
+                          >
+                            <Printer size={13} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -165,6 +446,29 @@ export function InventoryPage() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+
+  // Barcode print modal state
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printProduct, setPrintProduct] = useState<Product | undefined>(undefined);
+  const [printVariantIndex, setPrintVariantIndex] = useState<number | undefined>(undefined);
+
+  function openPrintModal(product?: Product, variantIndex?: number) {
+    setPrintProduct(product);
+    setPrintVariantIndex(variantIndex);
+    setPrintModalOpen(true);
+  }
+
+  // USB barcode scanner integration
+  useBarcodeScanner((barcode) => {
+    const result = findByBarcode(products, barcode);
+    if (result) {
+      setExpandedId(result.product.id);
+      // Scroll to the product
+      toast.success(`Producto encontrado: ${result.product.name} (${result.variant.size}/${result.variant.color})`);
+    } else {
+      toast.warning(`No se encontró producto con código: ${barcode}`);
+    }
+  });
 
   // Available categories (based on draft gender for cascading)
   const availableCategories = useMemo(() => {
@@ -206,7 +510,7 @@ export function InventoryPage() {
       const s = appliedSearch.toLowerCase();
       result = result.filter((p) =>
         p.name.toLowerCase().includes(s) ||
-        p.variants?.some((v) => v.color?.toLowerCase().includes(s) || v.size?.toLowerCase().includes(s))
+        p.variants?.some((v) => v.color?.toLowerCase().includes(s) || v.size?.toLowerCase().includes(s) || v.barcode?.toLowerCase().includes(s))
       );
     }
     return result;
@@ -265,7 +569,7 @@ export function InventoryPage() {
   function handleAdd() { setEditProduct(null); setFormOpen(true); }
   async function handleDelete(p: Product) {
     if (!confirm(`¿Eliminar "${p.name}"?`)) return;
-    try { await deleteProduct(p.id, p.imageUrl); } catch { toast.error('Error al eliminar producto.'); }
+    try { await deleteProduct(p.id, p.imageUrl, p.imageUrls); } catch { toast.error('Error al eliminar producto.'); }
   }
 
   return (
@@ -281,6 +585,10 @@ export function InventoryPage() {
             </div>
           </div>
           <div className="flex gap-2">
+            <button onClick={() => openPrintModal()}
+              className="btn-secondary text-sm gap-1" title="Imprimir códigos de barras">
+              <Barcode size={14} /> Códigos
+            </button>
             <button onClick={() => setShowFilters(!showFilters)}
               className={`btn-secondary text-sm ${showFilters ? 'border-amber-300 bg-amber-50' : ''}`}>
               <Filter size={14} /> Filtros
@@ -300,7 +608,7 @@ export function InventoryPage() {
                 <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Buscar</label>
                 <Search size={14} className="absolute ml-3 mt-2.5 text-navy-300 pointer-events-none" />
                 <input value={draftSearch} onChange={(e) => setDraftSearch(e.target.value)}
-                  className="input-field pl-9 text-sm" placeholder="Nombre, color, talla..." />
+                  className="input-field pl-9 text-sm" placeholder="Nombre, color, talla, barcode..." />
               </div>
               <div>
                 <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Género</label>
@@ -423,7 +731,7 @@ export function InventoryPage() {
                           )}
                         </div>
                       </div>
-                      {isExpanded && <ProductVariantsPanel product={product} />}
+                      {isExpanded && <ProductVariantsPanel product={product} onPrintBarcode={openPrintModal} />}
                     </div>
                   );
                 })}
@@ -442,6 +750,16 @@ export function InventoryPage() {
       )}
 
       {formOpen && <ProductFormModal open={formOpen} onClose={() => { setFormOpen(false); setEditProduct(null); }} product={editProduct} />}
+
+      {/* Barcode Print Modal */}
+      {printModalOpen && (
+        <BarcodePrintModal
+          open={printModalOpen}
+          onClose={() => { setPrintModalOpen(false); setPrintProduct(undefined); setPrintVariantIndex(undefined); }}
+          product={printProduct}
+          variantIndex={printVariantIndex}
+        />
+      )}
     </div>
   );
 }

@@ -46,10 +46,10 @@ export function useFirestoreListeners() {
     // They are searched under demand via API.
     setLoading('clients', false);
 
-    // Invoices — 500 most recent
+    // Invoices — 100 most recent for initial fast load
     unsubs.push(
       onSnapshot(
-        query(collection(db, 'invoices'), orderBy('date', 'desc'), limit(500)),
+        query(collection(db, 'invoices'), orderBy('date', 'desc'), limit(100)),
         (snap) => {
           setInvoices(snap.docs.map((d) => {
             const data = d.data();

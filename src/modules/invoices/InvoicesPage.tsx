@@ -5,14 +5,14 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { Modal } from '@/components/Modal';
-import { processReturn, cancelInvoice, approveWebOrder, addAbono, PAYMENT_METHODS } from './invoiceService';
+import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange } from './invoiceService';
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import type { Product } from '@/types';
 import {
   FileText, Filter, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, ChevronDown, Check, X as XIcon, Printer, Download,
+  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon,
 } from 'lucide-react';
 
 const STATUS_BADGES: Record<string, { class: string; label: string }> = {
@@ -20,7 +20,7 @@ const STATUS_BADGES: Record<string, { class: string; label: string }> = {
   'Pendiente de pago': { class: 'badge-amber', label: 'Pendiente de Pago' },
   'Devolución': { class: 'badge-red', label: 'Devolución' },
   'Cancelado': { class: 'badge-gray', label: 'Cancelado' },
-  'Creada': { class: 'badge-blue', label: 'Web' },
+  'Creada': { class: 'badge-blue', label: 'Creada' },
 };
 const RETURN_REASONS = ['Cambio de Producto', 'Producto Dañado (Merma)', 'Cambio de Talla/Color', 'Insatisfacción del Cliente', 'Error en la Venta', 'Otro'];
 
@@ -60,19 +60,52 @@ export function InvoicesPage() {
   const [abonoMethod, setAbonoMethod] = useState<string>(PAYMENT_METHODS[0].name);
   const [abonoRef, setAbonoRef] = useState('');
   const [loading, setLoading] = useState(false);
+  const [serverInvoices, setServerInvoices] = useState<any[] | null>(null);
+  const [isSearchingServer, setIsSearchingServer] = useState(false);
 
-  function applyFilters() { setSearch(dSearch); setStartDate(dStart); setEndDate(dEnd); setStatusFilter(dStatus); setCurrentPage(1); }
-  function clearFilters() { setDSearch(''); setDStart(today); setDEnd(today); setDStatus('all'); setSearch(''); setStartDate(today); setEndDate(today); setStatusFilter('all'); setCurrentPage(1); }
+  async function applyFilters() { 
+    setSearch(dSearch); 
+    setStartDate(dStart); 
+    setEndDate(dEnd); 
+    setStatusFilter(dStatus); 
+    setCurrentPage(1); 
+    
+    if (dStart || dEnd) {
+      setIsSearchingServer(true);
+      try {
+        const results = await fetchInvoicesByDateRange(dStart || '1970-01-01', dEnd || '2100-01-01');
+        setServerInvoices(results);
+      } catch (err) {
+        toast.error('Error al descargar facturas del servidor.');
+        setServerInvoices(null);
+      } finally {
+        setIsSearchingServer(false);
+      }
+    } else {
+      setServerInvoices(null);
+    }
+  }
+
+  function clearFilters() { 
+    setDSearch(''); setDStart(today); setDEnd(today); setDStatus('all'); 
+    setSearch(''); setStartDate(today); setEndDate(today); setStatusFilter('all'); 
+    setCurrentPage(1); 
+    setServerInvoices(null);
+  }
   const hasActive = search || startDate !== today || endDate !== today || statusFilter !== 'all';
 
   const filtered = useMemo(() => {
-    let result = [...invoices];
-    if (startDate && endDate) {
+    let result = [...(serverInvoices || invoices)];
+    
+    // Solo filtramos localmente las fechas si no usamos el servidor
+    if (!serverInvoices && startDate && endDate) {
       const s = new Date(startDate + 'T00:00:00'), e = new Date(endDate + 'T23:59:59');
       result = result.filter((inv: any) => { const d = toDate(inv.date); return d && d >= s && d <= e; });
     }
+    
     if (statusFilter !== 'all') result = result.filter((inv: any) => inv.status === statusFilter);
     else result = result.filter((inv: any) => inv.status !== 'Cancelado' && inv.status !== 'Devolución');
+    
     if (search) {
       const s = search.toLowerCase();
       result = result.filter((inv: any) => {
@@ -82,7 +115,7 @@ export function InvoicesPage() {
       });
     }
     return result;
-  }, [invoices, startDate, endDate, statusFilter, search]);
+  }, [invoices, serverInvoices, startDate, endDate, statusFilter, search]);
 
   const totals = useMemo(() => {
     let sales = 0, delivery = 0;
@@ -90,20 +123,55 @@ export function InvoicesPage() {
     return { sales, delivery, general: sales + delivery };
   }, [filtered]);
 
+  async function refetchIfServer() {
+    if (serverInvoices && startDate && endDate) {
+      try {
+        const results = await fetchInvoicesByDateRange(startDate, endDate);
+        setServerInvoices(results);
+      } catch (err) {}
+    }
+  }
+
   async function handleReturn() {
     if (!returnInvoice || !currentUser) return; setLoading(true);
-    try { await processReturn({ invoiceId: returnInvoice.id, invoice: returnInvoice, reason: returnReason, details: returnDetails, currentUser, products }); setReturnInvoice(null); toast.success('Devolución procesada.'); }
-    catch { toast.error('Error al procesar devolución.'); } finally { setLoading(false); }
+    try { 
+      await processReturn({ invoiceId: returnInvoice.id, invoice: returnInvoice, reason: returnReason, details: returnDetails, currentUser, products }); 
+      setReturnInvoice(null); 
+      toast.success('Devolución procesada.'); 
+      await refetchIfServer();
+    }
+    catch (err: any) { console.error('processReturn error:', err); toast.error(`Error al procesar devolución: ${err?.message || err}`); } finally { setLoading(false); }
   }
   async function handleCancel(invoice: any) {
     if (!confirm('¿Cancelar factura? Stock será restaurado.')) return; setLoading(true);
-    try { await cancelInvoice({ invoice, products }); setDetailInvoice(null); toast.success('Factura cancelada.'); } catch { toast.error('Error al cancelar.'); } finally { setLoading(false); }
+    try { 
+      await cancelInvoice({ invoice, products }); 
+      setDetailInvoice(null); 
+      toast.success('Factura cancelada.'); 
+      await refetchIfServer();
+    } catch { toast.error('Error al cancelar.'); } finally { setLoading(false); }
   }
-  async function handleApproveWeb(invoice: any) { setLoading(true); try { await approveWebOrder(invoice.id); toast.success('Pedido web aprobado.'); } catch { toast.error('Error.'); } finally { setLoading(false); } }
+  async function handleApproveWeb(invoice: any) { setLoading(true); try { await approveWebOrder(invoice.id); toast.success('Pedido web aprobado.'); await refetchIfServer(); } catch { toast.error('Error.'); } finally { setLoading(false); } }
+  
+  async function handleMarkAsPaid(invoice: any) {
+    if (!confirm('¿Marcar pago de delivery como completado y finalizar?')) return;
+    setLoading(true); 
+    try { 
+      await confirmDeliveryPayment(invoice.id, invoice.status); 
+      toast.success('Pago confirmado.'); 
+      await refetchIfServer(); 
+    } catch { toast.error('Error al confirmar pago.'); } finally { setLoading(false); } 
+  }
+
   async function handleAbono() {
     if (!abonoInvoice) return; const amt = parseFloat(abonoAmount);
     if (isNaN(amt) || amt <= 0) return toast.warning('Monto inválido.'); setLoading(true);
-    try { await addAbono({ invoiceId: abonoInvoice.id, invoice: abonoInvoice, amount: amt, methodName: abonoMethod, ref: abonoRef || undefined, exchangeRate }); setAbonoInvoice(null); toast.success('Abono registrado.'); }
+    try { 
+      await addAbono({ invoiceId: abonoInvoice.id, invoice: abonoInvoice, amount: amt, methodName: abonoMethod, ref: abonoRef || undefined, exchangeRate }); 
+      setAbonoInvoice(null); 
+      toast.success('Abono registrado.'); 
+      await refetchIfServer();
+    }
     catch { toast.error('Error al registrar abono.'); } finally { setLoading(false); }
   }
   function label(inv: any) { return `FACT-${String(inv.numericId).padStart(4, '0')}`; }
@@ -140,7 +208,9 @@ export function InvoicesPage() {
                   <option value="Cancelado">Cancelado</option><option value="Creada">Web</option>
                 </select></div>
               <div className="flex items-end gap-2">
-                <button onClick={applyFilters} className="btn-primary text-sm flex-1"><Check size={14} /> Aplicar</button>
+                <button onClick={applyFilters} disabled={isSearchingServer} className="btn-primary text-sm flex-1">
+                  {isSearchingServer ? 'Buscando...' : <><Check size={14} /> Aplicar</>}
+                </button>
                 {hasActive && <button onClick={clearFilters} className="btn-ghost p-2.5 text-navy-400 hover:text-accent-red"><XIcon size={14} /></button>}
               </div>
             </div>
@@ -177,15 +247,18 @@ export function InvoicesPage() {
               <tbody className="divide-y divide-surface-100">
                 {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
                   const date = toDate(inv.date);
-                  const st = STATUS_BADGES[inv.status] || STATUS_BADGES['Finalizado'];
+                  const st = STATUS_BADGES[inv.status] || { class: 'badge-gray', label: inv.status || 'N/A' };
                   const dt = (DELIVERY_TYPES as any).find((t: any) => t.value === inv.deliveryType || (inv.deliveryType === 'local' && t.value === 'local'));
+                  // Find proofUrl securely, either at the root level or inside the payments array
+                  const paymentImgUrl = inv.proofUrl || inv.img || inv.paymentImg || (inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.proofUrl || inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.img) || null;
+                  
                   return (
                     <tr key={inv.id} className="hover:bg-surface-50 transition-colors">
                       <td className="px-2 py-2 font-mono font-semibold text-[11px] text-navy-900 truncate">{label(inv)}</td>
                       <td className="px-2 py-2 text-[10px] text-navy-500 truncate" title={inv.sellerName}>{inv.sellerName || 'N/A'}</td>
                       <td className="px-2 py-2 text-[10px] text-navy-600 truncate" title={inv.clientSnapshot?.name}>{inv.clientSnapshot?.name || 'General'}</td>
                       <td className="px-2 py-2 text-[10px] text-navy-400 break-words leading-tight" title={inv.clientSnapshot?.address}>{inv.clientSnapshot?.address || 'N/A'}</td>
-                      <td className="px-2 py-2 text-[10px] text-navy-400 truncate" title={inv.notes}>{inv.notes || 'N/A'}</td>
+                      <td className="px-2 py-2 text-[10px] text-navy-400 break-words whitespace-normal leading-tight" title={inv.observation || inv.notes}>{inv.observation || inv.notes || 'N/A'}</td>
                       <td className="px-2 py-2 text-[10px] text-navy-400 truncate">{dt?.label || inv.deliveryType || 'N/A'}</td>
                       <td className="px-2 py-2 font-mono text-[10px] text-navy-900">{format(inv.deliveryCostUsd || 0)}</td>
                       <td className="px-2 py-2 text-[9px] text-navy-400 truncate">{inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}</td>
@@ -197,10 +270,16 @@ export function InvoicesPage() {
                       <td className="px-2 py-2">
                         <div className="flex gap-0.5">
                           <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600"><Eye size={12} /></button>
+                          {paymentImgUrl && (
+                            <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1 text-navy-400 hover:text-purple-600" title="Ver comprobante de pago">
+                              <ImageIcon size={12} />
+                            </a>
+                          )}
                           <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1 text-navy-400 hover:text-navy-800"><Printer size={12} /></button>
                           {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setReturnInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-amber-600"><RotateCcw size={12} /></button>}
                           {inv.status === 'Finalizado' && can('canEditInvoices') && <button onClick={() => handleCancel(inv)} className="btn-ghost p-1 text-navy-400 hover:text-accent-red"><XCircle size={12} /></button>}
                           {inv.status === 'Creada' && <button onClick={() => handleApproveWeb(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600"><CheckCircle size={12} /></button>}
+                          {inv.status === 'Pendiente de pago' && <button onClick={() => handleMarkAsPaid(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600" title="Finalizar Pago"><CheckCircle size={12} /></button>}
                           {inv.status === 'Pendiente de pago' && can('canAddAbono') && <button onClick={() => { setAbonoInvoice(inv); setAbonoAmount(''); setAbonoRef(''); }} className="btn-ghost p-1 text-navy-400 hover:text-green-600"><DollarSign size={12} /></button>}
                         </div>
                       </td>
@@ -264,11 +343,31 @@ export function InvoicesPage() {
                 </div>);
               })}</div>
             </div>
-            {detailInvoice.payments?.length > 0 && (
-              <div><p className="text-[10px] font-display font-semibold text-navy-400 uppercase mb-2">Pagos</p>
-                <div className="flex flex-wrap gap-2">{detailInvoice.payments.map((p: any, i: number) => (
-                  <span key={i} className="badge badge-blue">{p.method}: {p.amountUsd > 0 ? `$${p.amountUsd.toFixed(2)}` : `Bs.${p.amountVes.toFixed(2)}`}</span>
-                ))}</div></div>
+            {(detailInvoice.payments?.length > 0 || detailInvoice.proofUrl || detailInvoice.img || detailInvoice.paymentImg) && (
+              <div><p className="text-[10px] font-display font-semibold text-navy-400 uppercase mb-2">Comprobantes</p>
+                <div className="flex flex-col gap-3">
+
+                  {/* Renderizar las imágenes de los comprobantes */}
+                  {((detailInvoice.payments?.some((p: any) => p.proofUrl || p.img)) || (detailInvoice.proofUrl || detailInvoice.img || detailInvoice.paymentImg)) && (
+                    <div className="flex flex-wrap gap-3 mt-1">
+                      {detailInvoice.payments?.filter((p: any) => p.proofUrl || p.img).map((p: any, i: number) => (
+                        <a key={i} href={p.proofUrl || p.img} target="_blank" rel="noopener noreferrer" className="block border border-surface-200 rounded-lg overflow-hidden hover:border-purple-400 transition-colors bg-surface-100 flex-shrink-0 relative group shadow-sm" style={{ width: '160px', height: '220px' }} title="Clic para ampliar comprobante">
+                          <img src={p.proofUrl || p.img} alt={`Comprobante ${p.method}`} className="w-full h-full object-cover opacity-95 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[10px] font-medium text-center py-1.5 opacity-0 group-hover:opacity-100 transition-opacity font-display">Ver completo</div>
+                        </a>
+                      ))}
+                      
+                      {/* Mostrar comprobante global si no estaba dentro del array de pagos */}
+                      {(!detailInvoice.payments?.some((p: any) => p.proofUrl || p.img)) && (detailInvoice.proofUrl || detailInvoice.img || detailInvoice.paymentImg) && (
+                        <a href={detailInvoice.proofUrl || detailInvoice.img || detailInvoice.paymentImg} target="_blank" rel="noopener noreferrer" className="block border border-surface-200 rounded-lg overflow-hidden hover:border-purple-400 transition-colors bg-surface-100 flex-shrink-0 relative group shadow-sm" style={{ width: '160px', height: '220px' }} title="Clic para ampliar comprobante">
+                          <img src={detailInvoice.proofUrl || detailInvoice.img || detailInvoice.paymentImg} alt="Comprobante" className="w-full h-full object-cover opacity-95 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[10px] font-medium text-center py-1.5 opacity-0 group-hover:opacity-100 transition-opacity font-display">Ver completo</div>
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
             
             <div className="bg-surface-50 rounded-lg p-4 space-y-2 text-sm">

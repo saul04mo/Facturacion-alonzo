@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAppStore } from '@/store/appStore';
-import { onAuthChange, fetchUserProfile, signOut } from './authService';
+import { onAuthChange, signOut } from './authService';
 import { LoadingScreen } from '@/components/LoadingScreen';
 
 interface AuthProviderProps {
@@ -22,29 +22,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthChange(async (firebaseUser) => {
+    let profileUnsub: (() => void) | undefined;
+
+    const authUnsub = onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const profile = await fetchUserProfile(firebaseUser);
-          if (profile) {
-            setCurrentUser(profile);
-          } else {
-            // User exists in Auth but not in Firestore — force sign out
-            console.error('No se encontró el documento del usuario en Firestore.');
-            await signOut();
-            setCurrentUser(null);
-          }
+          // Listen to the user document in real-time instead of a one-time fetch
+          const { doc, onSnapshot } = await import('firebase/firestore');
+          const { db } = await import('@/config/firebase');
+
+          if (profileUnsub) profileUnsub(); // clear previous
+
+          profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (snap) => {
+            if (snap.exists()) {
+              const profile = { id: snap.id, uid: firebaseUser.uid, ...snap.data() } as any;
+              setCurrentUser(profile);
+            } else {
+              // User documented deleted or not found
+              console.error('No se encontró el documento del usuario en Firestore.');
+              signOut();
+              setCurrentUser(null);
+            }
+            setInitializing(false);
+          });
         } catch (err) {
-          console.error('Error fetching user profile:', err);
+          console.error('Error attaching user profile listener:', err);
           setCurrentUser(null);
+          setInitializing(false);
         }
       } else {
+        if (profileUnsub) {
+          profileUnsub();
+          profileUnsub = undefined;
+        }
         setCurrentUser(null);
+        setInitializing(false);
       }
-      setInitializing(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      authUnsub();
+      if (profileUnsub) profileUnsub();
+    };
   }, [setCurrentUser]);
 
   // Show loading spinner during initial auth check
