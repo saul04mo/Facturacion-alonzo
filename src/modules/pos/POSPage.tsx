@@ -122,7 +122,7 @@ export function POSPage() {
 
   return (
     <div className="animate-fade-up">
-      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)]">
+      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100dvh-140px)] lg:h-[calc(100vh-140px)]">
         {/* Left: Catalog */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Header */}
@@ -271,7 +271,7 @@ export function POSPage() {
           {cartItemCount > 0 && !mobileCartOpen && (
             <button
               onClick={() => setMobileCartOpen(true)}
-              className="lg:hidden flex-shrink-0 bg-blue-600 text-white rounded-xl m-2 px-5 py-3.5 flex items-center justify-between shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all"
+              className="lg:hidden flex-shrink-0 bg-blue-600 text-white rounded-xl m-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] px-5 py-3.5 flex items-center justify-between shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all"
             >
               <div className="flex items-center gap-3">
                 <div className="relative">
