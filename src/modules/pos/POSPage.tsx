@@ -126,12 +126,12 @@ export function POSPage() {
         {/* Left: Catalog */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Header */}
-          <div className="card p-4 mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-1 h-10 bg-blue-500 rounded-full" />
+          <div className="card p-3 sm:p-4 mb-2 sm:mb-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-1 h-8 sm:h-10 bg-blue-500 rounded-full" />
               <div className="flex-1">
-                <h1 className="text-lg font-display font-bold text-navy-900">Punto de Venta</h1>
-                <p className="text-navy-400 text-xs">Selecciona género, categoría y producto.</p>
+                <h1 className="text-base sm:text-lg font-display font-bold text-navy-900">Punto de Venta</h1>
+                <p className="text-navy-400 text-[10px] sm:text-xs">Selecciona género, categoría y producto.</p>
               </div>
               {/* Calculator */}
               <div className="hidden md:flex items-center gap-2 bg-surface-50 border border-surface-200 rounded-lg p-2">
@@ -163,15 +163,15 @@ export function POSPage() {
           <div className="flex-1 overflow-y-auto min-h-0">
             {/* Gender selection */}
             {view === 'gender' && (
-              <div className="grid grid-cols-2 gap-4 stagger">
+              <div className="grid grid-cols-2 gap-3 stagger">
                 {['Hombre', 'Mujer'].map((gender) => (
                   <button key={gender} onClick={() => selectGender(gender)}
-                    className="card-hover p-8 text-center animate-fade-up transition-all hover:scale-[1.02]">
-                    <div className={`w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center ${gender === 'Hombre' ? 'bg-blue-50' : 'bg-rose-50'}`}>
-                      <span className="text-3xl">{gender === 'Hombre' ? '👔' : '👗'}</span>
+                    className="card-hover p-4 sm:p-8 text-center animate-fade-up transition-all hover:scale-[1.02]">
+                    <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-2xl mx-auto mb-2 sm:mb-4 flex items-center justify-center ${gender === 'Hombre' ? 'bg-blue-50' : 'bg-rose-50'}`}>
+                      <span className="text-2xl sm:text-3xl">{gender === 'Hombre' ? '👔' : '👗'}</span>
                     </div>
-                    <h2 className="text-lg font-display font-bold text-navy-900">{gender}</h2>
-                    <p className="text-sm text-navy-400 mt-1">
+                    <h2 className="text-base sm:text-lg font-display font-bold text-navy-900">{gender}</h2>
+                    <p className="text-xs sm:text-sm text-navy-400 mt-0.5">
                       {products.filter((p) => p.gender === gender).length} productos
                     </p>
                   </button>
@@ -181,15 +181,16 @@ export function POSPage() {
 
             {/* Category selection */}
             {view === 'category' && (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 stagger">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 stagger">
                 {categories.map((cat) => (
                   <button key={cat} onClick={() => selectCategory(cat)}
-                    className="card-hover p-5 text-left animate-fade-up transition-all hover:scale-[1.01]">
-                    <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center mb-3">
-                      <Tag size={18} className="text-amber-500" />
+                    className="card-hover p-3 sm:p-5 text-left animate-fade-up transition-all hover:scale-[1.01]">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-50 flex items-center justify-center mb-1.5 sm:mb-3">
+                      <Tag size={14} className="text-amber-500 sm:hidden" />
+                      <Tag size={18} className="text-amber-500 hidden sm:block" />
                     </div>
-                    <h3 className="font-display font-semibold text-navy-900 text-sm">{cat}</h3>
-                    <p className="text-[10px] text-navy-400 mt-0.5">
+                    <h3 className="font-display font-semibold text-navy-900 text-xs sm:text-sm">{cat}</h3>
+                    <p className="text-[9px] sm:text-[10px] text-navy-400 mt-0.5">
                       {products.filter((p) => p.gender === activeGender && (cat === 'Todos' || (p.category || 'Sin Categoría') === cat)).length} productos
                     </p>
                   </button>
@@ -211,7 +212,7 @@ export function POSPage() {
                     <p className="text-navy-400 text-sm">No se encontraron productos.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 stagger">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3 stagger">
                     {displayProducts.map((product) => {
                       const currentOfferValue = product.offer?.value || 0;
                       const currentOfferType = product.offer?.type || 'percentage';
