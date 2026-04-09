@@ -124,7 +124,7 @@ export function POSPage() {
     <div className="animate-fade-up">
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)]">
         {/* Left: Catalog */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Header */}
           <div className="card p-4 mb-4">
             <div className="flex items-center gap-3">
@@ -160,7 +160,7 @@ export function POSPage() {
           )}
 
           {/* Content area */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {/* Gender selection */}
             {view === 'gender' && (
               <div className="grid grid-cols-2 gap-4 stagger">
@@ -266,11 +266,11 @@ export function POSPage() {
             )}
           </div>
 
-          {/* Mobile cart bar — part of layout, not floating */}
+          {/* Mobile cart bar — always visible at bottom */}
           {cartItemCount > 0 && !mobileCartOpen && (
             <button
               onClick={() => setMobileCartOpen(true)}
-              className="lg:hidden flex-shrink-0 bg-blue-600 text-white rounded-xl mx-1 mb-1 px-5 py-3 flex items-center justify-between shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all"
+              className="lg:hidden flex-shrink-0 bg-blue-600 text-white rounded-xl m-2 px-5 py-3.5 flex items-center justify-between shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all"
             >
               <div className="flex items-center gap-3">
                 <div className="relative">
