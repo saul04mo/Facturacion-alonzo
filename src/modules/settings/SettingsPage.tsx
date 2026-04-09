@@ -4,16 +4,16 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { updateExchangeRate, fetchExchangeRateHistory } from '@/modules/invoices/invoiceService';
-import { formatDateLong, currentTimeVE, todayVE } from '@/utils/dateUtils';
+import { formatDateLong, currentTimeVE } from '@/utils/dateUtils';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
-  Settings, DollarSign, RefreshCw, Check, AlertTriangle,
+  DollarSign, RefreshCw, Check, AlertTriangle,
   Database, Users, Package, FileText, TrendingUp,
   Globe, Sun, Moon, Monitor, Clock, MapPin, Zap,
 } from 'lucide-react';
 
 export function SettingsPage() {
-  const { can, isAdmin } = usePermissions();
+  const { can } = usePermissions();
   const toast = useToast();
   const currentUser = useAppStore((s) => s.currentUser);
   const products = useAppStore((s) => s.products);

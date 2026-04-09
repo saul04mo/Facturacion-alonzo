@@ -12,7 +12,7 @@ import { todayVE, toDate } from '@/utils/dateUtils';
 import type { Product } from '@/types';
 import {
   FileText, Filter, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon, Search, Hash,
+  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon, Hash,
 } from 'lucide-react';
 
 const STATUS_BADGES: Record<string, { class: string; label: string }> = {

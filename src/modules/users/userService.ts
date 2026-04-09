@@ -1,9 +1,9 @@
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db } from '@/config/firebase';
 import { DEFAULT_PERMISSIONS, type PermissionKey } from '@/config/constants';
-import type { AppUser } from '@/types';
+
 
 interface UserInput {
   nombre: string;
@@ -39,7 +39,7 @@ export async function createUser(data: UserInput & { password: string }, firebas
     });
   } finally {
     // Clean up secondary app
-    try { await secondaryApp.delete(); } catch { /* ignore */ }
+    try { await deleteApp(secondaryApp); } catch { /* ignore */ }
   }
 }
 

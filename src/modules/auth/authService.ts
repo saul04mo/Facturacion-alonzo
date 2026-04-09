@@ -4,9 +4,8 @@ import {
   onAuthStateChanged,
   type User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
-import { DEFAULT_PERMISSIONS } from '@/config/constants';
 import type { AppUser } from '@/types';
 
 /**

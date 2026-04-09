@@ -4,13 +4,13 @@ import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { ROUTES } from '@/config/constants';
 import {
-  TrendingUp, TrendingDown, ShoppingCart, DollarSign, Package, AlertTriangle,
-  CreditCard, Zap, ArrowUpRight, ArrowDownRight, Clock, Ticket, Filter,
-  Plus, FileText, BarChart3, Eye, ChevronRight, Flame, Award, Star, Users, X as XIcon,
+  TrendingUp, ShoppingCart, DollarSign, Package, AlertTriangle,
+  Zap, ArrowUpRight, ArrowDownRight, Clock, Ticket, Filter,
+  Plus, ChevronRight, Flame, Award, Star, Users, X as XIcon,
 } from 'lucide-react';
 import { fetchInvoicesByDateRange } from '@/modules/invoices/invoiceService';
 import { useToast } from '@/components/Toast';
-import type { Invoice, Product } from '@/types';
+import type { Invoice } from '@/types';
 
 // ════════════════════════════════════════
 // Helpers
@@ -377,7 +377,6 @@ export function DashboardPage() {
           value={format(kpis.todayRevenue)}
           subtitle={`${kpis.todayCount} ventas realizadas`}
           trend={isCustomRange ? undefined : kpis.dayGrowth}
-          trendLabel={isCustomRange ? undefined : "vs ayer"}
           sparkData={isCustomRange ? undefined : sparklineData}
           sparkColor="#10b981"
         />
@@ -388,7 +387,6 @@ export function DashboardPage() {
           value={isCustomRange ? format(kpis.todayAvg) : format(kpis.monthRevenue)}
           subtitle={isCustomRange ? "Calculado en rango" : `${kpis.monthCount} ventas · Promedio ${format(kpis.todayAvg)}`}
           trend={isCustomRange ? undefined : kpis.monthGrowth}
-          trendLabel={isCustomRange ? undefined : "vs mes anterior"}
           sparkData={isCustomRange ? undefined : sparklineData}
           sparkColor="#3b82f6"
         />
@@ -714,9 +712,9 @@ export function DashboardPage() {
 // ════════════════════════════════════════
 // Sub-components
 // ════════════════════════════════════════
-function KpiCard({ icon, gradient, title, value, subtitle, trend, trendLabel, sparkData, sparkColor, badge, badgeColor }: {
+function KpiCard({ icon, gradient, title, value, subtitle, trend, sparkData, sparkColor, badge, badgeColor }: {
   icon: React.ReactNode; gradient: string; title: string; value: string; subtitle: string;
-  trend?: number; trendLabel?: string; sparkData?: number[]; sparkColor?: string;
+  trend?: number; sparkData?: number[]; sparkColor?: string;
   badge?: string; badgeColor?: string;
 }) {
   const isPositive = (trend || 0) >= 0;

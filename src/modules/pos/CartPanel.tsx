@@ -463,7 +463,7 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
         {/* Payment methods & checkout */}
         {currentSale.items.length > 0 && (
           <div className="pt-3 border-t border-surface-200 flex-shrink-0">
-            <PaymentPanel total={cartDetails.total} onSuccess={(numericId) => { onSaleComplete?.(); }} />
+            <PaymentPanel total={cartDetails.total} onSuccess={() => { onSaleComplete?.(); }} />
           </div>
         )}
       </div>

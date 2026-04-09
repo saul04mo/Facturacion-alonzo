@@ -6,7 +6,7 @@ import { Modal } from '@/components/Modal';
 import {
   Users, Crown, TrendingUp, ShoppingBag, Phone, Mail, MapPin,
   Download, Search, ChevronRight, ArrowUpDown, MessageCircle,
-  Calendar, Star, Flame, Clock, Gift, Filter, Eye,
+  Star, Flame, Clock, Filter, Eye,
 } from 'lucide-react';
 
 // ════════════════════════════════════════
@@ -434,22 +434,22 @@ export function CRMPage() {
                   <span className="text-[10px] font-display font-semibold text-navy-400 uppercase">#</span>
                 </th>
                 <th className="text-left px-4 py-3">
-                  <SortBtn label="Cliente" field="name" current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortBtn label="Cliente" field="name" current={sortKey} onSort={handleSort} />
                 </th>
                 <th className="text-left px-4 py-3">
                   <span className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider">Segmento</span>
                 </th>
                 <th className="text-right px-4 py-3">
-                  <SortBtn label="Gasto Total" field="revenue" current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortBtn label="Gasto Total" field="revenue" current={sortKey} onSort={handleSort} />
                 </th>
                 <th className="text-right px-4 py-3">
-                  <SortBtn label="Pedidos" field="orders" current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortBtn label="Pedidos" field="orders" current={sortKey} onSort={handleSort} />
                 </th>
                 <th className="text-right px-4 py-3">
                   <span className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider">Ticket Prom.</span>
                 </th>
                 <th className="text-right px-4 py-3">
-                  <SortBtn label="Última Compra" field="lastPurchase" current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortBtn label="Última Compra" field="lastPurchase" current={sortKey} onSort={handleSort} />
                 </th>
                 <th className="text-right px-4 py-3 w-24">
                   <span className="text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider">Acción</span>
@@ -858,8 +858,8 @@ function SegBtn({ label, active, count, onClick }: { label: string; active: bool
   );
 }
 
-function SortBtn({ label, field, current, dir, onSort }: {
-  label: string; field: string; current: string; dir: string; onSort: (k: any) => void;
+function SortBtn({ label, field, current, onSort }: {
+  label: string; field: string; current: string; onSort: (k: any) => void;
 }) {
   const active = current === field;
   return (

@@ -133,6 +133,7 @@ export interface InvoiceItem {
 }
 
 export interface ClientSnapshot {
+  id?: string;
   name: string;
   rif_ci: string;
   phone: string;
