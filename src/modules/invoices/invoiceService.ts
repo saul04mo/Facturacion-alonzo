@@ -328,23 +328,25 @@ export async function fetchInvoicesByDateRange(
 // UPDATE EXCHANGE RATE
 // ================================
 export async function updateExchangeRate(newRate: number, userName?: string): Promise<void> {
-  const { setDoc, getDoc, addDoc, collection: col, Timestamp: Ts } = await import('firebase/firestore');
+  const { setDoc, getDoc, collection: col, Timestamp: Ts, writeBatch } = await import('firebase/firestore');
   const { getAuth } = await import('firebase/auth');
   
   // Get previous rate
   const prev = await getDoc(doc(db, 'config', 'exchangeRate'));
   const prevRate = prev.exists() ? prev.data().value : null;
 
-  // Update current rate
-  await setDoc(doc(db, 'config', 'exchangeRate'), { 
+  // ATOMIC: Update rate + log history in one batch
+  const batch = writeBatch(db);
+  const auth = getAuth();
+
+  batch.set(doc(db, 'config', 'exchangeRate'), { 
     value: newRate,
     source: 'manual',
     updatedAt: Ts.now(),
   }, { merge: true });
 
-  // Log to history
-  const auth = getAuth();
-  await addDoc(col(db, 'exchangeRateHistory'), {
+  const historyRef = doc(col(db, 'exchangeRateHistory'));
+  batch.set(historyRef, {
     previousRate: prevRate,
     newRate: newRate,
     change: prevRate ? newRate - prevRate : 0,
@@ -354,6 +356,8 @@ export async function updateExchangeRate(newRate: number, userName?: string): Pr
     userName: userName || 'POS',
     timestamp: Ts.now(),
   });
+
+  await batch.commit();
 }
 
 // ================================
