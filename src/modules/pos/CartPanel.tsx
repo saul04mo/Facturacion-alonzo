@@ -18,7 +18,7 @@ import {
   Truck, Users, Edit, Ticket, Zap, Gift, CheckCircle2,
 } from 'lucide-react';
 
-export function CartPanel() {
+export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = {}) {
   const products = useAppStore((s) => s.products);
   const coupons = useAppStore((s) => s.coupons);
   const promotions = useAppStore((s) => s.promotions);
@@ -463,7 +463,7 @@ export function CartPanel() {
         {/* Payment methods & checkout */}
         {currentSale.items.length > 0 && (
           <div className="pt-3 border-t border-surface-200 flex-shrink-0">
-            <PaymentPanel total={cartDetails.total} />
+            <PaymentPanel total={cartDetails.total} onSuccess={(numericId) => { onSaleComplete?.(); }} />
           </div>
         )}
       </div>

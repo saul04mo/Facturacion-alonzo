@@ -6,7 +6,7 @@ import { CartPanel } from './CartPanel';
 import { VariantSelector } from './VariantSelector';
 import type { Product, Discount } from '@/types';
 import {
-  ArrowLeft, Search, Tag, Calculator, ChevronRight,
+  ArrowLeft, Search, Tag, Calculator, ChevronRight, ShoppingCart, X,
 } from 'lucide-react';
 
 type CatalogView = 'gender' | 'category' | 'products';
@@ -25,6 +25,15 @@ export function POSPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [variantProduct, setVariantProduct] = useState<Product | null>(null);
   const [calcAmount, setCalcAmount] = useState('');
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
+
+  const cartItemCount = currentSale.items.reduce((sum, i) => sum + i.quantity, 0);
+  const cartTotal = currentSale.items.reduce((sum, i) => {
+    const product = products.find(p => p.id === i.productId);
+    const variant = product?.variants?.[i.variantIndex];
+    const price = variant?.price || 0;
+    return sum + price * i.quantity;
+  }, 0);
 
   const categories = useMemo(() => {
     if (!activeGender) return [];
@@ -258,11 +267,49 @@ export function POSPage() {
           </div>
         </div>
 
-        {/* Right: Cart */}
-        <div className="w-full lg:w-80 xl:w-[400px] flex flex-col min-h-0">
+        {/* Right: Cart — desktop only */}
+        <div className="hidden lg:flex w-80 xl:w-[400px] flex-col min-h-0">
           <CartPanel />
         </div>
       </div>
+
+      {/* ═══ MOBILE: Floating cart bar ═══ */}
+      {cartItemCount > 0 && !mobileCartOpen && (
+        <button
+          onClick={() => setMobileCartOpen(true)}
+          className="lg:hidden fixed bottom-4 left-4 right-4 z-40 bg-blue-600 text-white rounded-2xl px-5 py-3.5 flex items-center justify-between shadow-xl hover:bg-blue-700 active:scale-[0.98] transition-all"
+        >
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <ShoppingCart size={20} />
+              <span className="absolute -top-2 -right-2 bg-white text-blue-600 text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                {cartItemCount}
+              </span>
+            </div>
+            <span className="font-display font-semibold text-sm">Ver carrito</span>
+          </div>
+          <span className="font-mono font-bold text-base">{format(cartTotal)}</span>
+        </button>
+      )}
+
+      {/* ═══ MOBILE: Full cart overlay ═══ */}
+      {mobileCartOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex flex-col bg-white dark:bg-dark-100">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-surface-200">
+            <div className="flex items-center gap-2">
+              <ShoppingCart size={18} className="text-blue-600" />
+              <span className="font-display font-bold text-navy-900">Carrito ({cartItemCount})</span>
+            </div>
+            <button onClick={() => setMobileCartOpen(false)}
+              className="p-2 rounded-xl hover:bg-surface-100 text-navy-400 hover:text-navy-700 transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <CartPanel onSaleComplete={() => setMobileCartOpen(false)} />
+          </div>
+        </div>
+      )}
 
       {/* Variant selector modal */}
       {variantProduct && (
