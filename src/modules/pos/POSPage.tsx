@@ -160,7 +160,7 @@ export function POSPage() {
           )}
 
           {/* Content area */}
-          <div className="flex-1 overflow-y-auto">
+          <div className={`flex-1 overflow-y-auto ${cartItemCount > 0 ? 'pb-20 lg:pb-0' : ''}`}>
             {/* Gender selection */}
             {view === 'gender' && (
               <div className="grid grid-cols-2 gap-4 stagger">
