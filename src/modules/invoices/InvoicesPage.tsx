@@ -285,6 +285,51 @@ export function InvoicesPage() {
           <div className="p-12 text-center"><FileText size={40} className="mx-auto text-navy-200 mb-3" /><p className="text-navy-400 text-sm">Sin facturas.</p></div>
         ) : (
           <div>
+            {/* ═══ MOBILE: Card layout ═══ */}
+            <div className="md:hidden divide-y divide-surface-100">
+              {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
+                const date = toDate(inv.date);
+                const st = STATUS_BADGES[inv.status] || { class: 'badge-gray', label: inv.status || 'N/A' };
+                const paymentImgUrl = inv.proofUrl || inv.img || inv.paymentImg || (inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.proofUrl || inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.img) || null;
+                return (
+                  <div key={inv.id} className="p-4 hover:bg-surface-50 transition-colors">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <span className="font-mono font-bold text-sm text-navy-900">{label(inv)}</span>
+                        <span className={`badge text-[9px] px-1.5 py-0.5 ml-2 ${st.class}`}>{st.label}</span>
+                      </div>
+                      <span className="font-mono font-bold text-sm text-navy-900">{format(inv.total || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs text-navy-500 truncate max-w-[60%]">
+                        {inv.clientSnapshot?.name || 'General'}
+                      </div>
+                      <span className="font-mono text-xs text-navy-400">{formatBoth(inv.total || 0).ves}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] text-navy-400">
+                        {date?.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })}{' '}
+                        {date?.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                        <span className="mx-1">·</span>
+                        {inv.sellerName?.split(' ')[0] || 'N/A'}
+                        <span className="mx-1">·</span>
+                        {inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1.5 text-navy-400 hover:text-blue-600"><Eye size={14} /></button>
+                        {paymentImgUrl && (
+                          <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1.5 text-navy-400 hover:text-purple-600"><ImageIcon size={14} /></a>
+                        )}
+                        <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1.5 text-navy-400 hover:text-navy-800"><Printer size={14} /></button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ═══ DESKTOP: Table layout ═══ */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full table-fixed">
               <thead><tr className="border-b border-surface-200 bg-surface-50">
                 {[
@@ -302,7 +347,6 @@ export function InvoicesPage() {
                   const date = toDate(inv.date);
                   const st = STATUS_BADGES[inv.status] || { class: 'badge-gray', label: inv.status || 'N/A' };
                   const dt = (DELIVERY_TYPES as any).find((t: any) => t.value === inv.deliveryType || (inv.deliveryType === 'local' && t.value === 'local'));
-                  // Find proofUrl securely, either at the root level or inside the payments array
                   const paymentImgUrl = inv.proofUrl || inv.img || inv.paymentImg || (inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.proofUrl || inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.img) || null;
                   
                   return (
@@ -340,6 +384,7 @@ export function InvoicesPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
