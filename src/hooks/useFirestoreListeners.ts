@@ -14,6 +14,7 @@ export function useFirestoreListeners() {
   const setCoupons = useAppStore((s) => s.setCoupons);
   const setPromotions = useAppStore((s) => s.setPromotions);
   const setExchangeRate = useAppStore((s) => s.setExchangeRate);
+  const setAllowNegativeStock = useAppStore((s) => s.setAllowNegativeStock);
   const setLoading = useAppStore((s) => s.setLoading);
 
   useEffect(() => {
@@ -32,6 +33,15 @@ export function useFirestoreListeners() {
     unsubs.push(
       onSnapshot(doc(db, 'config', 'exchangeRate'), (snap) => {
         setExchangeRate(snap.exists() && snap.data().value ? snap.data().value : 1);
+      })
+    );
+
+    // POS Settings (allowNegativeStock, etc.)
+    unsubs.push(
+      onSnapshot(doc(db, 'config', 'posSettings'), (snap) => {
+        if (snap.exists()) {
+          setAllowNegativeStock(snap.data().allowNegativeStock === true);
+        }
       })
     );
 

@@ -82,15 +82,18 @@ export function POSPage() {
     if (!product) return;
 
     const variant = product.variants[variantIndex];
+    const allowNegative = useAppStore.getState().allowNegativeStock;
 
-    // FIX: Validate stock before adding
-    const existingItem = currentSale.items.find(
-      (i) => i.productId === productId && i.variantIndex === variantIndex,
-    );
-    const currentQty = existingItem ? existingItem.quantity : 0;
-    if (variant.stock <= currentQty) {
-      toast.warning(`Sin stock disponible para "${product.name}" (${variant.size}/${variant.color})`);
-      return;
+    // Validate stock (skip if negative stock allowed)
+    if (!allowNegative) {
+      const existingItem = currentSale.items.find(
+        (i) => i.productId === productId && i.variantIndex === variantIndex,
+      );
+      const currentQty = existingItem ? existingItem.quantity : 0;
+      if (variant.stock <= currentQty) {
+        toast.warning(`Sin stock disponible para "${product.name}" (${variant.size}/${variant.color})`);
+        return;
+      }
     }
 
     const itemDiscount: Discount =

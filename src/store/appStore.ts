@@ -56,6 +56,10 @@ interface AppState {
   setCoupons: (coupons: Coupon[]) => void;
   promotions: Promotion[];
   setPromotions: (promotions: Promotion[]) => void;
+
+  // POS Settings
+  allowNegativeStock: boolean;
+  setAllowNegativeStock: (allow: boolean) => void;
 }
 
 const INITIAL_SALE: CurrentSale = {
@@ -126,4 +130,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setCoupons: (coupons) => set({ coupons }),
   promotions: [],
   setPromotions: (promotions) => set({ promotions }),
+
+  allowNegativeStock: false,
+  setAllowNegativeStock: (allow) => set({ allowNegativeStock: allow }),
 }));

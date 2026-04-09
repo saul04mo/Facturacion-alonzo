@@ -22,6 +22,7 @@ export function SettingsPage() {
   const users = useAppStore((s) => s.users);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const allowNegativeStock = useAppStore((s) => s.allowNegativeStock);
   const { exchangeRate } = useCurrency();
 
   const [newRate, setNewRate] = useState(String(exchangeRate));
@@ -36,6 +37,17 @@ export function SettingsPage() {
     const i = setInterval(() => setVeTime(currentTimeVE()), 30000);
     return () => clearInterval(i);
   }, []);
+
+  async function handleToggleNegativeStock() {
+    try {
+      const { setDoc, doc: docRef } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      await setDoc(docRef(db, 'config', 'posSettings'), { allowNegativeStock: !allowNegativeStock }, { merge: true });
+      toast.success(`Stock negativo: ${!allowNegativeStock ? 'Activado' : 'Desactivado'}`);
+    } catch {
+      toast.error('Error al guardar configuración.');
+    }
+  }
 
   async function handleUpdateRate() {
     const rate = parseFloat(newRate);
@@ -316,6 +328,24 @@ export function SettingsPage() {
 
         {/* RIGHT COLUMN */}
         <div className="space-y-6">
+          {/* ============ POS SETTINGS ============ */}
+          <div className="card overflow-hidden">
+            <div className="px-6 py-4 bg-surface-50 border-b border-surface-200">
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-purple-500" />
+                <h2 className="font-display font-bold text-navy-900 dark:text-gray-100">Configuración del POS</h2>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <ToggleSetting
+                label="Permitir stock negativo"
+                description="Permite agregar productos al carrito aunque tengan stock en 0. El stock se descuenta y queda en negativo."
+                enabled={allowNegativeStock}
+                onToggle={handleToggleNegativeStock}
+              />
+            </div>
+          </div>
+
           {/* Data stats */}
           <div className="card overflow-hidden">
             <div className="px-6 py-4 bg-surface-50 border-b border-surface-200">
@@ -376,6 +406,23 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ToggleSetting({ label, description, enabled, onToggle }: {
+  label: string; description: string; enabled: boolean; onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-surface-200 hover:bg-surface-50 transition-colors">
+      <div className="flex-1">
+        <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100">{label}</p>
+        <p className="text-[11px] text-navy-400 dark:text-gray-500 mt-0.5">{description}</p>
+      </div>
+      <button onClick={onToggle}
+        className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${enabled ? 'bg-emerald-500' : 'bg-navy-200 dark:bg-gray-600'}`}>
+        <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+      </button>
     </div>
   );
 }

@@ -98,6 +98,7 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
       const result = await processSale({
         sale: { ...currentSale, total }, payments: activePayments,
         exchangeRate, currentUser, products, clients,
+        allowNegativeStock: useAppStore.getState().allowNegativeStock,
       });
       resetCurrentSale();
       setEntries(buildDefaultEntries());

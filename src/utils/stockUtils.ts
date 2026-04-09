@@ -32,17 +32,19 @@ export function batchRestoreStock(
 /**
  * Validate that all items have sufficient stock before processing a sale.
  * Returns null if valid, or an error message string if not.
+ * If allowNegative is true, skips stock validation (allows negative stock).
  */
 export function validateStock(
   items: Array<{ productId: string; variantIndex: number; quantity: number }>,
   products: Product[],
+  allowNegative = false,
 ): string | null {
   for (const item of items) {
     const product = products.find((p) => p.id === item.productId);
     if (!product) return `Producto no encontrado (ID: ${item.productId})`;
     const variant = product.variants[item.variantIndex];
     if (!variant) return `Variante no encontrada para "${product.name}"`;
-    if (variant.stock < item.quantity) {
+    if (!allowNegative && variant.stock < item.quantity) {
       return `Stock insuficiente para "${product.name}" (${variant.size}/${variant.color}): disponible ${variant.stock}, solicitado ${item.quantity}`;
     }
   }

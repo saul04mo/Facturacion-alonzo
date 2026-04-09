@@ -43,12 +43,13 @@ export async function processSale(opts: {
   currentUser: AppUser;
   products: Product[];
   clients: Array<{ id: string; name?: string; rif_ci?: string; phone?: string; address?: string }>;
+  allowNegativeStock?: boolean;
 }): Promise<{ numericId: number }> {
-  const { sale, payments, exchangeRate, currentUser, products, clients } = opts;
+  const { sale, payments, exchangeRate, currentUser, products, clients, allowNegativeStock } = opts;
   const isCreditSale = !sale.deliveryPaidInStore;
 
   // ── Pre-validation ──
-  const stockError = validateStock(sale.items, products);
+  const stockError = validateStock(sale.items, products, allowNegativeStock);
   if (stockError) throw new Error(stockError);
 
   // ── Build item snapshots with priceAtSale ──
