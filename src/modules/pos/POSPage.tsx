@@ -160,7 +160,7 @@ export function POSPage() {
           )}
 
           {/* Content area */}
-          <div className={`flex-1 overflow-y-auto ${cartItemCount > 0 ? 'pb-20 lg:pb-0' : ''}`}>
+          <div className="flex-1 overflow-y-auto">
             {/* Gender selection */}
             {view === 'gender' && (
               <div className="grid grid-cols-2 gap-4 stagger">
@@ -264,9 +264,26 @@ export function POSPage() {
                 )}
               </div>
             )}
-            {/* Spacer for mobile floating cart bar */}
-            {cartItemCount > 0 && <div className="h-20 lg:hidden" />}
           </div>
+
+          {/* Mobile cart bar — part of layout, not floating */}
+          {cartItemCount > 0 && !mobileCartOpen && (
+            <button
+              onClick={() => setMobileCartOpen(true)}
+              className="lg:hidden flex-shrink-0 bg-blue-600 text-white rounded-xl mx-1 mb-1 px-5 py-3 flex items-center justify-between shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <ShoppingCart size={20} />
+                  <span className="absolute -top-2 -right-2 bg-white text-blue-600 text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                    {cartItemCount}
+                  </span>
+                </div>
+                <span className="font-display font-semibold text-sm">Ver carrito</span>
+              </div>
+              <span className="font-mono font-bold text-base">{format(cartTotal)}</span>
+            </button>
+          )}
         </div>
 
         {/* Right: Cart — desktop only */}
@@ -274,25 +291,6 @@ export function POSPage() {
           <CartPanel />
         </div>
       </div>
-
-      {/* ═══ MOBILE: Floating cart bar ═══ */}
-      {cartItemCount > 0 && !mobileCartOpen && (
-        <button
-          onClick={() => setMobileCartOpen(true)}
-          className="lg:hidden fixed bottom-4 left-4 right-4 z-40 bg-blue-600 text-white rounded-2xl px-5 py-3.5 flex items-center justify-between shadow-xl hover:bg-blue-700 active:scale-[0.98] transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <ShoppingCart size={20} />
-              <span className="absolute -top-2 -right-2 bg-white text-blue-600 text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                {cartItemCount}
-              </span>
-            </div>
-            <span className="font-display font-semibold text-sm">Ver carrito</span>
-          </div>
-          <span className="font-mono font-bold text-base">{format(cartTotal)}</span>
-        </button>
-      )}
 
       {/* ═══ MOBILE: Full cart overlay ═══ */}
       {mobileCartOpen && (
