@@ -264,6 +264,8 @@ export function POSPage() {
                 )}
               </div>
             )}
+            {/* Spacer for mobile floating cart bar */}
+            {cartItemCount > 0 && <div className="h-20 lg:hidden" />}
           </div>
         </div>
 
