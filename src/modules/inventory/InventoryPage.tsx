@@ -5,10 +5,10 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
 import { Pagination } from '@/components/Pagination';
-import { saveProduct, deleteProduct } from './inventoryService';
+import { saveProduct, deleteProduct, toggleProductActive } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, ChevronUp, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle } from 'lucide-react';
+import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, ChevronUp, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle, Eye, EyeOff } from 'lucide-react';
 
 // ============================
 // VARIANT EDITOR (Modal)
@@ -571,6 +571,13 @@ export function InventoryPage() {
     if (!confirm(`¿Eliminar "${p.name}"?`)) return;
     try { await deleteProduct(p.id, p.imageUrl, p.imageUrls); } catch { toast.error('Error al eliminar producto.'); }
   }
+  async function handleToggleActive(p: Product) {
+    const newState = !(p.active !== false); // default is true if undefined
+    try {
+      await toggleProductActive(p.id, newState);
+      toast.success(`${p.name}: ${newState ? 'Visible' : 'Oculto'} en web y app.`);
+    } catch { toast.error('Error al cambiar visibilidad.'); }
+  }
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -693,7 +700,7 @@ export function InventoryPage() {
                   const maxP = Math.max(...(product.variants?.map((v) => v.price) || [0]));
 
                   return (
-                    <div key={product.id} className={isExpanded ? 'bg-surface-50/50' : ''}>
+                    <div key={product.id} className={`${isExpanded ? 'bg-surface-50/50' : ''} ${product.active === false ? 'opacity-50' : ''}`}>
                       <div className="flex items-center gap-4 px-5 py-3 cursor-pointer hover:bg-surface-50 transition-colors hover-lift"
                         onClick={() => setExpandedId(isExpanded ? null : product.id)}>
                         {/* Expand */}
@@ -707,7 +714,12 @@ export function InventoryPage() {
                         </div>
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <p className="font-display font-semibold text-navy-900 text-sm truncate">{product.name}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-display font-semibold text-navy-900 text-sm truncate">{product.name}</p>
+                            {product.active === false && (
+                              <span className="badge text-[8px] px-1 py-0.5 bg-red-100 text-red-600 flex-shrink-0">Oculto</span>
+                            )}
+                          </div>
                           <p className="text-xs font-mono text-navy-500">
                             {minP === maxP ? format(minP) : `${format(minP)} – ${format(maxP)}`}
                             <span className="text-navy-300 mx-1.5">·</span>
@@ -723,6 +735,13 @@ export function InventoryPage() {
                         </div>
                         {/* Actions */}
                         <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          {can('canEditProducts') && (
+                            <button onClick={() => handleToggleActive(product)}
+                              title={product.active !== false ? 'Ocultar en web/app' : 'Mostrar en web/app'}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${product.active !== false ? 'text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700' : 'text-navy-300 hover:bg-amber-50 hover:text-amber-600'}`}>
+                              {product.active !== false ? <Eye size={15} /> : <EyeOff size={15} />}
+                            </button>
+                          )}
                           {can('canEditProducts') && (
                             <button onClick={() => handleEdit(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-navy-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><Edit size={15} /></button>
                           )}

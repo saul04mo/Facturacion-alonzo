@@ -40,6 +40,8 @@ export interface Product {
     type: 'percentage' | 'fixed';
     value: number;
   };
+  /** Controls visibility on web store and app. Default: true */
+  active?: boolean;
 }
 
 // ================================

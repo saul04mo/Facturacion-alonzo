@@ -78,7 +78,10 @@ export async function saveProduct(id: string | null, data: ProductInput): Promis
   }
 }
 
-export async function deleteProduct(id: string, imageUrl?: string, imageUrls?: string[]): Promise<void> {
+export async function toggleProductActive(id: string, active: boolean): Promise<void> {
+  await setDoc(doc(db, 'products', id), { active }, { merge: true });
+}
+(id: string, imageUrl?: string, imageUrls?: string[]): Promise<void> {
   // Delete primary image
   if (imageUrl) {
     try { await deleteObject(ref(storage, imageUrl)); } catch { /* ignore */ }
