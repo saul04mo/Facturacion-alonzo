@@ -700,7 +700,7 @@ export function InventoryPage() {
                   const maxP = Math.max(...(product.variants?.map((v) => v.price) || [0]));
 
                   return (
-                    <div key={product.id} className={`${isExpanded ? 'bg-surface-50/50' : ''} ${product.active === false ? 'opacity-50' : ''}`}>
+                    <div key={product.id} className={`${isExpanded ? 'bg-surface-50/50' : ''}`}>
                       <div className="flex items-center gap-4 px-5 py-3 cursor-pointer hover:bg-surface-50 transition-colors hover-lift"
                         onClick={() => setExpandedId(isExpanded ? null : product.id)}>
                         {/* Expand */}
