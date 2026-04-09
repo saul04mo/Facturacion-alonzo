@@ -271,7 +271,7 @@ export function POSPage() {
           {cartItemCount > 0 && !mobileCartOpen && (
             <button
               onClick={() => setMobileCartOpen(true)}
-              className="lg:hidden flex-shrink-0 bg-blue-600 text-white rounded-xl m-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] px-5 py-3.5 flex items-center justify-between shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all"
+              className="lg:hidden flex-shrink-0 bg-blue-600 text-white rounded-t-xl px-5 py-3 flex items-center justify-between shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all"
             >
               <div className="flex items-center gap-3">
                 <div className="relative">
