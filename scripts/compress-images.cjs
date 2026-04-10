@@ -25,7 +25,9 @@ const http = require('http');
 const path = require('path');
 
 if (!admin.apps.length) {
-  admin.initializeApp();
+  admin.initializeApp({
+    storageBucket: 'alozo-2633a.firebasestorage.app',
+  });
 }
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
