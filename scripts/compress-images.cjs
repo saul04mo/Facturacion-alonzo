@@ -117,22 +117,22 @@ async function processImage(imageUrl, productId, label) {
       return null;
     }
 
-    // Upload compressed version
+    // Upload compressed version with download token
+    const { v4: uuidv4 } = require('uuid');
+    const downloadToken = uuidv4();
     const fileName = `products/compressed_${productId}_${Date.now()}.webp`;
     const file = bucket.file(fileName);
     await file.save(compressed, {
-      metadata: { contentType: 'image/webp' },
-      public: true,
+      metadata: {
+        contentType: 'image/webp',
+        metadata: {
+          firebaseStorageDownloadTokens: downloadToken,
+        },
+      },
     });
 
-    // Get download URL
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: '03-01-2030',
-    });
-
-    // Try to get public URL instead (works if bucket has public access)
-    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media`;
+    // Build download URL with token (same format as Firebase SDK)
+    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
 
     stats.compressed++;
     return publicUrl;
