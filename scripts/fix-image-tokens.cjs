@@ -25,7 +25,7 @@ async function main() {
     let changed = false;
 
     // Fix primary imageUrl
-    if (data.imageUrl && data.imageUrl.includes('/compressed_') && !data.imageUrl.includes('token=')) {
+    if (data.imageUrl && data.imageUrl.includes('compressed_') && !data.imageUrl.includes('token=')) {
       const newUrl = await addToken(data.imageUrl);
       if (newUrl) {
         updates.imageUrl = newUrl;
@@ -39,7 +39,7 @@ async function main() {
       const newUrls = [];
       let galleryChanged = false;
       for (const url of data.imageUrls) {
-        if (url && url.includes('/compressed_') && !url.includes('token=')) {
+        if (url && url.includes('compressed_') && !url.includes('token=')) {
           const newUrl = await addToken(url);
           if (newUrl) {
             newUrls.push(newUrl);
