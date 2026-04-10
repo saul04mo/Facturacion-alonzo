@@ -1,6 +1,7 @@
 import { collection, doc, addDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
+import { compressImage, compressImages } from '@/utils/imageUtils';
 import type { ProductVariant } from '@/types';
 
 export interface ProductInput {
@@ -27,8 +28,9 @@ export async function saveProduct(id: string | null, data: ProductInput): Promis
     if (id && data.currentImageUrl) {
       try { await deleteObject(ref(storage, data.currentImageUrl)); } catch { /* ignore */ }
     }
-    const imageRef = ref(storage, `products/${id || Date.now()}_${data.imageFile.name}`);
-    const snapshot = await uploadBytes(imageRef, data.imageFile);
+    const compressed = await compressImage(data.imageFile);
+    const imageRef = ref(storage, `products/${id || Date.now()}_${compressed.name}`);
+    const snapshot = await uploadBytes(imageRef, compressed);
     imageUrl = await getDownloadURL(snapshot.ref);
   }
 
@@ -36,10 +38,11 @@ export async function saveProduct(id: string | null, data: ProductInput): Promis
   const existingUrls = data.existingImageUrls || [];
   const uploadedUrls: string[] = [];
 
-  // Upload new image files
+  // Upload new image files (compressed)
   if (data.newImageFiles && data.newImageFiles.length > 0) {
     const productRef = id || Date.now().toString();
-    for (const file of data.newImageFiles) {
+    const compressedFiles = await compressImages(data.newImageFiles);
+    for (const file of compressedFiles) {
       const imgRef = ref(storage, `products/${productRef}_${Date.now()}_${file.name}`);
       const snapshot = await uploadBytes(imgRef, file);
       const url = await getDownloadURL(snapshot.ref);
