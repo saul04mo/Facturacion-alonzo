@@ -10,7 +10,7 @@ import {
   DollarSign, RefreshCw, Check, AlertTriangle,
   Database, Users, Package, FileText, TrendingUp,
   Globe, Sun, Moon, Monitor, Clock, MapPin, Zap, Megaphone,
-  Plus, Trash2, Save, ToggleLeft, ToggleRight,
+  Plus, Trash2, Save, ToggleLeft, ToggleRight, Download,
 } from 'lucide-react';
 
 export function SettingsPage() {
@@ -40,6 +40,9 @@ export function SettingsPage() {
   const [annLoading, setAnnLoading] = useState(true);
   const [annSaving, setAnnSaving] = useState(false);
 
+  // PWA Install Prompt toggle
+  const [installPromptEnabled, setInstallPromptEnabled] = useState(true);
+
   type SettingsTab = 'general' | 'rate' | 'pos' | 'web' | 'system';
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
@@ -48,12 +51,13 @@ export function SettingsPage() {
     return () => clearInterval(i);
   }, []);
 
-  // Load announcements
+  // Load announcements + web settings
   useEffect(() => {
     (async () => {
       try {
-        const { collection: col, getDocs } = await import('firebase/firestore');
+        const { collection: col, getDocs, doc: docRef, getDoc } = await import('firebase/firestore');
         const { db } = await import('@/config/firebase');
+        // Announcements
         const snap = await getDocs(col(db, 'announcements'));
         const items: AnnouncementDoc[] = [];
         snap.forEach((d) => {
@@ -62,10 +66,30 @@ export function SettingsPage() {
         });
         items.sort((a, b) => a.order - b.order);
         setAnnouncements(items);
-      } catch (e) { console.error('Error loading announcements:', e); }
+        // Web settings
+        const webSnap = await getDoc(docRef(db, 'config', 'webSettings'));
+        if (webSnap.exists()) {
+          const data = webSnap.data();
+          setInstallPromptEnabled(data.installPromptEnabled !== false);
+        }
+      } catch (e) { console.error('Error loading web settings:', e); }
       setAnnLoading(false);
     })();
   }, []);
+
+  async function handleToggleInstallPrompt() {
+    const newVal = !installPromptEnabled;
+    setInstallPromptEnabled(newVal);
+    try {
+      const { doc: docRef, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      await setDoc(docRef(db, 'config', 'webSettings'), { installPromptEnabled: newVal }, { merge: true });
+      toast.success(`Prompt de instalación: ${newVal ? 'Activado' : 'Desactivado'}`);
+    } catch {
+      toast.error('Error al guardar');
+      setInstallPromptEnabled(!newVal);
+    }
+  }
 
   async function handleSaveAnnouncement(ann: AnnouncementDoc) {
     setAnnSaving(true);
@@ -469,6 +493,26 @@ export function SettingsPage() {
 
         {/* ═══════ TIENDA WEB ═══════ */}
         {activeTab === 'web' && (
+          <>
+          {/* PWA Install Prompt */}
+          <div className="card overflow-hidden">
+            <div className="px-6 py-4 bg-surface-50 border-b border-surface-200">
+              <div className="flex items-center gap-2">
+                <Download size={18} className="text-blue-500" />
+                <h2 className="font-display font-bold text-navy-900 dark:text-gray-100">Configuración Web</h2>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <ToggleSetting
+                label="Prompt de instalación PWA"
+                description="Muestra un banner invitando al cliente a instalar ALONZO como app en su teléfono."
+                enabled={installPromptEnabled}
+                onToggle={handleToggleInstallPrompt}
+              />
+            </div>
+          </div>
+
+          {/* Announcements */}
           <div className="card overflow-hidden">
             <div className="px-6 py-4 bg-surface-50 border-b border-surface-200">
               <div className="flex items-center justify-between">
@@ -557,6 +601,7 @@ export function SettingsPage() {
               )}
             </div>
           </div>
+          </>
         )}
 
         {/* ═══════ SISTEMA ═══════ */}
