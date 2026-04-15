@@ -9,7 +9,8 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   DollarSign, RefreshCw, Check, AlertTriangle,
   Database, Users, Package, FileText, TrendingUp,
-  Globe, Sun, Moon, Monitor, Clock, MapPin, Zap,
+  Globe, Sun, Moon, Monitor, Clock, MapPin, Zap, Megaphone,
+  Plus, Trash2, Save, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 
 export function SettingsPage() {
@@ -33,10 +34,74 @@ export function SettingsPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [veTime, setVeTime] = useState(currentTimeVE());
 
+  // Announcements
+  interface AnnouncementDoc { id: string; text: string; link: string; active: boolean; order: number; }
+  const [announcements, setAnnouncements] = useState<AnnouncementDoc[]>([]);
+  const [annLoading, setAnnLoading] = useState(true);
+  const [annSaving, setAnnSaving] = useState(false);
+
   useEffect(() => {
     const i = setInterval(() => setVeTime(currentTimeVE()), 30000);
     return () => clearInterval(i);
   }, []);
+
+  // Load announcements
+  useEffect(() => {
+    (async () => {
+      try {
+        const { collection: col, getDocs } = await import('firebase/firestore');
+        const { db } = await import('@/config/firebase');
+        const snap = await getDocs(col(db, 'announcements'));
+        const items: AnnouncementDoc[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          items.push({ id: d.id, text: data.text || '', link: data.link || '', active: data.active !== false, order: data.order || 0 });
+        });
+        items.sort((a, b) => a.order - b.order);
+        setAnnouncements(items);
+      } catch (e) { console.error('Error loading announcements:', e); }
+      setAnnLoading(false);
+    })();
+  }, []);
+
+  async function handleSaveAnnouncement(ann: AnnouncementDoc) {
+    setAnnSaving(true);
+    try {
+      const { doc: docRef, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      await setDoc(docRef(db, 'announcements', ann.id), {
+        text: ann.text, link: ann.link, active: ann.active, order: ann.order,
+      });
+      toast.success('Anuncio guardado');
+    } catch { toast.error('Error al guardar'); }
+    setAnnSaving(false);
+  }
+
+  async function handleAddAnnouncement() {
+    setAnnSaving(true);
+    try {
+      const { collection: col, addDoc } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      const newOrder = announcements.length > 0 ? Math.max(...announcements.map((a) => a.order)) + 1 : 1;
+      const ref = await addDoc(col(db, 'announcements'), {
+        text: 'Nuevo anuncio', link: '', active: true, order: newOrder,
+      });
+      setAnnouncements([...announcements, { id: ref.id, text: 'Nuevo anuncio', link: '', active: true, order: newOrder }]);
+      toast.success('Anuncio creado');
+    } catch { toast.error('Error al crear'); }
+    setAnnSaving(false);
+  }
+
+  async function handleDeleteAnnouncement(id: string) {
+    if (!confirm('¿Eliminar este anuncio?')) return;
+    try {
+      const { doc: docRef, deleteDoc } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      await deleteDoc(docRef(db, 'announcements', id));
+      setAnnouncements(announcements.filter((a) => a.id !== id));
+      toast.success('Anuncio eliminado');
+    } catch { toast.error('Error al eliminar'); }
+  }
 
   async function handleToggleNegativeStock() {
     try {
@@ -376,6 +441,103 @@ export function SettingsPage() {
                   Facturas en caché: últimas 500. Para exportar todas usa el botón Excel en Informes.
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* ══ Announcements (Web Banner) ══ */}
+          <div className="card overflow-hidden">
+            <div className="px-6 py-4 bg-surface-50 border-b border-surface-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Megaphone size={18} className="text-navy-500 dark:text-gray-400" />
+                  <h2 className="font-display font-bold text-navy-900 dark:text-gray-100">Anuncios Web</h2>
+                </div>
+                <button
+                  onClick={handleAddAnnouncement}
+                  disabled={annSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-navy-900 dark:bg-gray-700 text-white text-xs font-display font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  <Plus size={14} />
+                  Agregar
+                </button>
+              </div>
+              <p className="text-[11px] text-navy-400 dark:text-gray-500 mt-1">
+                Franja superior de la tienda web. Los mensajes se alternan automáticamente.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              {annLoading ? (
+                <p className="text-sm text-navy-400 dark:text-gray-500 text-center py-4">Cargando...</p>
+              ) : announcements.length === 0 ? (
+                <p className="text-sm text-navy-400 dark:text-gray-500 text-center py-4">No hay anuncios. Agrega uno.</p>
+              ) : (
+                announcements.map((ann, idx) => (
+                  <div key={ann.id} className="border border-surface-200 rounded-xl p-4 space-y-3">
+                    {/* Header row */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] tracking-widest uppercase text-navy-400 dark:text-gray-500 font-display font-semibold">
+                        Anuncio {idx + 1}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            const updated = announcements.map((a) => a.id === ann.id ? { ...a, active: !a.active } : a);
+                            setAnnouncements(updated);
+                            handleSaveAnnouncement({ ...ann, active: !ann.active });
+                          }}
+                          title={ann.active ? 'Desactivar' : 'Activar'}
+                        >
+                          {ann.active ? (
+                            <ToggleRight size={22} className="text-emerald-500" />
+                          ) : (
+                            <ToggleLeft size={22} className="text-navy-300 dark:text-gray-600" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAnnouncement(ann.id)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Text input */}
+                    <div>
+                      <label className="text-[11px] text-navy-500 dark:text-gray-400 font-display font-semibold mb-1 block">Texto</label>
+                      <input
+                        type="text"
+                        value={ann.text}
+                        onChange={(e) => setAnnouncements(announcements.map((a) => a.id === ann.id ? { ...a, text: e.target.value } : a))}
+                        className="w-full px-3 py-2.5 text-sm border border-surface-200 rounded-lg bg-white dark:bg-gray-800 text-navy-900 dark:text-gray-100 focus:ring-2 focus:ring-navy-300 focus:border-navy-400 outline-none"
+                        placeholder="Texto del anuncio..."
+                      />
+                    </div>
+
+                    {/* Link input */}
+                    <div>
+                      <label className="text-[11px] text-navy-500 dark:text-gray-400 font-display font-semibold mb-1 block">Link (opcional)</label>
+                      <input
+                        type="text"
+                        value={ann.link}
+                        onChange={(e) => setAnnouncements(announcements.map((a) => a.id === ann.id ? { ...a, link: e.target.value } : a))}
+                        className="w-full px-3 py-2.5 text-sm border border-surface-200 rounded-lg bg-white dark:bg-gray-800 text-navy-900 dark:text-gray-100 focus:ring-2 focus:ring-navy-300 focus:border-navy-400 outline-none"
+                        placeholder="https://..."
+                      />
+                    </div>
+
+                    {/* Save button */}
+                    <button
+                      onClick={() => handleSaveAnnouncement(ann)}
+                      disabled={annSaving}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-xs font-display font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                    >
+                      <Save size={13} />
+                      Guardar
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
