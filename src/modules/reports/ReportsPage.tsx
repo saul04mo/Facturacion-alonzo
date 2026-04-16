@@ -87,8 +87,8 @@ export function ReportsPage() {
   const generalTotals = useMemo(() => {
     let su = 0, du = 0;
     filtered.forEach((inv: any) => {
-      // Skip returned/refunded orders
-      if (inv.status === 'Devuelto' || inv.status === 'Anulado') return;
+      // Skip returned/cancelled orders
+      if (inv.status === 'Devolución' || inv.status === 'Cancelado' || inv.status === 'Devuelto' || inv.status === 'Anulado') return;
       const dl = inv.deliveryCostUsd || 0;
       su += (inv.total || 0) - dl;
       du += dl;
@@ -101,6 +101,7 @@ export function ReportsPage() {
     let gt = 0, tq = 0, td = 0, oc = 0;
     filtered.forEach((inv: any) => {
       if (!inv.items) return;
+      if (inv.status === 'Devolución' || inv.status === 'Cancelado' || inv.status === 'Devuelto' || inv.status === 'Anulado') return;
       const iDel = inv.deliveryCostUsd || 0, iReal = inv.total - iDel;
       let iSub = 0; let hasM = false;
       inv.items.forEach((item: any) => {
