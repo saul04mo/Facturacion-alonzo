@@ -6,6 +6,7 @@ import type { ProductVariant } from '@/types';
 
 export interface ProductInput {
   name: string;
+  description?: string;
   gender: string;
   category: string;
   variants: ProductVariant[];
@@ -67,6 +68,7 @@ export async function saveProduct(id: string | null, data: ProductInput): Promis
 
   const productData: Record<string, any> = {
     name: data.name,
+    description: data.description || '',
     gender: data.gender,
     category: data.category || 'Sin Categoría',
     variants: data.variants,

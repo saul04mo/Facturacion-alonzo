@@ -116,6 +116,7 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
   const products = useAppStore((s) => s.products);
   const toast = useToast();
   const [name, setName] = useState(product?.name || '');
+  const [description, setDescription] = useState(product?.description || '');
   const [gender, setGender] = useState(product?.gender || 'Hombre');
   const [category, setCategory] = useState(product?.category || '');
   const [variants, setVariants] = useState<ProductVariant[]>(product?.variants || [{ size: '', color: '', price: 0, stock: 0 }]);
@@ -206,6 +207,7 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
 
       await saveProduct(product?.id || null, {
         name,
+        description,
         gender,
         category,
         variants,
@@ -237,6 +239,16 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
           <label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Categoría</label>
           <select value={category} onChange={(e) => setCategory(e.target.value)} className="input-field">
             <option value="">-- Selecciona --</option>{categories.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+        </div>
+        <div>
+          <label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Descripción <span className="text-navy-400 font-normal">(opcional)</span></label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="input-field resize-none"
+            rows={3}
+            placeholder="Ej: Pantalón cargo de mezclilla premium con 6 bolsillos funcionales..."
+          />
         </div>
 
         {/* Multi-Image Gallery Upload */}
