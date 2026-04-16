@@ -87,16 +87,11 @@ export function ReportsPage() {
   const generalTotals = useMemo(() => {
     let su = 0, du = 0;
     filtered.forEach((inv: any) => {
+      // Skip returned/refunded orders
+      if (inv.status === 'Devuelto' || inv.status === 'Anulado') return;
       const dl = inv.deliveryCostUsd || 0;
+      su += (inv.total || 0) - dl;
       du += dl;
-      // Calculate sales from items (most reliable) instead of total - delivery
-      if (inv.items && inv.items.length > 0) {
-        const itemsTotal = inv.items.reduce((acc: number, item: any) => acc + ((item.rowTotal || item.price * item.quantity) || 0), 0);
-        const discount = inv.totalDiscount?.value || 0;
-        su += Math.max(0, itemsTotal - discount);
-      } else {
-        su += Math.max(0, (inv.total || 0) - dl);
-      }
     });
     return { count: filtered.length, salesUsd: su, deliveryUsd: du, totalUsd: su + du };
   }, [filtered]);
