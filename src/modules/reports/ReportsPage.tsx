@@ -85,13 +85,13 @@ export function ReportsPage() {
   }, [invoices, startDate, endDate, sellerFilter, methodFilter, deliveryFilter, genderFilter, categoryFilter, products]);
 
   const generalTotals = useMemo(() => {
-    let su = 0, du = 0;
+    let totalAll = 0, du = 0;
     filtered.forEach((inv: any) => {
-      const dl = inv.deliveryCostUsd || 0;
-      su += (inv.total || 0) - dl;
-      du += dl;
+      totalAll += Number(inv.total) || 0;
+      du += Number(inv.deliveryCostUsd) || 0;
     });
-    return { count: filtered.length, salesUsd: su, deliveryUsd: du, totalUsd: su + du };
+    const su = totalAll - du;
+    return { count: filtered.length, salesUsd: su, deliveryUsd: du, totalUsd: totalAll };
   }, [filtered]);
 
   const productsSummary = useMemo(() => {
