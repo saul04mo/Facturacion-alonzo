@@ -10,7 +10,7 @@ import {
   DollarSign, RefreshCw, Check, AlertTriangle,
   Database, Users, Package, FileText, TrendingUp,
   Globe, Sun, Moon, Monitor, Clock, MapPin, Zap, Megaphone,
-  Plus, Trash2, Save, ToggleLeft, ToggleRight, Download, Globe, Upload,
+  Plus, Trash2, Save, ToggleLeft, ToggleRight, Download, Upload,
 } from 'lucide-react';
 
 export function SettingsPage() {
