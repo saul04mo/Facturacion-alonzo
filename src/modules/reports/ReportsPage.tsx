@@ -87,8 +87,6 @@ export function ReportsPage() {
   const generalTotals = useMemo(() => {
     let su = 0, du = 0;
     filtered.forEach((inv: any) => {
-      // Skip returned/cancelled orders
-      if (inv.status === 'Devolución' || inv.status === 'Cancelado' || inv.status === 'Devuelto' || inv.status === 'Anulado') return;
       const dl = inv.deliveryCostUsd || 0;
       su += (inv.total || 0) - dl;
       du += dl;
