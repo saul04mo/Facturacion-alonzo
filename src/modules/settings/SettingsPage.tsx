@@ -10,7 +10,7 @@ import {
   DollarSign, RefreshCw, Check, AlertTriangle,
   Database, Users, Package, FileText, TrendingUp,
   Globe, Sun, Moon, Monitor, Clock, MapPin, Zap, Megaphone,
-  Plus, Trash2, Save, ToggleLeft, ToggleRight, Download,
+  Plus, Trash2, Save, ToggleLeft, ToggleRight, Download, Globe, Upload,
 } from 'lucide-react';
 
 export function SettingsPage() {
@@ -47,6 +47,13 @@ export function SettingsPage() {
   const [cacheTTL, setCacheTTL] = useState(30);
   const [cacheSaving, setCacheSaving] = useState(false);
 
+  // Editable web settings
+  const [whatsappNumber, setWhatsappNumber] = useState('584123380976');
+  const [currencySymbol, setCurrencySymbol] = useState('€');
+  const [heroSubtitle, setHeroSubtitle] = useState('Newest Collection');
+  const [heroImage, setHeroImage] = useState('/images/hero-banner.jpg');
+  const [webSettingsSaving, setWebSettingsSaving] = useState(false);
+
   type SettingsTab = 'general' | 'rate' | 'pos' | 'web' | 'system';
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
@@ -76,6 +83,10 @@ export function SettingsPage() {
           const data = webSnap.data();
           setInstallPromptEnabled(data.installPromptEnabled !== false);
           if (typeof data.cacheTTL === 'number') setCacheTTL(data.cacheTTL);
+          if (data.whatsappNumber) setWhatsappNumber(data.whatsappNumber);
+          if (data.currencySymbol) setCurrencySymbol(data.currencySymbol);
+          if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+          if (data.heroImage) setHeroImage(data.heroImage);
         }
       } catch (e) { console.error('Error loading web settings:', e); }
       setAnnLoading(false);
@@ -107,6 +118,43 @@ export function SettingsPage() {
       toast.error('Error al guardar');
     }
     setCacheSaving(false);
+  }
+
+  async function handleSaveWebSettings() {
+    setWebSettingsSaving(true);
+    try {
+      const { doc: docRef, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      await setDoc(docRef(db, 'config', 'webSettings'), {
+        whatsappNumber,
+        currencySymbol,
+        heroSubtitle,
+        heroImage,
+      }, { merge: true });
+      toast.success('Configuración web guardada');
+    } catch {
+      toast.error('Error al guardar');
+    }
+    setWebSettingsSaving(false);
+  }
+
+  async function handleHeroImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const { storage } = await import('@/config/firebase');
+      const { compressImage } = await import('@/utils/imageUtils');
+      toast.info('Subiendo imagen...');
+      const compressed = await compressImage(file, 1920, 0.85);
+      const imgRef = ref(storage, `hero/hero-banner-${Date.now()}.${compressed.name.split('.').pop()}`);
+      const snap = await uploadBytes(imgRef, compressed);
+      const url = await getDownloadURL(snap.ref);
+      setHeroImage(url);
+      toast.success('Imagen subida. Recuerda guardar.');
+    } catch {
+      toast.error('Error al subir imagen');
+    }
   }
 
   async function handleSaveAnnouncement(ann: AnnouncementDoc) {
@@ -570,6 +618,98 @@ export function SettingsPage() {
                   Más tiempo = menos consultas a Firestore (más rápido). Menos tiempo = cambios se reflejan más rápido.
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* WhatsApp, Moneda, Hero Banner */}
+          <div className="card overflow-hidden">
+            <div className="px-6 py-4 bg-surface-50 border-b border-surface-200">
+              <div className="flex items-center gap-2">
+                <Globe size={18} className="text-emerald-500" />
+                <h2 className="font-display font-bold text-navy-900 dark:text-gray-100">Contenido de la Tienda</h2>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* WhatsApp */}
+              <div>
+                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">Número de WhatsApp</label>
+                <p className="text-[10px] text-navy-400 dark:text-gray-500 mb-2">Sin espacios ni guiones. Ej: 584123380976</p>
+                <input
+                  type="text"
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-4 py-2.5 border border-surface-200 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-100 focus:ring-1 focus:ring-navy-500 outline-none"
+                  placeholder="584123380976"
+                />
+              </div>
+
+              {/* Currency */}
+              <div>
+                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">Símbolo de moneda</label>
+                <div className="flex gap-2">
+                  {['€', '$', 'Bs'].map((sym) => (
+                    <button
+                      key={sym}
+                      onClick={() => setCurrencySymbol(sym)}
+                      className={`px-5 py-2 text-sm font-display font-bold rounded-lg transition-colors ${
+                        currencySymbol === sym
+                          ? 'bg-navy-900 dark:bg-gray-100 text-white dark:text-gray-900'
+                          : 'bg-surface-50 text-navy-500 dark:text-gray-400 border border-surface-200 hover:border-navy-300'
+                      }`}
+                    >
+                      {sym}
+                    </button>
+                  ))}
+                  <input
+                    type="text"
+                    value={currencySymbol}
+                    onChange={(e) => setCurrencySymbol(e.target.value)}
+                    className="w-20 px-3 py-2 border border-surface-200 rounded-lg text-sm text-center bg-white dark:bg-gray-800 dark:text-gray-100 focus:ring-1 focus:ring-navy-500 outline-none"
+                    placeholder="€"
+                    maxLength={5}
+                  />
+                </div>
+              </div>
+
+              {/* Hero subtitle */}
+              <div>
+                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">Subtítulo del Banner</label>
+                <p className="text-[10px] text-navy-400 dark:text-gray-500 mb-2">Texto que aparece debajo del logo en la portada.</p>
+                <input
+                  type="text"
+                  value={heroSubtitle}
+                  onChange={(e) => setHeroSubtitle(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-surface-200 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-100 focus:ring-1 focus:ring-navy-500 outline-none"
+                  placeholder="Newest Collection"
+                />
+              </div>
+
+              {/* Hero image */}
+              <div>
+                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">Imagen del Banner</label>
+                <p className="text-[10px] text-navy-400 dark:text-gray-500 mb-2">Foto de portada de la tienda. Se recomienda 1920×1080 o superior.</p>
+                <div className="flex items-center gap-3">
+                  {heroImage && (
+                    <div className="w-24 h-14 rounded-lg overflow-hidden border border-surface-200 flex-shrink-0">
+                      <img src={heroImage} alt="Banner" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <label className="flex items-center gap-1.5 px-4 py-2 bg-surface-50 border border-surface-200 text-navy-600 dark:text-gray-300 text-xs font-display font-semibold rounded-lg hover:border-navy-300 transition-colors cursor-pointer">
+                    <Upload size={14} />
+                    Cambiar imagen
+                    <input type="file" accept="image/*" onChange={handleHeroImageUpload} className="hidden" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Save button */}
+              <button
+                onClick={handleSaveWebSettings}
+                disabled={webSettingsSaving}
+                className="w-full py-3 bg-emerald-600 text-white text-xs font-display font-bold tracking-wider rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                {webSettingsSaving ? 'Guardando...' : 'GUARDAR CAMBIOS'}
+              </button>
             </div>
           </div>
 
