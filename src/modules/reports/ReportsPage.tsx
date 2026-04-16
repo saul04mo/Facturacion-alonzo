@@ -206,9 +206,9 @@ export function ReportsPage() {
         <div className="space-y-4 animate-fade-up">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[{ i: <Hash size={18} />, l: 'Pedidos', v: String(generalTotals.count), c: 'text-amber-600' },
-              { i: <ShoppingBag size={18} />, l: 'Ventas', v: format(generalTotals.salesUsd), c: 'text-navy-900' },
+              { i: <ShoppingBag size={18} />, l: 'Ventas (Sin Delivery)', v: `${format(generalTotals.salesUsd)} (${format(generalTotals.totalUsd)}-${format(generalTotals.deliveryUsd)})`, c: 'text-navy-900' },
               { i: <BarChart3 size={18} />, l: 'Delivery', v: format(generalTotals.deliveryUsd), c: 'text-blue-600' },
-              { i: <DollarSign size={18} />, l: 'Total', v: format(generalTotals.totalUsd), c: 'text-emerald-600' }].map((c) => (
+              { i: <DollarSign size={18} />, l: 'Total General', v: format(generalTotals.totalUsd), c: 'text-emerald-600' }].map((c) => (
               <div key={c.l} className="card p-4 hover-lift"><div className="flex items-center gap-2 mb-2"><span className="text-navy-400">{c.i}</span>
                 <span className="text-[10px] font-display font-semibold text-navy-400 uppercase">{c.l}</span></div>
                 <p className={`text-xl font-mono font-bold ${c.c}`}>{c.v}</p></div>
