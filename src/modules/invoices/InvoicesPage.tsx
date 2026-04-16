@@ -150,9 +150,14 @@ export function InvoicesPage() {
   }, [invoices, serverInvoices, startDate, endDate, statusFilter, search]);
 
   const totals = useMemo(() => {
-    let sales = 0, delivery = 0;
-    filtered.forEach((inv: any) => { if (inv.status === 'Finalizado' || inv.status === 'Pendiente de pago') { sales += inv.total || 0; delivery += inv.deliveryCostUsd || 0; } });
-    return { sales, delivery, general: sales + delivery };
+    let totalAll = 0, delivery = 0;
+    filtered.forEach((inv: any) => {
+      if (inv.status === 'Finalizado' || inv.status === 'Pendiente de pago') {
+        totalAll += Number(inv.total) || 0;
+        delivery += Number(inv.deliveryCostUsd) || 0;
+      }
+    });
+    return { sales: totalAll - delivery, delivery, general: totalAll };
   }, [filtered]);
 
   async function refetchIfServer() {
