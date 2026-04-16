@@ -43,6 +43,10 @@ export function SettingsPage() {
   // PWA Install Prompt toggle
   const [installPromptEnabled, setInstallPromptEnabled] = useState(true);
 
+  // Cache TTL (seconds)
+  const [cacheTTL, setCacheTTL] = useState(30);
+  const [cacheSaving, setCacheSaving] = useState(false);
+
   type SettingsTab = 'general' | 'rate' | 'pos' | 'web' | 'system';
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
@@ -71,6 +75,7 @@ export function SettingsPage() {
         if (webSnap.exists()) {
           const data = webSnap.data();
           setInstallPromptEnabled(data.installPromptEnabled !== false);
+          if (typeof data.cacheTTL === 'number') setCacheTTL(data.cacheTTL);
         }
       } catch (e) { console.error('Error loading web settings:', e); }
       setAnnLoading(false);
@@ -89,6 +94,19 @@ export function SettingsPage() {
       toast.error('Error al guardar');
       setInstallPromptEnabled(!newVal);
     }
+  }
+
+  async function handleSaveCacheTTL() {
+    setCacheSaving(true);
+    try {
+      const { doc: docRef, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      await setDoc(docRef(db, 'config', 'webSettings'), { cacheTTL }, { merge: true });
+      toast.success(`Cache actualizado: ${cacheTTL} segundos`);
+    } catch {
+      toast.error('Error al guardar');
+    }
+    setCacheSaving(false);
   }
 
   async function handleSaveAnnouncement(ann: AnnouncementDoc) {
@@ -509,6 +527,49 @@ export function SettingsPage() {
                 enabled={installPromptEnabled}
                 onToggle={handleToggleInstallPrompt}
               />
+
+              {/* Cache TTL */}
+              <div className="p-4 rounded-xl border border-surface-200">
+                <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100 mb-1">
+                  Cache de productos
+                </p>
+                <p className="text-[11px] text-navy-400 dark:text-gray-500 mb-3">
+                  Tiempo que la web guarda los productos en memoria antes de consultar Firestore otra vez.
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-1">
+                    {[
+                      { label: '10s', value: 10 },
+                      { label: '30s', value: 30 },
+                      { label: '1m', value: 60 },
+                      { label: '5m', value: 300 },
+                      { label: '15m', value: 900 },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setCacheTTL(opt.value)}
+                        className={`flex-1 py-2 text-xs font-display font-semibold rounded-lg transition-colors ${
+                          cacheTTL === opt.value
+                            ? 'bg-navy-900 dark:bg-gray-100 text-white dark:text-gray-900'
+                            : 'bg-surface-50 text-navy-500 dark:text-gray-400 border border-surface-200 hover:border-navy-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={handleSaveCacheTTL}
+                    disabled={cacheSaving}
+                    className="px-4 py-2 bg-emerald-600 text-white text-xs font-display font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                  >
+                    {cacheSaving ? '...' : 'Guardar'}
+                  </button>
+                </div>
+                <p className="text-[10px] text-navy-400 dark:text-gray-500 mt-2">
+                  Más tiempo = menos consultas a Firestore (más rápido). Menos tiempo = cambios se reflejan más rápido.
+                </p>
+              </div>
             </div>
           </div>
 
