@@ -91,6 +91,7 @@ export function ReportsPage() {
       du += Number(inv.deliveryCostUsd) || 0;
     });
     const su = totalAll - du;
+    console.log('[REPORT DEBUG]', { totalAll, du, su, count: filtered.length });
     return { count: filtered.length, salesUsd: su, deliveryUsd: du, totalUsd: totalAll };
   }, [filtered]);
 
