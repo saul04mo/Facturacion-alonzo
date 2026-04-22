@@ -330,6 +330,7 @@ export interface PayrollReceipt {
   employeeCargo: string;
   fechaIngreso: string;
   departamento: string;
+  subTipo?: 'quincena' | 'ultimo';
   salarioBase: number;
   cestaticket: number;
   horasExtrasDiurnas: number;

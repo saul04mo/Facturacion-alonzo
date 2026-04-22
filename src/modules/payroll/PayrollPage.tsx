@@ -15,7 +15,7 @@ import {
   createPeriod, getPayrollPeriods,
   saveReceipts, getReceiptsForPeriod, markPeriodPaid,
 } from './payrollService';
-import { calculatePayroll, buildReceipt, countMondaysInMonth, type PeriodConfig } from './payrollEngine';
+import { calculatePayroll, buildReceipt, countMondaysInMonth, round, type PeriodConfig } from './payrollEngine';
 import { printPayrollReceipt } from './payrollReceiptPdf';
 import { todayVE } from '@/utils/dateUtils';
 
@@ -68,8 +68,7 @@ export function PayrollPage() {
   // New period form
   const [showPeriodModal, setShowPeriodModal] = useState(false);
   const [periodForm, setPeriodForm] = useState({
-    tipo: 'quincenal' as 'semanal' | 'quincenal' | 'mensual',
-    subTipo: 'quincena' as 'quincena' | 'ultimo',
+    tipo: 'mensual' as 'semanal' | 'quincenal' | 'mensual',
     fechaInicio: todayVE().slice(0, 8) + '01',
     fechaFin: todayVE(),
     tasaBcv: exchangeRate,
@@ -167,7 +166,6 @@ export function PayrollPage() {
       const lunesDelMes = countMondaysInMonth(startDate.getFullYear(), startDate.getMonth());
       const id = await createPeriod({
         tipo: periodForm.tipo,
-        subTipo: periodForm.tipo === 'quincenal' ? periodForm.subTipo : undefined,
         fechaInicio: periodForm.fechaInicio,
         fechaFin: periodForm.fechaFin,
         estado: 'borrador',
@@ -200,7 +198,6 @@ export function PayrollPage() {
       const startDate = new Date(selectedPeriod.fechaInicio);
       const config: PeriodConfig = {
         tipo: selectedPeriod.tipo,
-        subTipo: selectedPeriod.subTipo,
         fechaInicio: selectedPeriod.fechaInicio,
         fechaFin: selectedPeriod.fechaFin,
         tasaBcv: selectedPeriod.tasaBcv,
@@ -212,9 +209,7 @@ export function PayrollPage() {
 
       // Fetch sales per employee — query Firestore directly for the full date range
       const salesByUser: Record<string, number> = {};
-      const salesStart = selectedPeriod.subTipo === 'ultimo'
-        ? selectedPeriod.fechaInicio.replace(/-\d{2}$/, '-01')
-        : selectedPeriod.fechaInicio;
+      const salesStart = selectedPeriod.fechaInicio;
 
       try {
         const { collection: col, getDocs, query: q, where, orderBy, Timestamp: Ts } = await import('firebase/firestore');
@@ -253,12 +248,30 @@ export function PayrollPage() {
 
       activeEmployees.forEach((emp) => {
         const ventaMesUsd = emp.userId ? (salesByUser[emp.userId] || 0) : 0;
-        const calc = calculatePayroll(emp, incidents, config, ventaMesUsd);
-        const receipt = buildReceipt(emp, calc, selectedPeriod.id, selectedPeriod.tasaBcv);
-        allReceipts.push(receipt);
-        totA += calc.totalAsignaciones;
-        totD += calc.totalDeducciones;
-        totN += calc.netoAPagar;
+
+        // ── QUINCENA: solo salario base / 2 ──
+        const quincenaCalc: CalcResult = {
+          salarioBase: round((emp.salarioBaseVed || 0) / 2),
+          cestaticket: 0, horasExtrasDiurnas: 0, horasExtrasNocturnas: 0,
+          bonoNocturno: 0, feriadosTrabajados: 0, bonoVacacional: 0,
+          utilidades: 0, bonificacionUsd: 0, ventaMes: 0, comisionVentas: 0,
+          otrasAsignaciones: 0, totalAsignaciones: round((emp.salarioBaseVed || 0) / 2),
+          ivss: 0, faov: 0, rpe: 0, inces: 0, otrasDeducciones: 0, totalDeducciones: 0,
+          netoAPagar: round((emp.salarioBaseVed || 0) / 2),
+          netoUsd: round(config.tasaBcv > 0 ? (emp.salarioBaseVed || 0) / 2 / config.tasaBcv : 0),
+        };
+        const quincenaReceipt = { ...buildReceipt(emp, quincenaCalc, selectedPeriod.id, config.tasaBcv), subTipo: 'quincena' as const };
+        allReceipts.push(quincenaReceipt);
+
+        // ── ÚLTIMO: salario/2 + cestaticket + comisión + extras + deducciones ──
+        const ultimoConfig = { ...config, subTipo: 'ultimo' as const };
+        const ultimoCalc = calculatePayroll(emp, incidents, ultimoConfig, ventaMesUsd);
+        const ultimoReceipt = { ...buildReceipt(emp, ultimoCalc, selectedPeriod.id, config.tasaBcv), subTipo: 'ultimo' as const };
+        allReceipts.push(ultimoReceipt);
+
+        totA += quincenaCalc.totalAsignaciones + ultimoCalc.totalAsignaciones;
+        totD += quincenaCalc.totalDeducciones + ultimoCalc.totalDeducciones;
+        totN += quincenaCalc.netoAPagar + ultimoCalc.netoAPagar;
       });
 
       await saveReceipts(selectedPeriod.id, allReceipts, {
@@ -283,8 +296,7 @@ export function PayrollPage() {
 
   function getPeriodLabel(p: PayrollPeriod): string {
     const tipo = p.tipo.charAt(0).toUpperCase() + p.tipo.slice(1);
-    const sub = p.subTipo === 'quincena' ? ' (Quincena)' : p.subTipo === 'ultimo' ? ' (Último)' : '';
-    return `${tipo}${sub} | ${p.fechaInicio} → ${p.fechaFin}`;
+    return `${tipo} | ${p.fechaInicio} → ${p.fechaFin}`;
   }
 
   // ==================== RENDER ====================
@@ -445,16 +457,20 @@ export function PayrollPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead><tr className="border-b border-surface-200 bg-surface-50">
-                    {['Empleado', 'Cédula', 'Cargo', 'Venta Mes ($)', 'Comisión 2%', 'Asignaciones', 'Deducciones', 'Neto (Bs)', 'Neto (USD)', ''].map((h) => (
+                    {['Empleado', 'Pago', 'Cédula', 'Venta Mes ($)', 'Comisión', 'Asignaciones', 'Deducciones', 'Neto (Bs)', 'Neto (USD)', ''].map((h) => (
                       <th key={h} className="text-left text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
                     ))}
                   </tr></thead>
                   <tbody className="divide-y divide-surface-100">
                     {receipts.map((r) => (
-                      <tr key={r.id} className="hover:bg-surface-50 transition-colors hover-lift">
+                      <tr key={r.id} className={`hover:bg-surface-50 transition-colors ${r.subTipo === 'quincena' ? 'bg-surface-50/50' : ''}`}>
                         <td className="px-4 py-3 text-sm font-display font-medium text-navy-900">{r.employeeName}</td>
+                        <td className="px-4 py-3">
+                          <span className={`badge text-[9px] ${r.subTipo === 'quincena' ? 'badge-blue' : 'badge-amber'}`}>
+                            {r.subTipo === 'quincena' ? 'QUINCENA' : 'ÚLTIMO'}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-sm font-mono text-navy-500">{r.employeeCedula}</td>
-                        <td className="px-4 py-3 text-xs text-navy-400">{r.employeeCargo}</td>
                         <td className="px-4 py-3 font-mono text-sm text-blue-600">${(r.ventaMes || 0).toFixed(2)}</td>
                         <td className="px-4 py-3 font-mono text-sm text-amber-600">{(r.comisionVentas || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</td>
                         <td className="px-4 py-3 font-mono text-sm text-emerald-600">{r.totalAsignaciones.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
@@ -695,43 +711,14 @@ export function PayrollPage() {
               <label className="block text-xs font-display font-medium text-navy-700 mb-1">Tipo de Nómina</label>
               <select value={periodForm.tipo} onChange={(e) => setPeriodForm({ ...periodForm, tipo: e.target.value as any })}
                 className="input-field text-sm">
-                <option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual">Mensual</option>
+                <option value="mensual">Mensual</option><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option>
               </select>
-            </div>
-            {periodForm.tipo === 'quincenal' && (
-              <div>
-                <label className="block text-xs font-display font-medium text-navy-700 mb-1">Pago</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPeriodForm({ ...periodForm, subTipo: 'quincena' })}
-                    className={`py-2.5 rounded-lg text-xs font-display font-bold transition-colors ${
-                      periodForm.subTipo === 'quincena'
-                        ? 'bg-navy-900 text-white'
-                        : 'bg-surface-50 text-navy-500 border border-surface-200'
-                    }`}
-                  >
-                    QUINCENA (Solo salario)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPeriodForm({ ...periodForm, subTipo: 'ultimo' })}
-                    className={`py-2.5 rounded-lg text-xs font-display font-bold transition-colors ${
-                      periodForm.subTipo === 'ultimo'
-                        ? 'bg-navy-900 text-white'
-                        : 'bg-surface-50 text-navy-500 border border-surface-200'
-                    }`}
-                  >
-                    ÚLTIMO (Salario + extras)
-                  </button>
-                </div>
+              {periodForm.tipo === 'mensual' && (
                 <p className="text-[10px] text-navy-400 mt-1">
-                  {periodForm.subTipo === 'quincena'
-                    ? 'Solo paga la mitad del salario base. Sin cestaticket, comisiones ni extras.'
-                    : 'Paga salario + cestaticket + comisión sobre ventas + horas extra + bonos + deducciones.'}
+                  Genera automáticamente 2 recibos por empleado: QUINCENA (solo salario) y ÚLTIMO (salario + cestaticket + comisiones + extras).
                 </p>
-              </div>
-            )}
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-xs font-display font-medium text-navy-700 mb-1">Fecha Inicio</label>
                 <input type="date" value={periodForm.fechaInicio} onChange={(e) => setPeriodForm({ ...periodForm, fechaInicio: e.target.value })} className="input-field text-sm" /></div>
