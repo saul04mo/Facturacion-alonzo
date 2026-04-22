@@ -14,6 +14,9 @@ import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, Ch
 // VARIANT EDITOR (Modal)
 // ============================
 function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onChange: (v: ProductVariant[]) => void }) {
+  const [bulkPrice, setBulkPrice] = useState('');
+  const [bulkStock, setBulkStock] = useState('');
+
   const update = (i: number, field: keyof ProductVariant, value: string | number) => {
     const copy = [...variants]; copy[i] = { ...copy[i], [field]: value }; onChange(copy);
   };
@@ -33,6 +36,20 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
     onChange(copy);
   }
 
+  function applyBulkPrice() {
+    const price = parseFloat(bulkPrice);
+    if (isNaN(price) || price < 0) return;
+    onChange(variants.map(v => ({ ...v, price })));
+    setBulkPrice('');
+  }
+
+  function applyBulkStock() {
+    const stock = parseInt(bulkStock);
+    if (isNaN(stock) || stock < 0) return;
+    onChange(variants.map(v => ({ ...v, stock })));
+    setBulkStock('');
+  }
+
   const missingBarcodes = variants.filter(v => !v.barcode).length;
 
   return (
@@ -50,6 +67,49 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
         </div>
       </div>
       {variants.length === 0 && <p className="text-sm text-navy-300 text-center py-4">Agrega al menos una variante.</p>}
+
+      {/* Bulk change bar */}
+      {variants.length > 1 && (
+        <div className="flex items-center gap-2 p-2.5 bg-navy-900/5 dark:bg-navy-800/30 rounded-lg border border-dashed border-navy-300 dark:border-navy-600">
+          <span className="text-[10px] font-display font-semibold text-navy-400 uppercase whitespace-nowrap">Cambio masivo:</span>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              step="0.01"
+              value={bulkPrice}
+              onChange={(e) => setBulkPrice(e.target.value)}
+              placeholder="Precio"
+              className="input-field text-xs py-1 px-2 w-20 font-mono"
+            />
+            <button
+              type="button"
+              onClick={applyBulkPrice}
+              disabled={!bulkPrice}
+              className="px-2 py-1 text-[10px] font-display font-bold bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors disabled:opacity-40"
+            >
+              $ Aplicar
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              value={bulkStock}
+              onChange={(e) => setBulkStock(e.target.value)}
+              placeholder="Stock"
+              className="input-field text-xs py-1 px-2 w-20 font-mono"
+            />
+            <button
+              type="button"
+              onClick={applyBulkStock}
+              disabled={!bulkStock}
+              className="px-2 py-1 text-[10px] font-display font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-40"
+            >
+              # Aplicar
+            </button>
+          </div>
+        </div>
+      )}
+
       {variants.map((v, i) => (
         <div key={i} className="p-3 bg-surface-50 rounded-lg border border-surface-200 space-y-2">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
