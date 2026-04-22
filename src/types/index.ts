@@ -303,6 +303,7 @@ export interface Employee {
 export interface PayrollPeriod {
   id: string;
   tipo: 'semanal' | 'quincenal' | 'mensual';
+  subTipo?: 'quincena' | 'ultimo'; // Solo aplica cuando tipo es 'quincenal'
   fechaInicio: string;
   fechaFin: string;
   estado: 'borrador' | 'calculado' | 'aprobado' | 'pagado';

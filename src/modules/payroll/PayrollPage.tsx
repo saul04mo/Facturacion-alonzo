@@ -68,7 +68,8 @@ export function PayrollPage() {
   // New period form
   const [showPeriodModal, setShowPeriodModal] = useState(false);
   const [periodForm, setPeriodForm] = useState({
-    tipo: 'mensual' as 'semanal' | 'quincenal' | 'mensual',
+    tipo: 'quincenal' as 'semanal' | 'quincenal' | 'mensual',
+    subTipo: 'quincena' as 'quincena' | 'ultimo',
     fechaInicio: todayVE().slice(0, 8) + '01',
     fechaFin: todayVE(),
     tasaBcv: exchangeRate,
@@ -166,6 +167,7 @@ export function PayrollPage() {
       const lunesDelMes = countMondaysInMonth(startDate.getFullYear(), startDate.getMonth());
       const id = await createPeriod({
         tipo: periodForm.tipo,
+        subTipo: periodForm.tipo === 'quincenal' ? periodForm.subTipo : undefined,
         fechaInicio: periodForm.fechaInicio,
         fechaFin: periodForm.fechaFin,
         estado: 'borrador',
@@ -198,6 +200,7 @@ export function PayrollPage() {
       const startDate = new Date(selectedPeriod.fechaInicio);
       const config: PeriodConfig = {
         tipo: selectedPeriod.tipo,
+        subTipo: selectedPeriod.subTipo,
         fechaInicio: selectedPeriod.fechaInicio,
         fechaFin: selectedPeriod.fechaFin,
         tasaBcv: selectedPeriod.tasaBcv,
@@ -208,11 +211,15 @@ export function PayrollPage() {
       };
 
       // Fetch sales per employee for the period
+      // For "ultimo", get sales from the ENTIRE month (commission is on full month sales)
       const salesByUser: Record<string, number> = {};
+      const salesStart = selectedPeriod.subTipo === 'ultimo'
+        ? selectedPeriod.fechaInicio.replace(/-\d{2}$/, '-01') // First day of month
+        : selectedPeriod.fechaInicio;
       const periodInvoices = invoices.filter((inv: any) => {
         if (inv.status !== 'Finalizado' && inv.status !== 'Pendiente de pago') return false;
         const invDate = inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
-        const start = new Date(selectedPeriod.fechaInicio + 'T00:00:00');
+        const start = new Date(salesStart + 'T00:00:00');
         const end = new Date(selectedPeriod.fechaFin + 'T23:59:59');
         return invDate >= start && invDate <= end;
       });
@@ -259,7 +266,9 @@ export function PayrollPage() {
   }
 
   function getPeriodLabel(p: PayrollPeriod): string {
-    return `${p.tipo.charAt(0).toUpperCase() + p.tipo.slice(1)} | ${p.fechaInicio} → ${p.fechaFin}`;
+    const tipo = p.tipo.charAt(0).toUpperCase() + p.tipo.slice(1);
+    const sub = p.subTipo === 'quincena' ? ' (Quincena)' : p.subTipo === 'ultimo' ? ' (Último)' : '';
+    return `${tipo}${sub} | ${p.fechaInicio} → ${p.fechaFin}`;
   }
 
   // ==================== RENDER ====================
@@ -673,6 +682,40 @@ export function PayrollPage() {
                 <option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual">Mensual</option>
               </select>
             </div>
+            {periodForm.tipo === 'quincenal' && (
+              <div>
+                <label className="block text-xs font-display font-medium text-navy-700 mb-1">Pago</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPeriodForm({ ...periodForm, subTipo: 'quincena' })}
+                    className={`py-2.5 rounded-lg text-xs font-display font-bold transition-colors ${
+                      periodForm.subTipo === 'quincena'
+                        ? 'bg-navy-900 text-white'
+                        : 'bg-surface-50 text-navy-500 border border-surface-200'
+                    }`}
+                  >
+                    QUINCENA (Solo salario)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPeriodForm({ ...periodForm, subTipo: 'ultimo' })}
+                    className={`py-2.5 rounded-lg text-xs font-display font-bold transition-colors ${
+                      periodForm.subTipo === 'ultimo'
+                        ? 'bg-navy-900 text-white'
+                        : 'bg-surface-50 text-navy-500 border border-surface-200'
+                    }`}
+                  >
+                    ÚLTIMO (Salario + extras)
+                  </button>
+                </div>
+                <p className="text-[10px] text-navy-400 mt-1">
+                  {periodForm.subTipo === 'quincena'
+                    ? 'Solo paga la mitad del salario base. Sin cestaticket, comisiones ni extras.'
+                    : 'Paga salario + cestaticket + comisión sobre ventas + horas extra + bonos + deducciones.'}
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-xs font-display font-medium text-navy-700 mb-1">Fecha Inicio</label>
                 <input type="date" value={periodForm.fechaInicio} onChange={(e) => setPeriodForm({ ...periodForm, fechaInicio: e.target.value })} className="input-field text-sm" /></div>

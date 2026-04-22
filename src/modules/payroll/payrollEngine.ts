@@ -57,6 +57,7 @@ export function yearsOfService(fechaIngreso: string): number {
 // ================================
 export interface PeriodConfig {
   tipo: 'semanal' | 'quincenal' | 'mensual';
+  subTipo?: 'quincena' | 'ultimo';
   fechaInicio: string;
   fechaFin: string;
   tasaBcv: number;
@@ -103,18 +104,53 @@ export function calculatePayroll(
   ventaMesUsd: number = 0
 ): CalcResult {
   const { tasaBcv, cestaticketDiario, lunesDelMes, diasUtilidades } = config;
+  const esQuincena = config.tipo === 'quincenal' && config.subTipo === 'quincena';
+  const esUltimo = config.tipo === 'quincenal' && config.subTipo === 'ultimo';
 
   // Proportional factor for the period
   const periodDays = countBusinessDays(config.fechaInicio, config.fechaFin);
-  const factor = config.tipo === 'mensual' ? 1 : config.tipo === 'quincenal' ? 0.5 : 7 / 30;
+  const factor = config.tipo === 'mensual' ? 1 : 0.5;
 
   // Base calculations
   const salarioDiario = (employee.salarioBaseVed || 0) / 30;
   const salarioSemanal = (employee.salarioBaseVed || 0) / 4.33;
   const salarioBase = (employee.salarioBaseVed || 0) * factor;
 
-  // Cestaticket
-  const cestaticket = cestaticketDiario * periodDays;
+  // ── QUINCENA: solo salario base, nada más ──
+  if (esQuincena) {
+    return {
+      salarioBase: round(salarioBase),
+      cestaticket: 0,
+      horasExtrasDiurnas: 0,
+      horasExtrasNocturnas: 0,
+      bonoNocturno: 0,
+      feriadosTrabajados: 0,
+      bonoVacacional: 0,
+      utilidades: 0,
+      bonificacionUsd: 0,
+      ventaMes: 0,
+      comisionVentas: 0,
+      otrasAsignaciones: 0,
+      totalAsignaciones: round(salarioBase),
+      ivss: 0,
+      faov: 0,
+      rpe: 0,
+      inces: 0,
+      otrasDeducciones: 0,
+      totalDeducciones: 0,
+      netoAPagar: round(salarioBase),
+      netoUsd: round(tasaBcv > 0 ? salarioBase / tasaBcv : 0),
+    };
+  }
+
+  // ── ÚLTIMO o MENSUAL: salario + cestaticket + comisión + extras + deducciones ──
+
+  // Cestaticket (en último se calcula sobre los días del mes completo)
+  const cestaticketDias = esUltimo ? countBusinessDays(
+    config.fechaInicio.replace(/-\d{2}$/, '-01'), // primer día del mes
+    config.fechaFin
+  ) : periodDays;
+  const cestaticket = cestaticketDiario * cestaticketDias;
 
   // Aggregate incidents
   const empIncidents = incidents.filter((i) => i.employeeId === employee.id);
@@ -143,15 +179,17 @@ export function calculatePayroll(
   // Bono Vacacional: 15 días + 1 por año de servicio, prorrateado mensual
   const years = yearsOfService(employee.fechaIngreso);
   const diasBonoVac = Math.min(15 + years, 30); // cap at 30
-  const bonoVacacional = (salarioDiario * diasBonoVac / 12) * factor;
+  // En último: bono vacacional y utilidades sobre el mes completo (no se pagaron en quincena)
+  const factorExtras = esUltimo ? 1 : factor;
+  const bonoVacacional = (salarioDiario * diasBonoVac / 12) * factorExtras;
 
   // Utilidades: prorrateado mensual (días/12)
-  const utilidades = (salarioDiario * Math.min(Math.max(diasUtilidades, 30), 120) / 12) * factor;
+  const utilidades = (salarioDiario * Math.min(Math.max(diasUtilidades, 30), 120) / 12) * factorExtras;
 
-  // USD bonus (converted to VED for totals)
-  const bonificacionUsdVed = (employee.bonificacionUsd || 0) * tasaBcv * factor;
+  // USD bonus (en último se paga completo, no la mitad)
+  const bonificacionUsdVed = (employee.bonificacionUsd || 0) * tasaBcv * (esUltimo ? 1 : factor);
 
-  // Sales commission
+  // Sales commission (ventas del mes completo, solo se paga en último)
   const comisionPct = Number(employee.comisionPorcentaje) || 0;
   const ventaMes = ventaMesUsd || 0;
   const comisionVentas = ventaMes * (comisionPct / 100) * tasaBcv;
@@ -163,10 +201,11 @@ export function calculatePayroll(
     salarioBase + cestaticket + horasExtrasDiurnas + horasExtrasNocturnas +
     bonoNocturno + feriadosTrabajados + bonoVacacional + utilidades + bonificacionUsdVed + comisionVentas;
 
-  // Deductions (LOTTT) — based on lunes del mes
-  const ivss = salarioSemanal * 0.04 * lunesDelMes * factor;
-  const faov = salarioSemanal * 0.01 * lunesDelMes * factor;
-  const rpe = salarioSemanal * 0.005 * lunesDelMes * factor;
+  // Deducciones LOTTT — en último se deducen sobre el mes completo
+  const factorDeduc = esUltimo ? 1 : factor;
+  const ivss = salarioSemanal * 0.04 * lunesDelMes * factorDeduc;
+  const faov = salarioSemanal * 0.01 * lunesDelMes * factorDeduc;
+  const rpe = salarioSemanal * 0.005 * lunesDelMes * factorDeduc;
   const inces = utilidades * 0.005;
 
   const totalDeducciones = ivss + faov + rpe + inces + descuentoFaltas;
