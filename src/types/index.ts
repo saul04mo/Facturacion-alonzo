@@ -290,6 +290,8 @@ export interface Employee {
   estado: 'activo' | 'reposo' | 'vacaciones' | 'egresado';
   salarioBaseVed: number;
   bonificacionUsd: number;
+  comisionPorcentaje: number; // % de comisión sobre ventas (ej: 2)
+  userId?: string; // uid del AppUser vinculado (para buscar sus ventas)
   cuentaBancaria?: string;
   banco?: string;
   numIvss?: string;
@@ -336,6 +338,8 @@ export interface PayrollReceipt {
   bonoVacacional: number;
   utilidades: number;
   bonificacionUsd: number;
+  ventaMes: number;
+  comisionVentas: number;
   otrasAsignaciones: number;
   totalAsignaciones: number;
   ivss: number;

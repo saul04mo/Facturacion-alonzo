@@ -35,13 +35,15 @@ const EMPTY_EMPLOYEE: Omit<Employee, 'id'> = {
   nombre: '', apellido: '', cedula: '', phone: '', email: '', direccion: '',
   fechaNacimiento: '', cargo: '', departamento: '', fechaIngreso: todayVE(),
   tipoContrato: 'fijo', jornadaLaboral: 'diurna', estado: 'activo',
-  salarioBaseVed: 0, bonificacionUsd: 0, cuentaBancaria: '', banco: '', numIvss: '',
+  salarioBaseVed: 0, bonificacionUsd: 0, comisionPorcentaje: 2, userId: '', cuentaBancaria: '', banco: '', numIvss: '',
 };
 
 export function PayrollPage() {
   const employees = useAppStore((s) => s.employees);
   const currentUser = useAppStore((s) => s.currentUser);
   const exchangeRate = useAppStore((s) => s.exchangeRate);
+  const invoices = useAppStore((s) => s.invoices);
+  const users = useAppStore((s) => s.users);
   const toast = useToast();
 
   const [tab, setTab] = useState<Tab>('empleados');
@@ -205,11 +207,30 @@ export function PayrollPage() {
         diasUtilidades: periodForm.diasUtilidades,
       };
 
+      // Fetch sales per employee for the period
+      const salesByUser: Record<string, number> = {};
+      const periodInvoices = invoices.filter((inv: any) => {
+        if (inv.status !== 'Finalizado' && inv.status !== 'Pendiente de pago') return false;
+        const invDate = inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
+        const start = new Date(selectedPeriod.fechaInicio + 'T00:00:00');
+        const end = new Date(selectedPeriod.fechaFin + 'T23:59:59');
+        return invDate >= start && invDate <= end;
+      });
+
+      periodInvoices.forEach((inv: any) => {
+        const uid = inv.sellerUid;
+        if (!uid || uid === 'WEB' || uid === 'APP') return;
+        const deliveryCost = Number(inv.deliveryCostUsd) || 0;
+        const salesAmount = (Number(inv.total) || 0) - deliveryCost;
+        salesByUser[uid] = (salesByUser[uid] || 0) + salesAmount;
+      });
+
       const allReceipts: Omit<PayrollReceipt, 'id'>[] = [];
       let totA = 0, totD = 0, totN = 0;
 
       activeEmployees.forEach((emp) => {
-        const calc = calculatePayroll(emp, incidents, config);
+        const ventaMesUsd = emp.userId ? (salesByUser[emp.userId] || 0) : 0;
+        const calc = calculatePayroll(emp, incidents, config, ventaMesUsd);
         const receipt = buildReceipt(emp, calc, selectedPeriod.id, selectedPeriod.tasaBcv);
         allReceipts.push(receipt);
         totA += calc.totalAsignaciones;
@@ -307,7 +328,7 @@ export function PayrollPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead><tr className="border-b border-surface-200 bg-surface-50">
-                  {['Nombre', 'Cédula', 'Cargo', 'Depto.', 'Jornada', 'Salario (Bs)', 'Bono USD', 'Estado', 'Acciones'].map((h) => (
+                  {['Nombre', 'Cédula', 'Cargo', 'Depto.', 'Jornada', 'Salario (Bs)', 'Bono USD', 'Comisión', 'Estado', 'Acciones'].map((h) => (
                     <th key={h} className="text-left text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr></thead>
@@ -321,6 +342,7 @@ export function PayrollPage() {
                       <td className="px-4 py-3 text-xs text-navy-400 capitalize">{emp.jornadaLaboral}</td>
                       <td className="px-4 py-3 font-mono text-sm text-navy-900">{emp.salarioBaseVed.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                       <td className="px-4 py-3 font-mono text-sm text-emerald-600">${emp.bonificacionUsd.toFixed(2)}</td>
+                      <td className="px-4 py-3 font-mono text-sm text-amber-600">{emp.comisionPorcentaje || 0}%</td>
                       <td className="px-4 py-3">
                         <span className={`badge ${emp.estado === 'activo' ? 'badge-green' : emp.estado === 'reposo' ? 'badge-amber' : emp.estado === 'vacaciones' ? 'badge-blue' : 'badge-gray'}`}>
                           {emp.estado}
@@ -398,7 +420,7 @@ export function PayrollPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead><tr className="border-b border-surface-200 bg-surface-50">
-                    {['Empleado', 'Cédula', 'Cargo', 'Asignaciones', 'Deducciones', 'Neto (Bs)', 'Neto (USD)', 'Acciones'].map((h) => (
+                    {['Empleado', 'Cédula', 'Cargo', 'Venta Mes ($)', 'Comisión 2%', 'Asignaciones', 'Deducciones', 'Neto (Bs)', 'Neto (USD)', ''].map((h) => (
                       <th key={h} className="text-left text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
                     ))}
                   </tr></thead>
@@ -408,6 +430,8 @@ export function PayrollPage() {
                         <td className="px-4 py-3 text-sm font-display font-medium text-navy-900">{r.employeeName}</td>
                         <td className="px-4 py-3 text-sm font-mono text-navy-500">{r.employeeCedula}</td>
                         <td className="px-4 py-3 text-xs text-navy-400">{r.employeeCargo}</td>
+                        <td className="px-4 py-3 font-mono text-sm text-blue-600">${(r.ventaMes || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 font-mono text-sm text-amber-600">{(r.comisionVentas || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</td>
                         <td className="px-4 py-3 font-mono text-sm text-emerald-600">{r.totalAsignaciones.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                         <td className="px-4 py-3 font-mono text-sm text-accent-red">{r.totalDeducciones.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                         <td className="px-4 py-3 font-mono font-bold text-sm text-navy-900">{r.netoAPagar.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
@@ -501,6 +525,12 @@ export function PayrollPage() {
                     <div><p className="text-[9px] text-navy-400 uppercase">Deducciones</p><p className="font-mono text-xs font-bold text-accent-red">{r.totalDeducciones.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p></div>
                     <div><p className="text-[9px] text-navy-400 uppercase">Neto</p><p className="font-mono text-xs font-bold text-navy-900">{r.netoAPagar.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p></div>
                   </div>
+                  {(r.ventaMes || 0) > 0 && (
+                    <div className="grid grid-cols-2 gap-2 text-center border-t border-surface-100 pt-2">
+                      <div><p className="text-[9px] text-navy-400 uppercase">Venta Mes</p><p className="font-mono text-xs font-bold text-blue-600">${(r.ventaMes || 0).toFixed(2)}</p></div>
+                      <div><p className="text-[9px] text-navy-400 uppercase">Comisión</p><p className="font-mono text-xs font-bold text-amber-600">{(r.comisionVentas || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs</p></div>
+                    </div>
+                  )}
                   <button onClick={() => selectedPeriod && printPayrollReceipt(r, getPeriodLabel(selectedPeriod))}
                     className="btn-secondary w-full gap-2 text-xs py-2"><Printer size={12} /> Imprimir Recibo</button>
                 </div>
@@ -531,6 +561,7 @@ export function PayrollPage() {
               { label: 'Fecha de Ingreso', key: 'fechaIngreso', type: 'date' },
               { label: 'Salario Base (Bs)', key: 'salarioBaseVed', type: 'number' },
               { label: 'Bonificación (USD)', key: 'bonificacionUsd', type: 'number' },
+              { label: 'Comisión sobre ventas (%)', key: 'comisionPorcentaje', type: 'number' },
               { label: 'Cuenta Bancaria', key: 'cuentaBancaria', type: 'text' },
               { label: 'Banco', key: 'banco', type: 'text' },
               { label: 'Nro. IVSS', key: 'numIvss', type: 'text' },
@@ -562,6 +593,17 @@ export function PayrollPage() {
                 className="input-field text-sm">
                 <option value="activo">Activo</option><option value="reposo">Reposo</option><option value="vacaciones">Vacaciones</option><option value="egresado">Egresado</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-display font-medium text-navy-700 mb-1">Vendedor vinculado</label>
+              <select value={editEmp.userId || ''} onChange={(e) => setEditEmp({ ...editEmp, userId: e.target.value })}
+                className="input-field text-sm">
+                <option value="">— Sin vincular —</option>
+                {users.map((u) => (
+                  <option key={u.uid} value={u.uid}>{u.nombre} {u.apellido} ({u.rol})</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-navy-400 mt-1">Vincula al empleado con su usuario del POS para calcular comisiones sobre ventas.</p>
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">

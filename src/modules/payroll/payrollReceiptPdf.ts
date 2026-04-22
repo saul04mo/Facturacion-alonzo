@@ -40,6 +40,7 @@ export function generatePayrollReceiptHTML(
     { concepto: 'Bono Vacacional (Prorrateo)', monto: receipt.bonoVacacional },
     { concepto: 'Utilidades (Prorrateo)', monto: receipt.utilidades },
     { concepto: 'Bonificación USD (en VED)', monto: receipt.bonificacionUsd },
+    { concepto: `Comisión Ventas ($${(receipt.ventaMes || 0).toFixed(2)} USD)`, monto: receipt.comisionVentas || 0 },
     { concepto: 'Otras Asignaciones', monto: receipt.otrasAsignaciones },
   ].filter((r) => r.monto > 0);
 

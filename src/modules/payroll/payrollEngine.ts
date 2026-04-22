@@ -79,6 +79,8 @@ export interface CalcResult {
   bonoVacacional: number;
   utilidades: number;
   bonificacionUsd: number;
+  ventaMes: number;
+  comisionVentas: number;
   otrasAsignaciones: number;
   totalAsignaciones: number;
   ivss: number;
@@ -97,7 +99,8 @@ export interface CalcResult {
 export function calculatePayroll(
   employee: Employee,
   incidents: EmployeeIncident[],
-  config: PeriodConfig
+  config: PeriodConfig,
+  ventaMesUsd: number = 0
 ): CalcResult {
   const { tasaBcv, cestaticketDiario, lunesDelMes, diasUtilidades } = config;
 
@@ -148,12 +151,17 @@ export function calculatePayroll(
   // USD bonus (converted to VED for totals)
   const bonificacionUsdVed = employee.bonificacionUsd * tasaBcv * factor;
 
+  // Sales commission
+  const comisionPct = employee.comisionPorcentaje || 0;
+  const ventaMes = ventaMesUsd; // Total sales in USD for this period
+  const comisionVentas = ventaMesUsd * (comisionPct / 100) * tasaBcv; // Commission in Bs
+
   // Deduction for absences
   const descuentoFaltas = salarioDiario * diasFaltas;
 
   const totalAsignaciones =
     salarioBase + cestaticket + horasExtrasDiurnas + horasExtrasNocturnas +
-    bonoNocturno + feriadosTrabajados + bonoVacacional + utilidades + bonificacionUsdVed;
+    bonoNocturno + feriadosTrabajados + bonoVacacional + utilidades + bonificacionUsdVed + comisionVentas;
 
   // Deductions (LOTTT) — based on lunes del mes
   const ivss = salarioSemanal * 0.04 * lunesDelMes * factor;
@@ -176,6 +184,8 @@ export function calculatePayroll(
     bonoVacacional: round(bonoVacacional),
     utilidades: round(utilidades),
     bonificacionUsd: round(bonificacionUsdVed),
+    ventaMes: round(ventaMes),
+    comisionVentas: round(comisionVentas),
     otrasAsignaciones: 0,
     totalAsignaciones: round(totalAsignaciones),
     ivss: round(ivss),
