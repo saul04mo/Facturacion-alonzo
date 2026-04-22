@@ -286,8 +286,15 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={product?.id ? 'Editar Producto' : 'Nuevo Producto'} size="lg">
+    <Modal open={open} onClose={onClose} title={product?.id ? 'Editar Producto' : (product ? '📋 Duplicar — Nuevo Producto' : 'Nuevo Producto')} size="lg">
       <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+        {/* Duplicate warning */}
+        {product && !product.id && (
+          <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-700 dark:text-emerald-400">
+            <Copy size={14} className="shrink-0" />
+            <span>Estás creando una <strong>copia</strong>. Cambia el nombre y los datos que necesites. Al guardar se creará un producto nuevo.</span>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Nombre</label>
             <input value={name} onChange={(e) => setName(e.target.value)} className="input-field" /></div>
@@ -403,7 +410,7 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
         <VariantEditor variants={variants} onChange={setVariants} />
         <div className="flex justify-end gap-3 pt-4 border-t border-surface-200">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={handleSave} disabled={saving} className="btn-primary">{saving ? 'Guardando...' : 'Guardar Producto'}</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary">{saving ? 'Guardando...' : (product && !product.id ? 'Crear Copia' : 'Guardar Producto')}</button>
         </div>
       </div>
     </Modal>
