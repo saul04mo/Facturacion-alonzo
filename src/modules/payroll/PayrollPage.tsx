@@ -232,6 +232,16 @@ export function PayrollPage() {
         salesByUser[uid] = (salesByUser[uid] || 0) + salesAmount;
       });
 
+      console.log('[NÓMINA DEBUG]', {
+        subTipo: selectedPeriod.subTipo,
+        salesStart,
+        fechaFin: selectedPeriod.fechaFin,
+        totalInvoices: invoices.length,
+        periodInvoices: periodInvoices.length,
+        salesByUser,
+        employees: activeEmployees.map(e => ({ name: e.nombre, userId: e.userId })),
+      });
+
       const allReceipts: Omit<PayrollReceipt, 'id'>[] = [];
       let totA = 0, totD = 0, totN = 0;
 
