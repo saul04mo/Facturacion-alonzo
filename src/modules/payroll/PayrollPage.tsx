@@ -210,34 +210,40 @@ export function PayrollPage() {
         diasUtilidades: periodForm.diasUtilidades,
       };
 
-      // Fetch sales per employee for the period
-      // For "ultimo", get sales from the ENTIRE month (commission is on full month sales)
+      // Fetch sales per employee — query Firestore directly for the full date range
       const salesByUser: Record<string, number> = {};
       const salesStart = selectedPeriod.subTipo === 'ultimo'
-        ? selectedPeriod.fechaInicio.replace(/-\d{2}$/, '-01') // First day of month
+        ? selectedPeriod.fechaInicio.replace(/-\d{2}$/, '-01')
         : selectedPeriod.fechaInicio;
-      const periodInvoices = invoices.filter((inv: any) => {
-        if (inv.status !== 'Finalizado' && inv.status !== 'Pendiente de pago') return false;
-        const invDate = inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
-        const start = new Date(salesStart + 'T00:00:00');
-        const end = new Date(selectedPeriod.fechaFin + 'T23:59:59');
-        return invDate >= start && invDate <= end;
-      });
 
-      periodInvoices.forEach((inv: any) => {
-        const uid = inv.sellerUid;
-        if (!uid || uid === 'WEB' || uid === 'APP') return;
-        const deliveryCost = Number(inv.deliveryCostUsd) || 0;
-        const salesAmount = (Number(inv.total) || 0) - deliveryCost;
-        salesByUser[uid] = (salesByUser[uid] || 0) + salesAmount;
-      });
+      try {
+        const { collection: col, getDocs, query: q, where, orderBy, Timestamp: Ts } = await import('firebase/firestore');
+        const { db: firestoreDb } = await import('@/config/firebase');
+        const startTs = Ts.fromDate(new Date(salesStart + 'T00:00:00'));
+        const endTs = Ts.fromDate(new Date(selectedPeriod.fechaFin + 'T23:59:59'));
+        const salesQuery = q(
+          col(firestoreDb, 'invoices'),
+          where('date', '>=', startTs),
+          where('date', '<=', endTs),
+        );
+        const salesSnap = await getDocs(salesQuery);
+        salesSnap.forEach((doc) => {
+          const inv = doc.data();
+          if (inv.status !== 'Finalizado' && inv.status !== 'Pendiente de pago') return;
+          const uid = inv.sellerUid;
+          if (!uid || uid === 'WEB' || uid === 'APP') return;
+          const deliveryCost = Number(inv.deliveryCostUsd) || 0;
+          const salesAmount = (Number(inv.total) || 0) - deliveryCost;
+          salesByUser[uid] = (salesByUser[uid] || 0) + salesAmount;
+        });
+      } catch (e) {
+        console.warn('Error fetching sales:', e);
+      }
 
       console.log('[NÓMINA DEBUG]', {
         subTipo: selectedPeriod.subTipo,
         salesStart,
         fechaFin: selectedPeriod.fechaFin,
-        totalInvoices: invoices.length,
-        periodInvoices: periodInvoices.length,
         salesByUser,
         employees: activeEmployees.map(e => ({ name: e.nombre, userId: e.userId })),
       });
