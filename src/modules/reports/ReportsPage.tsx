@@ -76,9 +76,10 @@ export function ReportsPage() {
     setFetchingServer(true);
     try {
       const results = await fetchInvoicesByDateRange(dStart, dEnd);
+      console.log(`[Informes] Fetched ${results.length} invoices for ${dStart} → ${dEnd}`);
       setServerInvoices(results);
     } catch (err) {
-      console.error('Error fetching invoices:', err);
+      console.error('[Informes] Error fetching invoices:', err);
       setServerInvoices(null);
     }
     setFetchingServer(false);
