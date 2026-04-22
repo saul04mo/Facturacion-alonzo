@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { DELIVERY_TYPES } from '@/config/constants';
-import { PAYMENT_METHODS } from '@/modules/invoices/invoiceService';
+import { PAYMENT_METHODS, fetchInvoicesByDateRange } from '@/modules/invoices/invoiceService';
 import { exportSalesData } from '@/services/excelService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import {
   BarChart3, TrendingUp, Download, Package, Filter, ChevronDown,
-  ShoppingBag, DollarSign, Hash, Check, X as XIcon,
+  ShoppingBag, DollarSign, Hash, Check, X as XIcon, Loader2,
 } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
 
@@ -35,6 +35,10 @@ export function ReportsPage() {
   const [dGender, setDGender] = useState('all');
   const [dCategory, setDCategory] = useState('all');
 
+  // Server-side fetched invoices (for full date range)
+  const [serverInvoices, setServerInvoices] = useState<any[] | null>(null);
+  const [fetchingServer, setFetchingServer] = useState(false);
+
   // Applied
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
@@ -44,17 +48,40 @@ export function ReportsPage() {
   const [genderFilter, setGenderFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
 
+  // Auto-fetch today's invoices on mount
+  useEffect(() => {
+    (async () => {
+      setFetchingServer(true);
+      try {
+        const results = await fetchInvoicesByDateRange(today, today);
+        setServerInvoices(results);
+      } catch { /* use store fallback */ }
+      setFetchingServer(false);
+    })();
+  }, []);
+
   const categories = useMemo(() => {
     let prods = products;
     if (dGender !== 'all') prods = prods.filter((p) => p.gender === dGender);
     return ['all', ...new Set(prods.map((p) => p.category || 'Sin Categoría').filter(Boolean))];
   }, [products, dGender]);
 
-  function applyFilters() {
+  async function applyFilters() {
     setStartDate(dStart); setEndDate(dEnd); setSellerFilter(dSeller);
     setMethodFilter(dMethod); setDeliveryFilter(dDelivery);
     setGenderFilter(dGender); setCategoryFilter(dCategory);
     setCurrentPage(1);
+
+    // Fetch all invoices for the date range from Firestore (no limit)
+    setFetchingServer(true);
+    try {
+      const results = await fetchInvoicesByDateRange(dStart, dEnd);
+      setServerInvoices(results);
+    } catch (err) {
+      console.error('Error fetching invoices:', err);
+      setServerInvoices(null);
+    }
+    setFetchingServer(false);
   }
   function clearFilters() {
     setDStart(today); setDEnd(today); setDSeller('all'); setDMethod('all');
@@ -62,12 +89,14 @@ export function ReportsPage() {
     setStartDate(today); setEndDate(today); setSellerFilter('all');
     setMethodFilter('all'); setDeliveryFilter('all'); setGenderFilter('all'); setCategoryFilter('all');
     setCurrentPage(1);
+    setServerInvoices(null);
   }
   const hasActive = sellerFilter !== 'all' || methodFilter !== 'all' || deliveryFilter !== 'all' || genderFilter !== 'all' || categoryFilter !== 'all';
 
   const filtered = useMemo(() => {
+    const source = serverInvoices || invoices;
     const s = new Date(startDate + 'T00:00:00'), e = new Date(endDate + 'T23:59:59');
-    return invoices.filter((inv: any) => {
+    return source.filter((inv: any) => {
       if (inv.status !== 'Finalizado') return false;
       const d = toDate(inv.date); if (d && (d < s || d > e)) return false;
       if (sellerFilter !== 'all' && inv.sellerUid !== sellerFilter) return false;
@@ -82,7 +111,7 @@ export function ReportsPage() {
         }); if (!ok) return false;
       } return true;
     });
-  }, [invoices, startDate, endDate, sellerFilter, methodFilter, deliveryFilter, genderFilter, categoryFilter, products]);
+  }, [invoices, serverInvoices, startDate, endDate, sellerFilter, methodFilter, deliveryFilter, genderFilter, categoryFilter, products]);
 
   const generalTotals = useMemo(() => {
     let totalAll = 0, du = 0;
@@ -173,7 +202,7 @@ export function ReportsPage() {
                 <select value={dCategory} onChange={(e) => setDCategory(e.target.value)} className="input-field text-sm">
                   {categories.map((c) => <option key={c} value={c}>{c === 'all' ? 'Todas' : c}</option>)}</select></div>
               <div className="flex items-end gap-2">
-                <button onClick={applyFilters} className="btn-primary text-sm flex-1"><Check size={14} /> Aplicar</button>
+                <button onClick={applyFilters} disabled={fetchingServer} className="btn-primary text-sm flex-1">{fetchingServer ? <><Loader2 size={14} className="animate-spin" /> Cargando...</> : <><Check size={14} /> Aplicar</>}</button>
                 {hasActive && <button onClick={clearFilters} className="btn-ghost p-2.5 text-navy-400 hover:text-accent-red"><XIcon size={14} /></button>}
               </div>
             </div>
