@@ -16,6 +16,7 @@ import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, Ch
 function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onChange: (v: ProductVariant[]) => void }) {
   const [bulkPrice, setBulkPrice] = useState('');
   const [bulkStock, setBulkStock] = useState('');
+  const [bulkColor, setBulkColor] = useState('');
 
   const update = (i: number, field: keyof ProductVariant, value: string | number) => {
     const copy = [...variants]; copy[i] = { ...copy[i], [field]: value }; onChange(copy);
@@ -50,6 +51,12 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
     setBulkStock('');
   }
 
+  function applyBulkColor() {
+    if (!bulkColor.trim()) return;
+    onChange(variants.map(v => ({ ...v, color: bulkColor.trim() })));
+    setBulkColor('');
+  }
+
   const missingBarcodes = variants.filter(v => !v.barcode).length;
 
   return (
@@ -70,7 +77,7 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
 
       {/* Bulk change bar */}
       {variants.length > 1 && (
-        <div className="flex items-center gap-2 p-2.5 bg-navy-900/5 dark:bg-navy-800/30 rounded-lg border border-dashed border-navy-300 dark:border-navy-600">
+        <div className="flex flex-wrap items-center gap-2 p-2.5 bg-navy-900/5 dark:bg-navy-800/30 rounded-lg border border-dashed border-navy-300 dark:border-navy-600">
           <span className="text-[10px] font-display font-semibold text-navy-400 uppercase whitespace-nowrap">Cambio masivo:</span>
           <div className="flex items-center gap-1.5">
             <input
@@ -105,6 +112,22 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
               className="px-2 py-1 text-[10px] font-display font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-40"
             >
               # Aplicar
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              value={bulkColor}
+              onChange={(e) => setBulkColor(e.target.value)}
+              placeholder="Color"
+              className="input-field text-xs py-1 px-2 w-20"
+            />
+            <button
+              type="button"
+              onClick={applyBulkColor}
+              disabled={!bulkColor.trim()}
+              className="px-2 py-1 text-[10px] font-display font-bold bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors disabled:opacity-40"
+            >
+              🎨 Aplicar
             </button>
           </div>
         </div>
