@@ -8,7 +8,7 @@ import { Pagination } from '@/components/Pagination';
 import { saveProduct, deleteProduct, toggleProductActive } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, ChevronUp, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, ChevronUp, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle, Eye, EyeOff, Copy } from 'lucide-react';
 
 // ============================
 // VARIANT EDITOR (Modal)
@@ -286,7 +286,7 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={product ? 'Editar Producto' : 'Nuevo Producto'} size="lg">
+    <Modal open={open} onClose={onClose} title={product?.id ? 'Editar Producto' : 'Nuevo Producto'} size="lg">
       <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Nombre</label>
@@ -638,6 +638,24 @@ export function InventoryPage() {
   const lowStockCount = filtered.filter((p) => (p.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0) <= 5).length;
 
   function handleEdit(p: Product) { setEditProduct(p); setFormOpen(true); }
+
+  function handleDuplicate(p: Product) {
+    // Clone product without id — creates a new one
+    const clone = {
+      ...p,
+      id: undefined,
+      name: `${p.name} (copia)`,
+      // Reset stock to 0 on all variants, remove barcodes
+      variants: p.variants.map(v => ({ ...v, stock: 0, barcode: '' })),
+      // Don't carry over images — user will upload new ones
+      imageUrl: p.imageUrl,
+      imageUrls: p.imageUrls || [],
+    } as any;
+    delete clone.id;
+    setEditProduct(clone);
+    setFormOpen(true);
+    toast.info('Producto duplicado. Modifica lo que necesites y guarda.');
+  }
   function handleAdd() { setEditProduct(null); setFormOpen(true); }
   async function handleDelete(p: Product) {
     if (!confirm(`¿Eliminar "${p.name}"?`)) return;
@@ -813,6 +831,9 @@ export function InventoryPage() {
                               className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${product.active !== false ? 'text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700' : 'text-navy-300 hover:bg-amber-50 hover:text-amber-600'}`}>
                               {product.active !== false ? <Eye size={15} /> : <EyeOff size={15} />}
                             </button>
+                          )}
+                          {can('canEditProducts') && (
+                            <button onClick={() => handleDuplicate(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-navy-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors" title="Duplicar producto"><Copy size={15} /></button>
                           )}
                           {can('canEditProducts') && (
                             <button onClick={() => handleEdit(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-navy-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><Edit size={15} /></button>
