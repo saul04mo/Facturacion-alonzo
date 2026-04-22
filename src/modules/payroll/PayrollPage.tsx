@@ -295,6 +295,11 @@ export function PayrollPage() {
   }
 
   function getPeriodLabel(p: PayrollPeriod): string {
+    if (p.tipo === 'mensual') {
+      const d = new Date(p.fechaInicio + 'T12:00:00');
+      const month = d.toLocaleString('es-VE', { month: 'long' });
+      return `${month.charAt(0).toUpperCase() + month.slice(1)} ${d.getFullYear()}`;
+    }
     const tipo = p.tipo.charAt(0).toUpperCase() + p.tipo.slice(1);
     return `${tipo} | ${p.fechaInicio} → ${p.fechaFin}`;
   }
@@ -719,12 +724,29 @@ export function PayrollPage() {
                 </p>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-display font-medium text-navy-700 mb-1">Fecha Inicio</label>
-                <input type="date" value={periodForm.fechaInicio} onChange={(e) => setPeriodForm({ ...periodForm, fechaInicio: e.target.value })} className="input-field text-sm" /></div>
-              <div><label className="block text-xs font-display font-medium text-navy-700 mb-1">Fecha Fin</label>
-                <input type="date" value={periodForm.fechaFin} onChange={(e) => setPeriodForm({ ...periodForm, fechaFin: e.target.value })} className="input-field text-sm" /></div>
-            </div>
+            {periodForm.tipo === 'mensual' ? (
+              <div>
+                <label className="block text-xs font-display font-medium text-navy-700 mb-1">Mes</label>
+                <input type="month" value={periodForm.fechaInicio.slice(0, 7)}
+                  onChange={(e) => {
+                    const [y, m] = e.target.value.split('-').map(Number);
+                    const lastDay = new Date(y, m, 0).getDate();
+                    setPeriodForm({
+                      ...periodForm,
+                      fechaInicio: `${e.target.value}-01`,
+                      fechaFin: `${e.target.value}-${String(lastDay).padStart(2, '0')}`,
+                    });
+                  }}
+                  className="input-field text-sm" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-xs font-display font-medium text-navy-700 mb-1">Fecha Inicio</label>
+                  <input type="date" value={periodForm.fechaInicio} onChange={(e) => setPeriodForm({ ...periodForm, fechaInicio: e.target.value })} className="input-field text-sm" /></div>
+                <div><label className="block text-xs font-display font-medium text-navy-700 mb-1">Fecha Fin</label>
+                  <input type="date" value={periodForm.fechaFin} onChange={(e) => setPeriodForm({ ...periodForm, fechaFin: e.target.value })} className="input-field text-sm" /></div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-xs font-display font-medium text-navy-700 mb-1">Tasa BCV (Bs/$)</label>
                 <input type="number" step="0.01" value={periodForm.tasaBcv} onChange={(e) => setPeriodForm({ ...periodForm, tasaBcv: parseFloat(e.target.value) || 0 })} className="input-field text-sm font-mono" /></div>
