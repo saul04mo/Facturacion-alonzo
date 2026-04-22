@@ -670,21 +670,19 @@ export function InventoryPage() {
   function handleEdit(p: Product) { setEditProduct(p); setFormOpen(true); }
 
   function handleDuplicate(p: Product) {
-    // Clone product without id — creates a new one
     const clone = {
       ...p,
       id: undefined,
       name: `${p.name} (copia)`,
-      // Reset stock to 0 on all variants, remove barcodes
       variants: p.variants.map(v => ({ ...v, stock: 0, barcode: '' })),
-      // Don't carry over images — user will upload new ones
-      imageUrl: p.imageUrl,
-      imageUrls: p.imageUrls || [],
+      // Don't share images — user should upload new ones for new color
+      imageUrl: undefined,
+      imageUrls: [],
     } as any;
     delete clone.id;
     setEditProduct(clone);
     setFormOpen(true);
-    toast.info('Producto duplicado. Modifica lo que necesites y guarda.');
+    toast.info('Producto duplicado. Sube imágenes nuevas y guarda.');
   }
   function handleAdd() { setEditProduct(null); setFormOpen(true); }
   async function handleDelete(p: Product) {
