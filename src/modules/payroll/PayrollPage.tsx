@@ -250,9 +250,9 @@ export function PayrollPage() {
       const updatedReceipts = await getReceiptsForPeriod(selectedPeriod.id);
       setReceipts(updatedReceipts);
       toast.success(`Nómina calculada: ${allReceipts.length} recibos generados.`);
-    } catch (err) {
-      console.error(err);
-      toast.error('Error al calcular nómina.');
+    } catch (err: any) {
+      console.error('Error al calcular nómina:', err?.message || err, err);
+      toast.error(`Error al calcular nómina: ${err?.message || 'desconocido'}`);
     } finally {
       setLoading(false);
     }

@@ -109,9 +109,9 @@ export function calculatePayroll(
   const factor = config.tipo === 'mensual' ? 1 : config.tipo === 'quincenal' ? 0.5 : 7 / 30;
 
   // Base calculations
-  const salarioDiario = employee.salarioBaseVed / 30;
-  const salarioSemanal = employee.salarioBaseVed / 4.33;
-  const salarioBase = employee.salarioBaseVed * factor;
+  const salarioDiario = (employee.salarioBaseVed || 0) / 30;
+  const salarioSemanal = (employee.salarioBaseVed || 0) / 4.33;
+  const salarioBase = (employee.salarioBaseVed || 0) * factor;
 
   // Cestaticket
   const cestaticket = cestaticketDiario * periodDays;
@@ -149,12 +149,12 @@ export function calculatePayroll(
   const utilidades = (salarioDiario * Math.min(Math.max(diasUtilidades, 30), 120) / 12) * factor;
 
   // USD bonus (converted to VED for totals)
-  const bonificacionUsdVed = employee.bonificacionUsd * tasaBcv * factor;
+  const bonificacionUsdVed = (employee.bonificacionUsd || 0) * tasaBcv * factor;
 
   // Sales commission
-  const comisionPct = employee.comisionPorcentaje || 0;
-  const ventaMes = ventaMesUsd; // Total sales in USD for this period
-  const comisionVentas = ventaMesUsd * (comisionPct / 100) * tasaBcv; // Commission in Bs
+  const comisionPct = Number(employee.comisionPorcentaje) || 0;
+  const ventaMes = ventaMesUsd || 0;
+  const comisionVentas = ventaMes * (comisionPct / 100) * tasaBcv;
 
   // Deduction for absences
   const descuentoFaltas = salarioDiario * diasFaltas;
