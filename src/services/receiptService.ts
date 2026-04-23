@@ -177,8 +177,11 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   if ((invoice as any).changeGiven && (invoice as any).changeGiven > 0) {
     const cg = (invoice as any).changeGiven;
     changeHtml = `
-      <div class="flex justify-between" style="color:green"><p>Vuelto (Bs):</p><p>${cg.toFixed(2)}</p></div>
-      <div class="flex justify-between" style="color:green"><p>Vuelto ($):</p><p>${(cg / rate).toFixed(2)}</p></div>`;
+      <hr>
+      <table class="totals-table">
+        <tr><td class="label" style="color:#388e3c;">Vuelto (Bs):</td><td class="value" style="color:#388e3c;">${cg.toFixed(2)}</td></tr>
+        <tr><td class="label" style="color:#388e3c;">Vuelto ($):</td><td class="value" style="color:#388e3c;">${(cg / rate).toFixed(2)}</td></tr>
+      </table>`;
   }
 
   const deliveryRowHtml = deliveryCost > 0

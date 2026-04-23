@@ -523,6 +523,17 @@ export function InvoicesPage() {
               <div className="text-right"><p className="font-mono font-bold text-lg">{formatBoth(detailInvoice.total || 0).usd}</p>
                 <p className="font-mono text-sm text-white/60">{formatBoth(detailInvoice.total || 0).ves}</p></div></div></div>
 
+            {/* Vuelto (cambio en efectivo) */}
+            {(detailInvoice.changeGiven || 0) > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex justify-between items-center">
+                <span className="text-sm font-display font-semibold text-amber-700 dark:text-amber-400">Vuelto entregado</span>
+                <div className="text-right">
+                  <p className="font-mono font-bold text-amber-700 dark:text-amber-400">Bs. {Number(detailInvoice.changeGiven).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                  <p className="font-mono text-xs text-amber-500">{format(detailInvoice.changeGiven / (detailInvoice.exchangeRate || exchangeRate))}</p>
+                </div>
+              </div>
+            )}
+
             {/* Print / Download actions */}
             <div className="flex gap-2 pt-2">
               <button onClick={() => printReceipt({ invoice: detailInvoice, products, clients, currentExchangeRate: exchangeRate })}
