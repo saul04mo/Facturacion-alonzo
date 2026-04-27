@@ -36,6 +36,19 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════
+    // 1b. EXCHANGE RATE HISTORY (append-only log)
+    // ════════════════════════════════════════
+    // Cada vez que se actualiza la tasa BCV en /config/exchangeRate,
+    // se escribe un doc aquí con previousRate, newRate, change, source,
+    // updatedBy, userName, timestamp. Append-only: ningún usuario puede
+    // editar ni borrar entradas históricas.
+    match /exchangeRateHistory/{entryId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if false;
+    }
+
+    // ════════════════════════════════════════
     // 2. PRODUCTS
     // ════════════════════════════════════════
     match /products/{productId} {
