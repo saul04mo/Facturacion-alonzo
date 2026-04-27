@@ -69,26 +69,30 @@ export function SettingsPage() {
         const { collection: col, getDocs, doc: docRef, getDoc } = await import('firebase/firestore');
         const { db } = await import('@/config/firebase');
         // Announcements
-        const snap = await getDocs(col(db, 'announcements'));
-        const items: AnnouncementDoc[] = [];
-        snap.forEach((d) => {
-          const data = d.data();
-          items.push({ id: d.id, text: data.text || '', link: data.link || '', active: data.active !== false, order: data.order || 0 });
-        });
-        items.sort((a, b) => a.order - b.order);
-        setAnnouncements(items);
+        try {
+          const snap = await getDocs(col(db, 'announcements'));
+          const items: AnnouncementDoc[] = [];
+          snap.forEach((d) => {
+            const data = d.data();
+            items.push({ id: d.id, text: data.text || '', link: data.link || '', active: data.active !== false, order: data.order || 0 });
+          });
+          items.sort((a, b) => a.order - b.order);
+          setAnnouncements(items);
+        } catch (e) { console.error('Error loading announcements:', e); }
         // Web settings
-        const webSnap = await getDoc(docRef(db, 'config', 'webSettings'));
-        if (webSnap.exists()) {
-          const data = webSnap.data();
-          setInstallPromptEnabled(data.installPromptEnabled !== false);
-          if (typeof data.cacheTTL === 'number') setCacheTTL(data.cacheTTL);
-          if (data.whatsappNumber) setWhatsappNumber(data.whatsappNumber);
-          if (data.currencySymbol) setCurrencySymbol(data.currencySymbol);
-          if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
-          if (data.heroImage) setHeroImage(data.heroImage);
-        }
-      } catch (e) { console.error('Error loading web settings:', e); }
+        try {
+          const webSnap = await getDoc(docRef(db, 'config', 'webSettings'));
+          if (webSnap.exists()) {
+            const data = webSnap.data();
+            setInstallPromptEnabled(data.installPromptEnabled !== false);
+            if (typeof data.cacheTTL === 'number') setCacheTTL(data.cacheTTL);
+            if (data.whatsappNumber) setWhatsappNumber(data.whatsappNumber);
+            if (data.currencySymbol) setCurrencySymbol(data.currencySymbol);
+            if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+            if (data.heroImage) setHeroImage(data.heroImage);
+          }
+        } catch (e) { console.error('Error loading web settings:', e); }
+      } catch (e) { console.error('Error initializing settings:', e); }
       setAnnLoading(false);
     })();
   }, []);

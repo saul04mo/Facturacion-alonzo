@@ -157,6 +157,17 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════
+    // 11. ANNOUNCEMENTS (top bar marquee)
+    // ════════════════════════════════════════
+    // Mensajes que rotan en la barra negra superior de la web.
+    // Read es PÚBLICO porque la tienda web los muestra a visitantes
+    // anónimos. Solo admins pueden crear/editar/borrar.
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ════════════════════════════════════════
     // DENY EVERYTHING ELSE
     // ════════════════════════════════════════
     match /{document=**} {
