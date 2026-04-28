@@ -32,6 +32,8 @@ export interface Product {
   name: string;
   category: string;
   gender: 'Hombre' | 'Mujer';
+  /** Optional product description (long-form text shown in web store / app) */
+  description?: string;
   imageUrl?: string;
   /** Additional product images (gallery) */
   imageUrls?: string[];

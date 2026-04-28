@@ -8,7 +8,7 @@ import { Pagination } from '@/components/Pagination';
 import { saveProduct, deleteProduct, toggleProductActive } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle, Eye, EyeOff, Copy } from 'lucide-react';
+import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy } from 'lucide-react';
 
 // ============================
 // VARIANT EDITOR (Modal)

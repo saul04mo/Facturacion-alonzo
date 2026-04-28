@@ -15,7 +15,7 @@ import {
   createPeriod, getPayrollPeriods,
   saveReceipts, getReceiptsForPeriod, markPeriodPaid,
 } from './payrollService';
-import { calculatePayroll, buildReceipt, countMondaysInMonth, round, type PeriodConfig } from './payrollEngine';
+import { calculatePayroll, buildReceipt, countMondaysInMonth, round, type PeriodConfig, type CalcResult } from './payrollEngine';
 import { printPayrollReceipt } from './payrollReceiptPdf';
 import { todayVE } from '@/utils/dateUtils';
 
@@ -42,7 +42,6 @@ export function PayrollPage() {
   const employees = useAppStore((s) => s.employees);
   const currentUser = useAppStore((s) => s.currentUser);
   const exchangeRate = useAppStore((s) => s.exchangeRate);
-  const invoices = useAppStore((s) => s.invoices);
   const users = useAppStore((s) => s.users);
   const toast = useToast();
 
@@ -212,7 +211,7 @@ export function PayrollPage() {
       const salesStart = selectedPeriod.fechaInicio;
 
       try {
-        const { collection: col, getDocs, query: q, where, orderBy, Timestamp: Ts } = await import('firebase/firestore');
+        const { collection: col, getDocs, query: q, where, Timestamp: Ts } = await import('firebase/firestore');
         const { db: firestoreDb } = await import('@/config/firebase');
         const startTs = Ts.fromDate(new Date(salesStart + 'T00:00:00'));
         const endTs = Ts.fromDate(new Date(selectedPeriod.fechaFin + 'T23:59:59'));

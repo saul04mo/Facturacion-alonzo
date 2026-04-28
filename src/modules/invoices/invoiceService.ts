@@ -357,7 +357,7 @@ export async function fetchInvoicesByDateRange(
 // UPDATE EXCHANGE RATE
 // ================================
 export async function updateExchangeRate(newRate: number, userName?: string): Promise<void> {
-  const { setDoc, getDoc, collection: col, Timestamp: Ts, writeBatch } = await import('firebase/firestore');
+  const { getDoc, collection: col, Timestamp: Ts, writeBatch } = await import('firebase/firestore');
   const { getAuth } = await import('firebase/auth');
   
   // Get previous rate
