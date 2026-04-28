@@ -429,18 +429,18 @@ export function InvoicesPage() {
             </div>
 
             {/* ═══ DESKTOP: Table layout ═══ */}
-            <div className="hidden md:block overflow-x-auto">
-            <table className="w-full" style={{ minWidth: '1500px' }}>
+            <div className="hidden md:block">
+            <table className="w-full table-fixed">
               <thead><tr className="border-b border-surface-200 bg-surface-50">
                 {[
-                  { h: 'Factura', w: '90px' }, { h: 'Vendedor', w: '110px' }, { h: 'Cliente', w: '140px' },
-                  { h: 'Dirección', w: '180px' }, { h: 'Obs.', w: '120px' },
-                  { h: 'Entrega', w: '100px' }, { h: 'Envío', w: '70px' },
-                  { h: 'Pago', w: '100px' }, { h: 'REF', w: '70px' },
-                  { h: 'Total $', w: '80px' }, { h: 'Total Bs', w: '110px' },
-                  { h: 'Fecha', w: '110px' }, { h: 'Estado', w: '100px' }, { h: '', w: '120px' },
+                  { h: 'Factura', w: 'w-[6.5%]' }, { h: 'Vendedor', w: 'w-[7%]' }, { h: 'Cliente', w: 'w-[8%]' },
+                  { h: 'Dirección', w: 'w-[11%]' }, { h: 'Obs.', w: 'w-[7%]' },
+                  { h: 'Entrega', w: 'w-[6%]' }, { h: 'Envío', w: 'w-[5%]' },
+                  { h: 'Pago', w: 'w-[6.5%]' }, { h: 'REF', w: 'w-[5%]' },
+                  { h: 'Total $', w: 'w-[6%]' }, { h: 'Total Bs', w: 'w-[8%]' },
+                  { h: 'Fecha', w: 'w-[8%]' }, { h: 'Estado', w: 'w-[7%]' }, { h: '', w: 'w-[9%]' },
                 ].map((c) => (
-                  <th key={c.h || 'actions'} style={{ minWidth: c.w }} className="text-left text-[9px] font-display font-semibold text-navy-400 uppercase tracking-wider px-2 py-2">{c.h}</th>
+                  <th key={c.h || 'actions'} className={`text-left text-[8px] font-display font-semibold text-navy-400 uppercase tracking-tight px-1 py-2 ${c.w}`}>{c.h}</th>
                 ))}</tr></thead>
               <tbody className="divide-y divide-surface-100">
                 {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
@@ -451,21 +451,21 @@ export function InvoicesPage() {
                   
                   return (
                     <tr key={inv.id} className="hover:bg-surface-50 transition-colors">
-                      <td className="px-2 py-2 font-mono font-semibold text-[11px] text-navy-900 whitespace-nowrap">{label(inv)}</td>
-                      <td className="px-2 py-2 text-[10px] text-navy-500 whitespace-nowrap" title={inv.sellerName}>{inv.sellerName || 'N/A'}</td>
-                      <td className="px-2 py-2 text-[10px] text-navy-600 whitespace-normal break-words leading-tight" title={inv.clientSnapshot?.name}>{inv.clientSnapshot?.name || 'General'}</td>
-                      <td className="px-2 py-2 text-[10px] text-navy-400 whitespace-normal break-words leading-tight" title={inv.clientSnapshot?.address}>{inv.clientSnapshot?.address || 'N/A'}</td>
-                      <td className="px-2 py-2 text-[10px] text-navy-400 whitespace-normal break-words leading-tight" title={inv.observation || inv.notes}>{inv.observation || inv.notes || 'N/A'}</td>
-                      <td className="px-2 py-2 text-[10px] text-navy-400 whitespace-nowrap">{dt?.label || inv.deliveryType || 'N/A'}</td>
-                      <td className="px-2 py-2 font-mono text-[10px] text-navy-900 whitespace-nowrap">{format(inv.deliveryCostUsd || 0)}</td>
-                      <td className="px-2 py-2 text-[9px] text-navy-400 whitespace-nowrap" title={inv.payments?.map((p: any) => p.method).join(', ')}>{inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}</td>
-                      <td className="px-2 py-2 text-[9px] text-navy-400 whitespace-nowrap" title={inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ')}>{inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ') || 'N/A'}</td>
-                      <td className="px-2 py-2 font-mono font-bold text-[11px] text-navy-900 whitespace-nowrap">{format(inv.total || 0)}</td>
-                      <td className="px-2 py-2 font-mono text-[10px] text-navy-500 whitespace-nowrap">{formatBoth(inv.total || 0).ves}</td>
-                      <td className="px-2 py-2 text-[9px] text-navy-500 whitespace-nowrap">{date?.toLocaleString('es-VE')}</td>
-                      <td className="px-2 py-2 whitespace-nowrap"><span className={`badge text-[9px] px-1.5 py-0.5 ${st.class}`}>{st.label}</span></td>
-                      <td className="px-2 py-2 whitespace-nowrap">
-                        <div className="flex gap-0.5">
+                      <td className="px-1 py-2 font-mono font-semibold text-[10px] text-navy-900 break-all leading-tight">{label(inv)}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-500 break-words leading-tight" title={inv.sellerName}>{inv.sellerName || 'N/A'}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-600 break-words leading-tight" title={inv.clientSnapshot?.name}>{inv.clientSnapshot?.name || 'General'}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight" title={inv.clientSnapshot?.address}>{inv.clientSnapshot?.address || 'N/A'}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight" title={inv.observation || inv.notes}>{inv.observation || inv.notes || 'N/A'}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight">{dt?.label || inv.deliveryType || 'N/A'}</td>
+                      <td className="px-1 py-2 font-mono text-[9px] text-navy-900">{format(inv.deliveryCostUsd || 0)}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight" title={inv.payments?.map((p: any) => p.method).join(', ')}>{inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-400 break-all leading-tight" title={inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ')}>{inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ') || 'N/A'}</td>
+                      <td className="px-1 py-2 font-mono font-bold text-[10px] text-navy-900">{format(inv.total || 0)}</td>
+                      <td className="px-1 py-2 font-mono text-[9px] text-navy-500 break-all leading-tight">{formatBoth(inv.total || 0).ves}</td>
+                      <td className="px-1 py-2 text-[9px] text-navy-500 leading-tight">{date?.toLocaleString('es-VE')}</td>
+                      <td className="px-1 py-2"><span className={`badge text-[8px] px-1 py-0.5 ${st.class}`}>{st.label}</span></td>
+                      <td className="px-1 py-2">
+                        <div className="flex gap-0.5 flex-wrap">
                           <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600"><Eye size={12} /></button>
                           {paymentImgUrl && (
                             <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1 text-navy-400 hover:text-purple-600" title="Ver comprobante de pago">
