@@ -1,5 +1,5 @@
 import {
-  collection, doc, runTransaction, updateDoc, Timestamp, writeBatch,
+  collection, doc, getDoc, runTransaction, updateDoc, Timestamp, writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { batchRestoreStock, validateStock } from '@/utils/stockUtils';
@@ -68,9 +68,24 @@ export async function processSale(opts: {
   });
 
   // ── Client snapshot ──
-  const clientObj = sale.clientId
+  // Primero intentamos del array global (rápido, sin extra read).
+  // Si no está ahí (los clientes ya no se cargan en masa para ahorrar
+  // bandwidth), fetcheamos directo de Firestore por clientId.
+  let clientObj: any = sale.clientId
     ? clients.find((c) => c.id === sale.clientId) || null
     : null;
+  if (!clientObj && sale.clientId) {
+    try {
+      const clientDoc = await getDoc(doc(db, 'clients', sale.clientId));
+      if (clientDoc.exists()) {
+        clientObj = { id: clientDoc.id, ...clientDoc.data() };
+      }
+    } catch (err) {
+      console.error('Error fetching client for snapshot:', err);
+      // Continuamos sin snapshot — la factura se crea, pero queda sin
+      // datos de cliente embebidos. Mejor que perder la venta.
+    }
+  }
   const clientSnapshot: ClientSnapshot | null = clientObj
     ? {
         name: (clientObj as any).name || (clientObj as any).nombre || '',
@@ -357,7 +372,7 @@ export async function fetchInvoicesByDateRange(
 // UPDATE EXCHANGE RATE
 // ================================
 export async function updateExchangeRate(newRate: number, userName?: string): Promise<void> {
-  const { getDoc, collection: col, Timestamp: Ts, writeBatch } = await import('firebase/firestore');
+  const { collection: col, Timestamp: Ts, writeBatch } = await import('firebase/firestore');
   const { getAuth } = await import('firebase/auth');
   
   // Get previous rate
