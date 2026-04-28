@@ -732,10 +732,9 @@ export function InventoryPage() {
                 <span className="badge badge-gray text-[10px]">{group.products.length} productos</span>
               </div>
 
-              {/* Horizontal scrolling row of product columns */}
-              <div className="overflow-x-auto">
-                <div className="flex items-stretch gap-3 p-4 min-w-min">
-                  {group.products.map((product) => {
+              {/* Grid of product columns — wraps to next row */}
+              <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+                {group.products.map((product) => {
                     const totalStockP = product.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0;
                     const lowStock = totalStockP <= 5;
                     const minP = Math.min(...(product.variants?.map((v) => v.price) || [0]));
@@ -757,7 +756,7 @@ export function InventoryPage() {
                       <div
                         key={product.id}
                         data-product-id={product.id}
-                        className={`group/card relative w-[160px] flex-shrink-0 flex flex-col rounded-xl border bg-card cursor-pointer transition-all ${
+                        className={`group/card relative w-full flex flex-col rounded-xl border bg-card cursor-pointer transition-all ${
                           expandedId === product.id
                             ? 'border-amber-500 ring-2 ring-amber-300 shadow-xl scale-[1.03]'
                             : 'border-surface-200 hover:border-amber-300 hover:shadow-lg'
@@ -862,7 +861,6 @@ export function InventoryPage() {
                     );
                   })}
                 </div>
-              </div>
             </div>
           ))
         )}
