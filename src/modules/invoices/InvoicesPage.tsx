@@ -377,7 +377,7 @@ export function InvoicesPage() {
       </div>
 
       {/* Table */}
-      <div className="card overflow-hidden md:-mx-4 lg:-mx-8 xl:-mx-12">
+      <div className="card overflow-hidden md:-mx-6 lg:-mx-12 xl:-mx-20 2xl:-mx-32">
         {filtered.length === 0 ? (
           <div className="p-12 text-center"><FileText size={40} className="mx-auto text-navy-200 mb-3" /><p className="text-navy-400 text-sm">Sin facturas.</p></div>
         ) : (
@@ -433,14 +433,14 @@ export function InvoicesPage() {
             <table className="w-full table-fixed">
               <thead><tr className="border-b border-surface-200 bg-surface-50">
                 {[
-                  { h: 'Factura', w: 'w-[6.5%]' }, { h: 'Vendedor', w: 'w-[7%]' }, { h: 'Cliente', w: 'w-[8%]' },
-                  { h: 'Dirección', w: 'w-[11%]' }, { h: 'Obs.', w: 'w-[7%]' },
+                  { h: 'Factura', w: 'w-[6%]' }, { h: 'Vendedor', w: 'w-[7%]' }, { h: 'Cliente', w: 'w-[8%]' },
+                  { h: 'Dirección', w: 'w-[12%]' }, { h: 'Obs.', w: 'w-[7%]' },
                   { h: 'Entrega', w: 'w-[6%]' }, { h: 'Envío', w: 'w-[5%]' },
-                  { h: 'Pago', w: 'w-[6.5%]' }, { h: 'REF', w: 'w-[5%]' },
+                  { h: 'Pago', w: 'w-[6%]' }, { h: 'REF', w: 'w-[5%]' },
                   { h: 'Total $', w: 'w-[6%]' }, { h: 'Total Bs', w: 'w-[8%]' },
                   { h: 'Fecha', w: 'w-[8%]' }, { h: 'Estado', w: 'w-[7%]' }, { h: '', w: 'w-[9%]' },
                 ].map((c) => (
-                  <th key={c.h || 'actions'} className={`text-left text-[8px] font-display font-semibold text-navy-400 uppercase tracking-tight px-1 py-2 ${c.w}`}>{c.h}</th>
+                  <th key={c.h || 'actions'} className={`text-left text-[11px] font-display font-semibold text-navy-400 uppercase tracking-wide px-3 py-3 ${c.w}`}>{c.h}</th>
                 ))}</tr></thead>
               <tbody className="divide-y divide-surface-100">
                 {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
@@ -451,22 +451,22 @@ export function InvoicesPage() {
                   
                   return (
                     <tr key={inv.id} className="hover:bg-surface-50 transition-colors">
-                      <td className="px-1 py-2 font-mono font-semibold text-[10px] text-navy-900 break-all leading-tight">{label(inv)}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-500 break-words leading-tight" title={inv.sellerName}>{inv.sellerName || 'N/A'}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-600 break-words leading-tight" title={inv.clientSnapshot?.name}>{inv.clientSnapshot?.name || 'General'}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight" title={inv.clientSnapshot?.address}>{inv.clientSnapshot?.address || 'N/A'}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight" title={inv.observation || inv.notes}>{inv.observation || inv.notes || 'N/A'}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight">{dt?.label || inv.deliveryType || 'N/A'}</td>
-                      <td className="px-1 py-2 font-mono text-[9px] text-navy-900">{format(inv.deliveryCostUsd || 0)}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-400 break-words leading-tight" title={inv.payments?.map((p: any) => p.method).join(', ')}>{inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-400 break-all leading-tight" title={inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ')}>{inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ') || 'N/A'}</td>
-                      <td className="px-1 py-2 font-mono font-bold text-[10px] text-navy-900">{format(inv.total || 0)}</td>
-                      <td className="px-1 py-2 font-mono text-[9px] text-navy-500 break-all leading-tight">{formatBoth(inv.total || 0).ves}</td>
-                      <td className="px-1 py-2 text-[9px] text-navy-500 leading-tight">{date?.toLocaleString('es-VE')}</td>
-                      <td className="px-1 py-2"><span className={`badge text-[8px] px-1 py-0.5 ${st.class}`}>{st.label}</span></td>
-                      <td className="px-1 py-2">
-                        <div className="flex gap-0.5 flex-wrap">
-                          <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600"><Eye size={12} /></button>
+                      <td className="px-3 py-3 font-mono font-semibold text-[12px] text-navy-900 break-all leading-tight">{label(inv)}</td>
+                      <td className="px-3 py-3 text-[12px] text-navy-500 break-words leading-tight" title={inv.sellerName}>{inv.sellerName || 'N/A'}</td>
+                      <td className="px-3 py-3 text-[12px] text-navy-600 break-words leading-tight" title={inv.clientSnapshot?.name}>{inv.clientSnapshot?.name || 'General'}</td>
+                      <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight" title={inv.clientSnapshot?.address}>{inv.clientSnapshot?.address || 'N/A'}</td>
+                      <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight" title={inv.observation || inv.notes}>{inv.observation || inv.notes || 'N/A'}</td>
+                      <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight">{dt?.label || inv.deliveryType || 'N/A'}</td>
+                      <td className="px-3 py-3 font-mono text-[12px] text-navy-900">{format(inv.deliveryCostUsd || 0)}</td>
+                      <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight" title={inv.payments?.map((p: any) => p.method).join(', ')}>{inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}</td>
+                      <td className="px-3 py-3 text-[12px] text-navy-400 break-all leading-tight" title={inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ')}>{inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ') || 'N/A'}</td>
+                      <td className="px-3 py-3 font-mono font-bold text-[12px] text-navy-900">{format(inv.total || 0)}</td>
+                      <td className="px-3 py-3 font-mono text-[12px] text-navy-500 break-all leading-tight">{formatBoth(inv.total || 0).ves}</td>
+                      <td className="px-3 py-3 text-[11px] text-navy-500 leading-tight">{date?.toLocaleString('es-VE')}</td>
+                      <td className="px-3 py-3"><span className={`badge text-[10px] px-2 py-0.5 ${st.class}`}>{st.label}</span></td>
+                      <td className="px-3 py-3">
+                        <div className="flex gap-1 flex-wrap">
+                          <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600"><Eye size={14} /></button>
                           {paymentImgUrl && (
                             <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1 text-navy-400 hover:text-purple-600" title="Ver comprobante de pago">
                               <ImageIcon size={12} />
