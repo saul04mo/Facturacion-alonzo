@@ -91,20 +91,17 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
 
     itemsHtml += `
       <tr>
-        <td class="py-1">${label.barcode}</td>
-        <td class="py-1" colspan="3">${label.name} (${label.size}, ${label.color})</td>
+        <td class="py-1" colspan="2">${label.name} (${label.size}, ${label.color})</td>
       </tr>
       <tr>
-        <td></td>
-        <td class="py-1 text-right" colspan="2">${item.quantity} x ${(price * rate).toFixed(2)}</td>
+        <td class="py-1 text-right">${item.quantity} x ${(price * rate).toFixed(2)}</td>
         <td class="py-1 text-right">${(itemTotal * rate).toFixed(2)}</td>
       </tr>`;
 
     if (itemDiscount > 0) {
       itemsHtml += `
         <tr>
-          <td></td>
-          <td colspan="3" class="py-1 text-right text-xs">Desc: -${(itemDiscount * rate).toFixed(2)}</td>
+          <td colspan="2" class="py-1 text-right text-xs">Desc: -${(itemDiscount * rate).toFixed(2)}</td>
         </tr>`;
     }
   });
@@ -218,7 +215,7 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
       <div class="subtitle">Emitida el: ${invoiceDate.toLocaleDateString('es-VE')} Expira: ${expirationDate.toLocaleDateString('es-VE')}</div>
       <hr>
       <table>
-        <thead><tr><th>Código</th><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
+        <thead><tr><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
       <hr>
