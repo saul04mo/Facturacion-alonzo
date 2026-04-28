@@ -274,9 +274,10 @@ const RECEIPT_STYLES = `
   .invoice-print-area table { width: 100%; border-collapse: collapse; font-size: 12px; font-weight: 700; margin-bottom: 3px; }
   .invoice-print-area th { border-bottom: 2px solid #000; font-size: 12px; font-weight: 900; padding: 3px 0; text-align: left; }
   .invoice-print-area td { padding: 2px 0; word-break: break-word; vertical-align: top; font-size: 12px; font-weight: 700; }
-  .invoice-print-area .totals-table td { padding: 2px 0; }
-  .invoice-print-area .totals-table .label { text-align: left; width: 60%; font-weight: 900; }
-  .invoice-print-area .totals-table .value { text-align: right; width: 40%; font-weight: 800; }
+  .invoice-print-area .totals-table { table-layout: fixed; width: 100%; }
+  .invoice-print-area .totals-table td { padding: 2px 0; word-break: normal; }
+  .invoice-print-area .totals-table .label { text-align: left; width: 55%; font-weight: 900; word-break: break-word; }
+  .invoice-print-area .totals-table .value { text-align: right; width: 45%; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .invoice-print-area .total-row { font-weight: 900; border-top: 2px solid #000; font-size: 14px; }
   .invoice-print-area .footer { text-align: center; font-size: 11px; font-weight: 700; margin-top: 6px; }
   .flex { display: flex; } .justify-between { justify-content: space-between; }
