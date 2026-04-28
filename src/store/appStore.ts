@@ -48,6 +48,10 @@ interface AppState {
   sidebarOpen: boolean;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+  /** Sidebar colapsado en desktop (solo íconos, sin labels). Persiste en localStorage. */
+  sidebarCollapsed: boolean;
+  toggleSidebarCollapsed: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
 
   employees: Employee[];
   setEmployees: (employees: Employee[]) => void;
@@ -123,6 +127,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarOpen: false,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  sidebarCollapsed: typeof window !== 'undefined' && localStorage.getItem('pos-alonzo-sidebar-collapsed') === '1',
+  toggleSidebarCollapsed: () => set((s) => {
+    const newVal = !s.sidebarCollapsed;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pos-alonzo-sidebar-collapsed', newVal ? '1' : '0');
+    }
+    return { sidebarCollapsed: newVal };
+  }),
+  setSidebarCollapsed: (collapsed) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pos-alonzo-sidebar-collapsed', collapsed ? '1' : '0');
+    }
+    set({ sidebarCollapsed: collapsed });
+  },
 
   employees: [],
   setEmployees: (employees) => set({ employees }),
