@@ -7,7 +7,6 @@ import type { Product, AppUser, Invoice, Employee, Coupon, Promotion } from '@/t
 export function useFirestoreListeners() {
   const currentUser = useAppStore((s) => s.currentUser);
   const setProducts = useAppStore((s) => s.setProducts);
-  const setClients = useAppStore((s) => s.setClients);
   const setInvoices = useAppStore((s) => s.setInvoices);
   const setUsers = useAppStore((s) => s.setUsers);
   const setEmployees = useAppStore((s) => s.setEmployees);
