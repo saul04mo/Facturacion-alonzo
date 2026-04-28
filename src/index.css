@@ -31,12 +31,12 @@
     --c-muted: #64748b;
     --c-faint: #64748b;
     --c-dimmed: #475569;
-    --bg-page: #080c16; /* Deepest blue/black */
-    --bg-card: #0f1523; /* Dark navy card */
-    --bg-card-alt: #161e30; /* Inner card */
-    --bg-hover: #161e30; /* Hover state */
-    --border-main: #1e293b; /* Subtle borders */
-    --border-subtle: #161e30;
+    --bg-page: #131a2b; /* Page bg — navy oscuro pero no negro absoluto (antes #080c16) */
+    --bg-card: #1c2438; /* Card bg — un escalón arriba para que destaque (antes #0f1523) */
+    --bg-card-alt: #232c44; /* Inner card / nested zones (antes #161e30) */
+    --bg-hover: #29334d; /* Hover state (antes #161e30) */
+    --border-main: #2d3850; /* Borders más visibles para separar cards (antes #1e293b) */
+    --border-subtle: #232c44;
   }
 
   body {
