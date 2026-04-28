@@ -105,5 +105,10 @@ export function useFirestoreListeners() {
     );
 
     return () => unsubs.forEach((u) => u());
-  }, [currentUser, setProducts, setClients, setInvoices, setUsers, setEmployees, setCoupons, setPromotions, setExchangeRate, setLoading]);
+    // Solo re-suscribimos cuando cambia el usuario (login/logout). Los setters
+    // del store son estables (Zustand) — incluirlos en deps causaba que el
+    // effect se re-ejecutara cada render, abriendo y cerrando los 8 listeners
+    // de Firestore innecesariamente y disparando F5 lento.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 }
