@@ -240,45 +240,43 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
 }
 
 const RECEIPT_STYLES = `
-  /* Optimizado para impresoras térmicas de 58mm. La queja típica es que
-     'sale muy claro/fino'. Soluciones aplicadas:
-     1. Fuente sans-serif gruesa nativa de Windows (Arial Black como
-        fallback explícito) — la térmica la quema mejor que Courier
-     2. font-weight global 600 (no 'bold' completo para evitar borrones,
-        no 'normal' que sale fantasma)
-     3. -webkit-print-color-adjust: exact + color #000 puro
-     4. text-shadow muy sutil de 0.3px para engrosar el trazo en
-        impresoras que reciben el bitmap pre-renderizado */
-  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  /* Optimizado para impresoras térmicas de 58mm. Para mayor oscuridad
+     usamos doble text-shadow que efectivamente "duplica" el glifo
+     desplazado fracciones de pixel — el browser renderiza dos veces
+     el carácter superpuesto antes de mandar el bitmap a la impresora,
+     resultando en glifos más sólidos y oscuros sin cambiar tamaño. */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: #000 !important; }
   body {
     font-family: "Arial Black", "Helvetica", "Arial", sans-serif;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     color: #000;
     background: #fff;
     margin: 0;
     padding: 0;
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
-    text-shadow: 0.3px 0 0 currentColor;
+    /* Doble sombra: una a la derecha y una abajo. La térmica ve un
+       glifo más "lleno" sin que se note borroso a simple vista. */
+    text-shadow: 0.4px 0 0 #000, 0 0.4px 0 #000;
   }
   @page { margin-top: 5mm; margin-bottom: 4mm; margin-left: 0mm; margin-right: 0mm; }
-  .invoice-print-area { width: 5.5cm; max-width: 5.5cm; margin: auto; padding: 0; line-height: 1.45; font-size: 13px; font-weight: 600; }
-  .invoice-print-area hr { border: none; border-top: 1.5px dashed #000; margin: 5px 0; }
+  .invoice-print-area { width: 5.5cm; max-width: 5.5cm; margin: auto; padding: 0; line-height: 1.45; font-size: 13px; font-weight: 700; }
+  .invoice-print-area hr { border: none; border-top: 2px solid #000; margin: 5px 0; }
   .invoice-print-area .title { font-size: 18px; font-weight: 900; text-align: center; margin-bottom: 3px; letter-spacing: 0.5px; }
-  .invoice-print-area .subtitle { font-size: 11px; font-weight: 600; text-align: center; margin-bottom: 1px; }
-  .invoice-print-area .datos-cliente { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+  .invoice-print-area .subtitle { font-size: 11px; font-weight: 700; text-align: center; margin-bottom: 1px; }
+  .invoice-print-area .datos-cliente { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
   .invoice-print-area .label { font-weight: 900; }
-  .invoice-print-area table { width: 100%; border-collapse: collapse; font-size: 12px; font-weight: 600; margin-bottom: 3px; }
-  .invoice-print-area th { border-bottom: 1.5px solid #000; font-size: 12px; font-weight: 900; padding: 3px 0; text-align: left; }
-  .invoice-print-area td { padding: 2px 0; word-break: break-word; vertical-align: top; font-size: 12px; font-weight: 600; }
+  .invoice-print-area table { width: 100%; border-collapse: collapse; font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+  .invoice-print-area th { border-bottom: 2px solid #000; font-size: 12px; font-weight: 900; padding: 3px 0; text-align: left; }
+  .invoice-print-area td { padding: 2px 0; word-break: break-word; vertical-align: top; font-size: 12px; font-weight: 700; }
   .invoice-print-area .totals-table td { padding: 2px 0; }
   .invoice-print-area .totals-table .label { text-align: left; width: 60%; font-weight: 900; }
-  .invoice-print-area .totals-table .value { text-align: right; width: 40%; font-weight: 700; }
-  .invoice-print-area .total-row { font-weight: 900; border-top: 1.5px solid #000; font-size: 14px; }
-  .invoice-print-area .footer { text-align: center; font-size: 11px; font-weight: 600; margin-top: 6px; }
+  .invoice-print-area .totals-table .value { text-align: right; width: 40%; font-weight: 800; }
+  .invoice-print-area .total-row { font-weight: 900; border-top: 2px solid #000; font-size: 14px; }
+  .invoice-print-area .footer { text-align: center; font-size: 11px; font-weight: 700; margin-top: 6px; }
   .flex { display: flex; } .justify-between { justify-content: space-between; }
-  .text-right { text-align: right; } .text-xs { font-size: 10px; font-weight: 600; }
+  .text-right { text-align: right; } .text-xs { font-size: 10px; font-weight: 700; }
   .font-bold { font-weight: 900; } .py-1 { padding-top: 2px; padding-bottom: 2px; }
 `;
 
