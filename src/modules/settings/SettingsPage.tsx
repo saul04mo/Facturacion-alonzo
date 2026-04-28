@@ -843,6 +843,9 @@ export function SettingsPage() {
 
               {/* Migración a inventario dual (Tienda + Almacén) */}
               <DualBranchMigrationCard />
+
+              {/* Mover todo el stock inicial al almacén */}
+              <StockToWarehouseMigrationCard />
             </div>
           </div>
         )}
@@ -932,6 +935,90 @@ function DualBranchMigrationCard() {
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-[11px] text-amber-700 dark:text-amber-300 font-display font-semibold">
             ¿Confirmás? Esto modifica TODOS los productos y facturas:
+          </span>
+          <button onClick={handleRun} className="btn-primary text-xs">Sí, ejecutar</button>
+          <button onClick={() => setConfirm(false)} className="btn-ghost text-xs">Cancelar</button>
+        </div>
+      )}
+
+      {running && (
+        <div className="text-[11px] text-navy-600 dark:text-gray-400 font-mono">
+          Ejecutando migración… no cierres la pestaña.
+        </div>
+      )}
+
+      {logs.length > 0 && (
+        <div className="mt-3 max-h-40 overflow-y-auto bg-navy-900/5 dark:bg-black/30 rounded p-2 text-[10px] font-mono text-navy-700 dark:text-gray-300 space-y-0.5">
+          {logs.map((log, i) => (
+            <div key={i}>{log}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tarjeta para correr la migración inversa: mover todo el stock
+ * inicial al almacén (la primera migración asumió tienda por defecto,
+ * pero en realidad todo está en el almacén).
+ */
+function StockToWarehouseMigrationCard() {
+  const toast = useToast();
+  const [running, setRunning] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [confirm, setConfirm] = useState(false);
+
+  async function handleRun() {
+    setRunning(true);
+    setLogs([]);
+    try {
+      const { migrateStockToWarehouse } = await import('@/utils/migrations/migrateStockToWarehouse');
+      const result = await migrateStockToWarehouse((msg) => {
+        setLogs((prev) => [...prev, msg]);
+      });
+      if (result.errors.length === 0) {
+        toast.success(`Stock movido: ${result.unitsMoved} unidades en ${result.productsMigrated} productos.`);
+      } else {
+        toast.warning(`Migración con ${result.errors.length} errores. Revisa el log.`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || 'Error en la migración.');
+    } finally {
+      setRunning(false);
+      setConfirm(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 bg-blue-50/40 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800/30 p-4">
+      <div className="flex items-start gap-3 mb-3">
+        <Database size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100">
+            Mover stock inicial al Almacén
+          </p>
+          <p className="text-[11px] text-navy-500 dark:text-gray-400 mt-1 leading-relaxed">
+            Mueve TODO lo que esté en <code>stockStore</code> al <code>stockWarehouse</code>.
+            La tienda quedará en cero hasta que generes transferencias desde el
+            almacén. Usá esto si la primera migración te dejó el stock en tienda
+            pero en realidad todo está en el almacén central. <b>Es idempotente</b>:
+            si ya lo corriste, los productos con stockStore=0 se saltean.
+          </p>
+        </div>
+      </div>
+
+      {!confirm && !running && (
+        <button onClick={() => setConfirm(true)} className="btn-secondary text-xs">
+          Mover stock al almacén…
+        </button>
+      )}
+
+      {confirm && !running && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] text-blue-700 dark:text-blue-300 font-display font-semibold">
+            ¿Confirmás? Esto mueve TODO el stock de tienda → almacén:
           </span>
           <button onClick={handleRun} className="btn-primary text-xs">Sí, ejecutar</button>
           <button onClick={() => setConfirm(false)} className="btn-ghost text-xs">Cancelar</button>
