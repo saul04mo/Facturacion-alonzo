@@ -8,7 +8,7 @@ import { Pagination } from '@/components/Pagination';
 import { saveProduct, deleteProduct, toggleProductActive } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Edit, Trash2, X as XIcon, Check, ChevronDown, ChevronUp, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle, Eye, EyeOff, Copy } from 'lucide-react';
+import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Printer, Shuffle, Eye, EyeOff, Copy } from 'lucide-react';
 
 // ============================
 // VARIANT EDITOR (Modal)
@@ -440,88 +440,6 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
   );
 }
 
-// ============================
-// VARIANT DETAIL PANEL
-// ============================
-function ProductVariantsPanel({ product, onPrintBarcode }: { product: Product; onPrintBarcode?: (product: Product, variantIndex?: number) => void }) {
-  const { format } = useCurrency();
-  const byColor: Record<string, (ProductVariant & { idx: number })[]> = {};
-  product.variants?.forEach((v, idx) => {
-    const key = (v.color || 'SIN COLOR').toUpperCase();
-    if (!byColor[key]) byColor[key] = [];
-    byColor[key].push({ ...v, idx });
-  });
-
-  const hasAnyBarcode = product.variants?.some(v => v.barcode);
-
-  return (
-    <div className="px-4 pb-4 animate-fade-up">
-      {/* Print all barcodes for this product */}
-      {hasAnyBarcode && onPrintBarcode && (
-        <div className="mb-3 flex justify-end">
-          <button
-            onClick={() => onPrintBarcode(product)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-display font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
-          >
-            <Printer size={13} /> Imprimir Códigos de Barras
-          </button>
-        </div>
-      )}
-
-      <div className="bg-surface-50 rounded-lg border border-surface-200 overflow-hidden">
-        {Object.entries(byColor).map(([color, variants]) => (
-          <div key={color}>
-            <div className="px-4 py-2 bg-surface-100 border-b border-surface-200">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-navy-300 border border-navy-400" />
-                <span className="text-xs font-display font-bold text-navy-700">{color}</span>
-                <span className="text-[10px] text-navy-400">({variants.length} tallas)</span>
-              </div>
-            </div>
-            <div className="divide-y divide-surface-100">
-              {variants.map((v) => {
-                const isLow = v.stock <= 5;
-                return (
-                  <div key={v.idx} className={`px-4 py-2.5 text-sm ${isLow ? 'bg-red-50/60' : ''}`}>
-                    <div className="grid grid-cols-4 gap-4">
-                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Talla</span>
-                        <span className="font-display font-medium text-navy-800">{v.size || 'N/A'}</span></div>
-                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Precio</span>
-                        <span className="font-mono font-semibold text-navy-900">{format(v.price)}</span></div>
-                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Stock</span>
-                        <span className={`font-mono font-semibold ${isLow ? 'text-accent-red' : 'text-navy-900'}`}>{v.stock} {isLow && <AlertTriangle size={11} className="inline ml-0.5" />}</span></div>
-                      <div><span className="text-[10px] text-navy-400 font-display uppercase block">Valor</span>
-                        <span className="font-mono text-navy-600">{format(v.price * v.stock)}</span></div>
-                    </div>
-                    {/* Barcode display */}
-                    {v.barcode && (
-                      <div className="mt-2 flex items-center gap-3 p-2 bg-white rounded-md border border-surface-100">
-                        <BarcodeRenderer value={v.barcode} width={1} height={25} fontSize={8} />
-                        <div className="flex-1">
-                          <span className="text-[10px] text-navy-400 font-display uppercase block">Código</span>
-                          <span className="text-xs font-mono font-semibold text-navy-700">{v.barcode}</span>
-                        </div>
-                        {onPrintBarcode && (
-                          <button
-                            onClick={() => onPrintBarcode(product, v.idx)}
-                            className="p-1.5 text-navy-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
-                            title="Imprimir este código"
-                          >
-                            <Printer size={13} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ============================
 // MAIN INVENTORY PAGE
@@ -564,8 +482,14 @@ export function InventoryPage() {
   useBarcodeScanner((barcode) => {
     const result = findByBarcode(products, barcode);
     if (result) {
+      // Highlight transitorio en la card del catálogo
       setExpandedId(result.product.id);
-      // Scroll to the product
+      setTimeout(() => setExpandedId(null), 2500);
+      // Scroll a la card
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-product-id="${result.product.id}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      });
       toast.success(`Producto encontrado: ${result.product.name} (${result.variant.size}/${result.variant.color})`);
     } else {
       toast.warning(`No se encontró producto con código: ${barcode}`);
@@ -785,8 +709,8 @@ export function InventoryPage() {
           <p className="text-lg font-mono font-bold text-navy-900">{grouped.length}</p></div>
       </div>
 
-      {/* Grouped content */}
-      <div className="space-y-4">
+      {/* Catalog view — products as columns with sizes/stock per row */}
+      <div className="space-y-6">
         {paginatedGroups.length === 0 ? (
           <div className="card p-16 text-center">
             <Package size={48} className="mx-auto text-navy-200 mb-3" />
@@ -796,9 +720,9 @@ export function InventoryPage() {
           paginatedGroups.map((group) => (
             <div key={`${group.gender}-${group.category}`} className="card overflow-hidden">
               {/* Group header */}
-              <div className="px-5 py-3 bg-surface-50 border-b border-surface-200 flex items-center justify-between">
+              <div className="px-5 py-3 bg-surface-50 border-b border-surface-200 flex items-center justify-between sticky left-0">
                 <div className="flex items-center gap-3">
-                  <span className={`text-lg ${group.gender === 'Hombre' ? '👔' : '👗'}`} />
+                  <span className="text-lg">{group.gender === 'Hombre' ? '👔' : '👗'}</span>
                   <div>
                     <span className="font-display font-bold text-navy-900 text-sm">{group.category}</span>
                     <span className="text-navy-300 mx-2">·</span>
@@ -808,73 +732,136 @@ export function InventoryPage() {
                 <span className="badge badge-gray text-[10px]">{group.products.length} productos</span>
               </div>
 
-              {/* Products in this group */}
-              <div className="divide-y divide-surface-100">
-                {group.products.map((product) => {
-                  const isExpanded = expandedId === product.id;
-                  const totalStock = product.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0;
-                  const lowStock = totalStock <= 5;
-                  const minP = Math.min(...(product.variants?.map((v) => v.price) || [0]));
-                  const maxP = Math.max(...(product.variants?.map((v) => v.price) || [0]));
+              {/* Horizontal scrolling row of product columns */}
+              <div className="overflow-x-auto">
+                <div className="flex items-stretch gap-3 p-4 min-w-min">
+                  {group.products.map((product) => {
+                    const totalStockP = product.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0;
+                    const lowStock = totalStockP <= 5;
+                    const minP = Math.min(...(product.variants?.map((v) => v.price) || [0]));
+                    const maxP = Math.max(...(product.variants?.map((v) => v.price) || [0]));
+                    // Sort variants S, M, L, XL, 2XL, 3XL, 4XL, 5XL...
+                    const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'XXL', 'XXXL'];
+                    const sortedVariants = [...(product.variants || [])].sort((a, b) => {
+                      const ai = sizeOrder.indexOf(String(a.size).toUpperCase());
+                      const bi = sizeOrder.indexOf(String(b.size).toUpperCase());
+                      if (ai === -1 && bi === -1) return String(a.size).localeCompare(String(b.size));
+                      if (ai === -1) return 1;
+                      if (bi === -1) return -1;
+                      return ai - bi;
+                    });
+                    const colorLabel = product.variants?.[0]?.color || '';
+                    const allSameColor = product.variants?.every((v) => v.color === colorLabel);
 
-                  return (
-                    <div key={product.id} className={`${isExpanded ? 'bg-surface-50/50' : ''}`}>
-                      <div className="flex items-center gap-4 px-5 py-3 cursor-pointer hover:bg-surface-50 transition-colors hover-lift"
-                        onClick={() => setExpandedId(isExpanded ? null : product.id)}>
-                        {/* Expand */}
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${isExpanded ? 'bg-navy-900 text-white' : 'bg-surface-100 text-navy-400'}`}>
-                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </div>
+                    return (
+                      <div
+                        key={product.id}
+                        data-product-id={product.id}
+                        className={`group/card relative w-[160px] flex-shrink-0 flex flex-col rounded-xl border bg-card cursor-pointer transition-all ${
+                          expandedId === product.id
+                            ? 'border-amber-500 ring-2 ring-amber-300 shadow-xl scale-[1.03]'
+                            : 'border-surface-200 hover:border-amber-300 hover:shadow-lg'
+                        }`}
+                        onClick={() => can('canEditProducts') && handleEdit(product)}
+                        title={can('canEditProducts') ? 'Click para editar' : product.name}
+                      >
                         {/* Image */}
-                        <div className="w-11 h-11 rounded-lg bg-surface-50 dark:bg-surface-100/50 overflow-hidden flex-shrink-0 border border-surface-200">
-                          {product.imageUrl ? <img src={product.imageUrl} alt="" className="w-full h-full object-contain p-1 mix-blend-multiply dark:mix-blend-normal" /> :
-                            <div className="w-full h-full flex items-center justify-center"><Package size={16} className="text-navy-300" /></div>}
-                        </div>
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="font-display font-semibold text-navy-900 text-sm truncate">{product.name}</p>
-                            {product.active === false && (
-                              <span className="badge text-[8px] px-1 py-0.5 bg-red-100 text-red-600 flex-shrink-0">Oculto</span>
+                        <div className="relative aspect-[4/5] rounded-t-xl bg-surface-50 dark:bg-surface-100/50 overflow-hidden">
+                          {product.imageUrl ? (
+                            <img
+                              src={product.imageUrl}
+                              alt={product.name}
+                              className="w-full h-full object-contain p-2 mix-blend-multiply dark:mix-blend-normal"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Package size={32} className="text-navy-200" />
+                            </div>
+                          )}
+                          {product.active === false && (
+                            <span className="absolute top-1.5 left-1.5 badge text-[8px] px-1.5 py-0.5 bg-red-500/90 text-white">Oculto</span>
+                          )}
+                          {/* Hover actions */}
+                          <div
+                            className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {can('canEditProducts') && (
+                              <button
+                                onClick={() => handleToggleActive(product)}
+                                title={product.active !== false ? 'Ocultar' : 'Mostrar'}
+                                className={`w-7 h-7 rounded-md flex items-center justify-center bg-white/95 backdrop-blur shadow-sm transition-colors ${product.active !== false ? 'text-emerald-600 hover:bg-emerald-50' : 'text-amber-600 hover:bg-amber-50'}`}
+                              >
+                                {product.active !== false ? <Eye size={13} /> : <EyeOff size={13} />}
+                              </button>
+                            )}
+                            {can('canEditProducts') && (
+                              <button
+                                onClick={() => handleDuplicate(product)}
+                                title="Duplicar"
+                                className="w-7 h-7 rounded-md flex items-center justify-center bg-white/95 backdrop-blur shadow-sm text-navy-500 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+                              >
+                                <Copy size={13} />
+                              </button>
+                            )}
+                            {can('canDeleteProducts') && (
+                              <button
+                                onClick={() => handleDelete(product)}
+                                title="Eliminar"
+                                className="w-7 h-7 rounded-md flex items-center justify-center bg-white/95 backdrop-blur shadow-sm text-navy-500 hover:bg-red-50 hover:text-accent-red transition-colors"
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             )}
                           </div>
-                          <p className="text-xs font-mono text-navy-500">
-                            {minP === maxP ? format(minP) : `${format(minP)} – ${format(maxP)}`}
-                            <span className="text-navy-300 mx-1.5">·</span>
-                            {product.variants?.length || 0} vars.
+                        </div>
+
+                        {/* Info */}
+                        <div className="px-2.5 pt-2 pb-1.5 border-b border-surface-100">
+                          <p className="font-display font-bold text-navy-900 text-[11px] leading-tight uppercase truncate">
+                            {product.name}
+                          </p>
+                          <p className="text-[10px] text-navy-500 font-display uppercase truncate mt-0.5">
+                            {allSameColor && colorLabel ? colorLabel : `${product.variants?.length || 0} colores`}
+                          </p>
+                          <p className="text-[10px] font-mono text-navy-400 mt-0.5">
+                            {minP === maxP ? format(minP) : `${format(minP)}–${format(maxP)}`}
                           </p>
                         </div>
-                        {/* Stock */}
-                        <div className="text-right flex-shrink-0 w-20">
-                          <span className={`text-sm font-mono font-bold ${lowStock ? 'text-accent-red' : 'text-navy-900'}`}>
-                            {totalStock} {lowStock && <AlertTriangle size={12} className="inline ml-0.5" />}
-                          </span>
-                          <p className="text-[10px] text-navy-400">stock</p>
+
+                        {/* Sizes / stock list */}
+                        <div className="flex-1 px-2.5 py-2 space-y-0.5">
+                          {sortedVariants.map((v, idx) => {
+                            const isLow = (v.stock || 0) > 0 && (v.stock || 0) <= 2;
+                            const isOut = (v.stock || 0) === 0;
+                            return (
+                              <div
+                                key={`${v.size}-${v.color}-${idx}`}
+                                className="flex items-baseline justify-between text-xs font-mono leading-snug"
+                              >
+                                <span className={`font-bold tabular-nums ${isOut ? 'text-navy-300' : 'text-navy-900'}`}>
+                                  {v.stock || 0}
+                                </span>
+                                <span className={`text-[10px] uppercase font-display ${isOut ? 'text-navy-300 line-through' : isLow ? 'text-accent-red font-semibold' : 'text-navy-600'}`}>
+                                  {v.size}
+                                  {!allSameColor && v.color && <span className="text-navy-300 ml-1 normal-case">· {v.color}</span>}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                        {/* Actions */}
-                        <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                          {can('canEditProducts') && (
-                            <button onClick={() => handleToggleActive(product)}
-                              title={product.active !== false ? 'Ocultar en web/app' : 'Mostrar en web/app'}
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${product.active !== false ? 'text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700' : 'text-navy-300 hover:bg-amber-50 hover:text-amber-600'}`}>
-                              {product.active !== false ? <Eye size={15} /> : <EyeOff size={15} />}
-                            </button>
-                          )}
-                          {can('canEditProducts') && (
-                            <button onClick={() => handleDuplicate(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-navy-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors" title="Duplicar producto"><Copy size={15} /></button>
-                          )}
-                          {can('canEditProducts') && (
-                            <button onClick={() => handleEdit(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-navy-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><Edit size={15} /></button>
-                          )}
-                          {can('canDeleteProducts') && (
-                            <button onClick={() => handleDelete(product)} className="w-8 h-8 rounded-lg flex items-center justify-center text-navy-400 hover:bg-red-50 hover:text-accent-red transition-colors"><Trash2 size={15} /></button>
-                          )}
+
+                        {/* Total */}
+                        <div className={`px-2.5 py-2 border-t border-surface-200 flex items-center justify-between rounded-b-xl ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}>
+                          <span className="text-[9px] font-display font-semibold text-navy-400 uppercase tracking-wider">Total</span>
+                          <span className={`text-sm font-mono font-bold tabular-nums ${lowStock ? 'text-accent-red' : 'text-navy-900'}`}>
+                            {totalStockP} {lowStock && <AlertTriangle size={11} className="inline -mt-0.5" />}
+                          </span>
                         </div>
                       </div>
-                      {isExpanded && <ProductVariantsPanel product={product} onPrintBarcode={openPrintModal} />}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           ))
