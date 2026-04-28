@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -12,18 +13,29 @@ interface ModalProps {
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
   useEffect(() => {
     if (open) {
+      // Bloqueamos scroll en body Y en el <main> del Layout (el contenedor
+      // que realmente hace scroll en este SPA). Si solo bloquearamos body,
+      // el usuario podría seguir scrolleando detrás del modal.
+      const main = document.querySelector('main');
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+      if (main) main.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+        if (main) main.style.overflow = '';
+      };
     }
-    return () => { document.body.style.overflow = ''; };
   }, [open]);
 
   if (!open) return null;
 
   const widths = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
 
-  return (
+  // Renderizamos en un Portal al body para que el modal escape de cualquier
+  // ancestor con overflow/transform/filter que rompería su position:fixed.
+  // El Layout tiene <main className="overflow-y-auto"> que es el culpable
+  // típico: position:fixed dentro de un overflow ancestor se queda anclado
+  // al ancestor scrolleable, no al viewport.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 sm:pt-8 animate-fade-in">
       <div className="absolute inset-0 bg-navy-950/20 dark:bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className={`relative bg-white dark:bg-dark-card rounded-xl shadow-modal w-full ${widths[size]} max-h-[calc(100vh-4rem)] flex flex-col animate-fade-up`}>
@@ -38,6 +50,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
