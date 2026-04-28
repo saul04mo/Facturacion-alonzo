@@ -91,17 +91,20 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
 
     itemsHtml += `
       <tr>
-        <td class="py-1 item-desc">${label.name} (${label.size}, ${label.color})</td>
-        <td class="py-1 text-right item-total">${(itemTotal * rate).toFixed(2)}</td>
+        <td class="py-1">${label.barcode}</td>
+        <td class="py-1" colspan="3">${label.name} (${label.size}, ${label.color})</td>
       </tr>
       <tr>
-        <td class="py-1 item-qty" colspan="2">${item.quantity} x ${(price * rate).toFixed(2)}</td>
+        <td></td>
+        <td class="py-1 text-right" colspan="2">${item.quantity} x ${(price * rate).toFixed(2)}</td>
+        <td class="py-1 text-right">${(itemTotal * rate).toFixed(2)}</td>
       </tr>`;
 
     if (itemDiscount > 0) {
       itemsHtml += `
         <tr>
-          <td colspan="2" class="py-1 text-right text-xs">Desc: -${(itemDiscount * rate).toFixed(2)}</td>
+          <td></td>
+          <td colspan="3" class="py-1 text-right text-xs">Desc: -${(itemDiscount * rate).toFixed(2)}</td>
         </tr>`;
     }
   });
@@ -214,8 +217,8 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
       <div class="subtitle">Ingreso No: ${String(invoice.numericId).padStart(8, '0')} - ${invoiceDate.toLocaleTimeString('es-VE')}</div>
       <div class="subtitle">Emitida el: ${invoiceDate.toLocaleDateString('es-VE')} Expira: ${expirationDate.toLocaleDateString('es-VE')}</div>
       <hr>
-      <table class="items-table">
-        <thead><tr><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
+      <table>
+        <thead><tr><th>Código</th><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
       <hr>
@@ -240,55 +243,42 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
 }
 
 const RECEIPT_STYLES = `
-  /* Optimizado para impresoras térmicas de 58mm. Para mayor oscuridad
-     usamos doble text-shadow que efectivamente "duplica" el glifo
-     desplazado fracciones de pixel — el browser renderiza dos veces
-     el carácter superpuesto antes de mandar el bitmap a la impresora,
-     resultando en glifos más sólidos y oscuros sin cambiar tamaño. */
+  /* Tipografía estilo del sistema anterior: Helvetica/Arial sans-serif
+     normal con peso medio (500). Más legible que Courier mono y se
+     imprime mejor en térmica que Arial Black (que era demasiado pesada
+     y borraba el detalle de los caracteres pequeños). */
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: #000 !important; }
   body {
-    font-family: "Arial Black", "Helvetica", "Arial", sans-serif;
-    font-size: 13px;
-    font-weight: 700;
+    font-family: "Helvetica", "Arial", sans-serif;
+    font-size: 12px;
+    font-weight: 500;
     color: #000;
     background: #fff;
     margin: 0;
     padding: 0;
-    line-height: 1.45;
+    line-height: 1.4;
     -webkit-font-smoothing: antialiased;
-    /* Doble sombra: una a la derecha y una abajo. La térmica ve un
-       glifo más "lleno" sin que se note borroso a simple vista. */
-    text-shadow: 0.4px 0 0 #000, 0 0.4px 0 #000;
-    /* Aumenta el contraste — el preview se ve más oscuro y la térmica
-       recibe un bitmap con más pixeles 100% negros (vs grises). */
-    filter: contrast(1.15);
   }
   @page { margin-top: 5mm; margin-bottom: 4mm; margin-left: 0mm; margin-right: 0mm; }
-  .invoice-print-area { width: 5.5cm; max-width: 5.5cm; margin: auto; padding: 0; line-height: 1.45; font-size: 13px; font-weight: 700; }
-  .invoice-print-area hr { border: none; border-top: 2px solid #000; margin: 5px 0; }
-  .invoice-print-area .title { font-size: 18px; font-weight: 900; text-align: center; margin-bottom: 3px; letter-spacing: 0.5px; }
-  .invoice-print-area .business-name { font-size: 16px; font-weight: 900; margin-top: 4px; letter-spacing: 1px; }
-  .invoice-print-area .subtitle { font-size: 11px; font-weight: 700; text-align: center; margin-bottom: 1px; }
-  .invoice-print-area .datos-cliente { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
-  .invoice-print-area .label { font-weight: 900; }
-  .invoice-print-area table { width: 100%; border-collapse: collapse; font-size: 12px; font-weight: 700; margin-bottom: 3px; }
-  .invoice-print-area .items-table { table-layout: fixed; }
-  .invoice-print-area .items-table th { border-bottom: 2px solid #000; font-size: 12px; font-weight: 900; padding: 3px 0; text-align: left; }
-  .invoice-print-area .items-table th:last-child { width: 30%; }
-  .invoice-print-area .items-table .item-desc { font-weight: 800; }
-  .invoice-print-area .items-table .item-total { font-weight: 900; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .invoice-print-area .items-table .item-qty { font-size: 11px; font-weight: 700; padding-left: 6px; padding-bottom: 4px; }
-  .invoice-print-area th { border-bottom: 2px solid #000; font-size: 12px; font-weight: 900; padding: 3px 0; text-align: left; }
-  .invoice-print-area td { padding: 2px 0; word-break: break-word; vertical-align: top; font-size: 12px; font-weight: 700; }
+  .invoice-print-area { width: 5.5cm; max-width: 5.5cm; margin: auto; padding: 0; line-height: 1.4; font-size: 12px; font-weight: 500; }
+  .invoice-print-area hr { border: none; border-top: 1px solid #000; margin: 4px 0; }
+  .invoice-print-area .title { font-size: 14px; font-weight: 700; text-align: center; margin-bottom: 2px; }
+  .invoice-print-area .business-name { font-size: 14px; font-weight: 700; margin-top: 4px; }
+  .invoice-print-area .subtitle { font-size: 10px; font-weight: 500; text-align: center; margin-bottom: 1px; }
+  .invoice-print-area .datos-cliente { font-size: 11px; font-weight: 500; margin-bottom: 2px; }
+  .invoice-print-area .label { font-weight: 700; }
+  .invoice-print-area table { width: 100%; border-collapse: collapse; font-size: 11px; font-weight: 500; margin-bottom: 2px; }
+  .invoice-print-area th { border-bottom: 1px solid #000; font-size: 11px; font-weight: 700; padding: 2px 0; text-align: left; }
+  .invoice-print-area td { padding: 2px 0; word-break: break-word; vertical-align: top; font-size: 11px; font-weight: 500; }
   .invoice-print-area .totals-table { table-layout: fixed; width: 100%; }
-  .invoice-print-area .totals-table td { padding: 2px 0; word-break: normal; }
-  .invoice-print-area .totals-table .label { text-align: left; width: 55%; font-weight: 900; word-break: break-word; }
-  .invoice-print-area .totals-table .value { text-align: right; width: 45%; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .invoice-print-area .total-row { font-weight: 900; border-top: 2px solid #000; font-size: 14px; }
-  .invoice-print-area .footer { text-align: center; font-size: 11px; font-weight: 700; margin-top: 6px; }
+  .invoice-print-area .totals-table td { padding: 1px 0; word-break: normal; }
+  .invoice-print-area .totals-table .label { text-align: left; width: 55%; font-weight: 700; word-break: break-word; }
+  .invoice-print-area .totals-table .value { text-align: right; width: 45%; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .invoice-print-area .total-row { font-weight: 700; border-top: 1px solid #000; }
+  .invoice-print-area .footer { text-align: center; font-size: 10px; font-weight: 500; margin-top: 5px; }
   .flex { display: flex; } .justify-between { justify-content: space-between; }
-  .text-right { text-align: right; } .text-xs { font-size: 10px; font-weight: 700; }
-  .font-bold { font-weight: 900; } .py-1 { padding-top: 2px; padding-bottom: 2px; }
+  .text-right { text-align: right; } .text-xs { font-size: 9px; font-weight: 500; }
+  .font-bold { font-weight: 700; } .py-1 { padding-top: 2px; padding-bottom: 2px; }
 `;
 
 function openReceiptWindow(opts: ReceiptOptions): Window | null {
