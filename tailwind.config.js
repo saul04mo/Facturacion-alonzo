@@ -39,6 +39,14 @@ export default {
         'nav': '0 1px 2px 0 rgb(0 0 0 / 0.03)',
         'modal': '0 20px 60px -12px rgb(0 0 0 / 0.15)',
       },
+      fontFamily: {
+        // 'mono' default usa fuentes del SO que pueden tener glifos
+        // ambiguos (el 0 con barra/cruz parece 8 a la distancia).
+        // JetBrains Mono ya viene cargada desde Google Fonts en
+        // index.html y tiene un 0 con un punto en el centro,
+        // imposible de confundir con el 8.
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+      },
     },
   },
   plugins: [],
