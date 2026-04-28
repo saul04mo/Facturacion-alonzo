@@ -7,8 +7,12 @@ import { Modal } from '@/components/Modal';
 import { Pagination } from '@/components/Pagination';
 import { saveProduct, deleteProduct, toggleProductActive } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
+import { getStockBreakdown, getProductStockBreakdown } from '@/utils/branchUtils';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy } from 'lucide-react';
+import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy, Store, Warehouse, Truck as TruckIcon } from 'lucide-react';
+
+/** Vista de stock por sucursal en el inventario. */
+type StockView = 'total' | 'store' | 'warehouse' | 'transit';
 
 // ============================
 // VARIANT EDITOR (Modal)
@@ -22,7 +26,7 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
     const copy = [...variants]; copy[i] = { ...copy[i], [field]: value }; onChange(copy);
   };
   const remove = (i: number) => onChange(variants.filter((_, idx) => idx !== i));
-  const add = () => onChange([...variants, { size: '', color: '', price: 0, stock: 0 }]);
+  const add = () => onChange([...variants, { size: '', color: '', price: 0, stock: 0, stockStore: 0, stockWarehouse: 0, stockInTransit: 0 }]);
 
   function generateBarcodeForVariant(i: number) {
     const code = generateBarcode();
@@ -44,10 +48,16 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
     setBulkPrice('');
   }
 
-  function applyBulkStock() {
+  function applyBulkStockToBranch(branch: 'store' | 'warehouse') {
     const stock = parseInt(bulkStock);
     if (isNaN(stock) || stock < 0) return;
-    onChange(variants.map(v => ({ ...v, stock })));
+    const field = branch === 'store' ? 'stockStore' : 'stockWarehouse';
+    onChange(variants.map(v => {
+      const updated = { ...v, [field]: stock };
+      // Recalcular agregado total (legacy)
+      updated.stock = (updated.stockStore ?? 0) + (updated.stockWarehouse ?? 0) + (updated.stockInTransit ?? 0);
+      return updated;
+    }));
     setBulkStock('');
   }
 
@@ -107,11 +117,21 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
             />
             <button
               type="button"
-              onClick={applyBulkStock}
+              onClick={() => applyBulkStockToBranch('store')}
               disabled={!bulkStock}
-              className="px-2 py-1 text-[10px] font-display font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-40"
+              title="Aplicar este stock a TODAS las variantes en Tienda"
+              className="px-2 py-1 text-[10px] font-display font-bold bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors disabled:opacity-40 flex items-center gap-1"
             >
-              # Aplicar
+              <Store size={10} /> Tienda
+            </button>
+            <button
+              type="button"
+              onClick={() => applyBulkStockToBranch('warehouse')}
+              disabled={!bulkStock}
+              title="Aplicar este stock a TODAS las variantes en Almacén"
+              className="px-2 py-1 text-[10px] font-display font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-40 flex items-center gap-1"
+            >
+              <Warehouse size={10} /> Almacén
             </button>
           </div>
           <div className="flex items-center gap-1.5">
@@ -133,17 +153,51 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
         </div>
       )}
 
-      {variants.map((v, i) => (
+      {variants.map((v, i) => {
+        const stockStore = v.stockStore ?? 0;
+        const stockWarehouse = v.stockWarehouse ?? 0;
+        const stockInTransit = v.stockInTransit ?? 0;
+        const totalStock = stockStore + stockWarehouse + stockInTransit;
+
+        // Wrapper que actualiza un campo de stock + recalcula el agregado `stock`
+        const updateStock = (field: 'stockStore' | 'stockWarehouse', value: number) => {
+          const copy = [...variants];
+          const newVariant = { ...copy[i], [field]: value };
+          newVariant.stock = (newVariant.stockStore ?? 0) + (newVariant.stockWarehouse ?? 0) + (newVariant.stockInTransit ?? 0);
+          copy[i] = newVariant;
+          onChange(copy);
+        };
+
+        return (
         <div key={i} className="p-3 bg-surface-50 rounded-lg border border-surface-200 space-y-2">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
             <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Talla</label>
               <input value={v.size} onChange={(e) => update(i, 'size', e.target.value)} className="input-field text-sm py-1.5" /></div>
             <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Color</label>
               <input value={v.color} onChange={(e) => update(i, 'color', e.target.value)} className="input-field text-sm py-1.5" /></div>
             <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Precio ($)</label>
               <input type="number" step="0.01" value={v.price || ''} onChange={(e) => update(i, 'price', parseFloat(e.target.value) || 0)} className="input-field text-sm py-1.5" /></div>
-            <div><label className="text-[10px] font-display font-medium text-navy-400 uppercase">Stock</label>
-              <input type="number" value={v.stock} onChange={(e) => update(i, 'stock', parseInt(e.target.value) || 0)} className="input-field text-sm py-1.5" /></div>
+            <div>
+              <label className="text-[10px] font-display font-medium text-emerald-600 uppercase flex items-center gap-1">
+                <Store size={10} /> Tienda
+              </label>
+              <input type="number" value={stockStore} onChange={(e) => updateStock('stockStore', parseInt(e.target.value) || 0)} className="input-field text-sm py-1.5" />
+            </div>
+            <div>
+              <label className="text-[10px] font-display font-medium text-blue-600 uppercase flex items-center gap-1">
+                <Warehouse size={10} /> Almacén
+              </label>
+              <input type="number" value={stockWarehouse} onChange={(e) => updateStock('stockWarehouse', parseInt(e.target.value) || 0)} className="input-field text-sm py-1.5" />
+            </div>
+          </div>
+          {/* Resumen de stock por variante */}
+          <div className="flex items-center justify-between text-[10px] font-display text-navy-500 px-1">
+            <span>Total: <strong className="text-navy-900 font-mono">{totalStock}</strong></span>
+            {stockInTransit > 0 && (
+              <span className="text-amber-600 flex items-center gap-1" title="En tránsito desde el almacén">
+                <TruckIcon size={11} /> En tránsito: <strong className="font-mono">{stockInTransit}</strong>
+              </span>
+            )}
           </div>
           {/* Barcode Row */}
           <div className="flex items-center gap-2 pt-1 border-t border-surface-200">
@@ -177,7 +231,7 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
             </div>
           )}
         </div>
-      ))}
+      );})}
     </div>
   );
 }
@@ -466,6 +520,8 @@ export function InventoryPage() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+  // Vista de stock: total / por sucursal
+  const [stockView, setStockView] = useState<StockView>('total');
 
   // Barcode print modal state
   const [printModalOpen, setPrintModalOpen] = useState(false);
@@ -588,8 +644,23 @@ export function InventoryPage() {
 
   function handlePageSizeChange(size: number) { setPageSize(size); setPage(1); }
 
-  const totalStock = filtered.reduce((acc, p) => acc + (p.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0), 0);
-  const lowStockCount = filtered.filter((p) => (p.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0) <= 5).length;
+  // Stock breakdown agregado de toda la lista filtrada
+  const stockTotals = useMemo(() => {
+    return filtered.reduce(
+      (acc, p) => {
+        const b = getProductStockBreakdown(p);
+        return {
+          store: acc.store + b.store,
+          warehouse: acc.warehouse + b.warehouse,
+          inTransit: acc.inTransit + b.inTransit,
+          total: acc.total + b.total,
+        };
+      },
+      { store: 0, warehouse: 0, inTransit: 0, total: 0 }
+    );
+  }, [filtered]);
+  const totalStock = stockTotals.total;
+  const lowStockCount = filtered.filter((p) => getProductStockBreakdown(p).total <= 5).length;
 
   function handleEdit(p: Product) { setEditProduct(p); setFormOpen(true); }
 
@@ -698,16 +769,44 @@ export function InventoryPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
         <div className="card px-4 py-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Productos</p>
           <p className="text-lg font-mono font-bold text-navy-900">{filtered.length}</p></div>
-        <div className="card px-4 py-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Stock Total</p>
-          <p className="text-lg font-mono font-bold text-navy-900">{totalStock}</p></div>
-        <div className="card px-4 py-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Stock Bajo</p>
-          <p className={`text-lg font-mono font-bold ${lowStockCount > 0 ? 'text-accent-red' : 'text-emerald-600'}`}>{lowStockCount}</p></div>
-        <div className="card px-4 py-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Grupos</p>
-          <p className="text-lg font-mono font-bold text-navy-900">{grouped.length}</p></div>
+        <button onClick={() => setStockView('store')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'store' ? 'ring-2 ring-emerald-500 border-emerald-300' : ''}`}>
+          <p className="text-[10px] font-display font-semibold text-emerald-600 uppercase flex items-center gap-1"><Store size={11} /> Tienda</p>
+          <p className="text-lg font-mono font-bold text-navy-900">{stockTotals.store}</p>
+        </button>
+        <button onClick={() => setStockView('warehouse')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'warehouse' ? 'ring-2 ring-blue-500 border-blue-300' : ''}`}>
+          <p className="text-[10px] font-display font-semibold text-blue-600 uppercase flex items-center gap-1"><Warehouse size={11} /> Almacén</p>
+          <p className="text-lg font-mono font-bold text-navy-900">{stockTotals.warehouse}</p>
+        </button>
+        <button onClick={() => setStockView('transit')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'transit' ? 'ring-2 ring-amber-500 border-amber-300' : ''}`}>
+          <p className="text-[10px] font-display font-semibold text-amber-600 uppercase flex items-center gap-1"><TruckIcon size={11} /> En Tránsito</p>
+          <p className="text-lg font-mono font-bold text-navy-900">{stockTotals.inTransit}</p>
+        </button>
+        <button onClick={() => setStockView('total')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'total' ? 'ring-2 ring-navy-500 border-navy-300' : ''}`}>
+          <p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Total</p>
+          <p className={`text-lg font-mono font-bold ${lowStockCount > 0 && stockView === 'total' ? 'text-navy-900' : 'text-navy-900'}`}>{totalStock}</p>
+          {lowStockCount > 0 && <p className="text-[9px] text-accent-red font-display mt-0.5"><AlertTriangle size={9} className="inline" /> {lowStockCount} bajos</p>}
+        </button>
       </div>
+
+      {/* Indicador de vista activa */}
+      {stockView !== 'total' && (
+        <div className={`text-xs font-display flex items-center gap-2 px-1 ${
+          stockView === 'store' ? 'text-emerald-700 dark:text-emerald-400' :
+          stockView === 'warehouse' ? 'text-blue-700 dark:text-blue-400' :
+          'text-amber-700 dark:text-amber-400'
+        }`}>
+          {stockView === 'store' && <Store size={14} />}
+          {stockView === 'warehouse' && <Warehouse size={14} />}
+          {stockView === 'transit' && <TruckIcon size={14} />}
+          Mostrando solo stock de <strong>
+            {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : 'En Tránsito'}
+          </strong>
+          <button onClick={() => setStockView('total')} className="ml-auto underline hover:opacity-80">Ver todo</button>
+        </div>
+      )}
 
       {/* Catalog view — products as columns with sizes/stock per row */}
       <div className="space-y-6">
@@ -735,8 +834,13 @@ export function InventoryPage() {
               {/* Grid of product columns — wraps to next row */}
               <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
                 {group.products.map((product) => {
-                    const totalStockP = product.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0;
-                    const lowStock = totalStockP <= 5;
+                    const productBreakdown = getProductStockBreakdown(product);
+                    // Stock visible según vista seleccionada
+                    const visibleStock = stockView === 'store' ? productBreakdown.store
+                      : stockView === 'warehouse' ? productBreakdown.warehouse
+                      : stockView === 'transit' ? productBreakdown.inTransit
+                      : productBreakdown.total;
+                    const lowStock = visibleStock <= 5;
                     const minP = Math.min(...(product.variants?.map((v) => v.price) || [0]));
                     const maxP = Math.max(...(product.variants?.map((v) => v.price) || [0]));
                     // Sort variants S, M, L, XL, 2XL, 3XL, 4XL, 5XL...
@@ -831,15 +935,21 @@ export function InventoryPage() {
                         {/* Sizes / stock list */}
                         <div className="flex-1 px-2.5 py-2 space-y-0.5">
                           {sortedVariants.map((v, idx) => {
-                            const isLow = (v.stock || 0) > 0 && (v.stock || 0) <= 2;
-                            const isOut = (v.stock || 0) === 0;
+                            const breakdown = getStockBreakdown(v);
+                            const variantStock = stockView === 'store' ? breakdown.store
+                              : stockView === 'warehouse' ? breakdown.warehouse
+                              : stockView === 'transit' ? breakdown.inTransit
+                              : breakdown.total;
+                            const isLow = variantStock > 0 && variantStock <= 2;
+                            const isOut = variantStock === 0;
                             return (
                               <div
                                 key={`${v.size}-${v.color}-${idx}`}
                                 className="flex items-baseline justify-between text-xs font-mono leading-snug"
+                                title={`Tienda: ${breakdown.store} · Almacén: ${breakdown.warehouse}${breakdown.inTransit > 0 ? ` · En tránsito: ${breakdown.inTransit}` : ''}`}
                               >
                                 <span className={`font-bold tabular-nums ${isOut ? 'text-navy-300' : 'text-navy-900'}`}>
-                                  {v.stock || 0}
+                                  {variantStock}
                                 </span>
                                 <span className={`text-[10px] uppercase font-display ${isOut ? 'text-navy-300 line-through' : isLow ? 'text-accent-red font-semibold' : 'text-navy-600'}`}>
                                   {v.size}
@@ -852,9 +962,11 @@ export function InventoryPage() {
 
                         {/* Total */}
                         <div className={`px-2.5 py-2 border-t border-surface-200 flex items-center justify-between rounded-b-xl ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}>
-                          <span className="text-[9px] font-display font-semibold text-navy-400 uppercase tracking-wider">Total</span>
+                          <span className="text-[9px] font-display font-semibold text-navy-400 uppercase tracking-wider">
+                            {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : stockView === 'transit' ? 'Tránsito' : 'Total'}
+                          </span>
                           <span className={`text-sm font-mono font-bold tabular-nums ${lowStock ? 'text-accent-red' : 'text-navy-900'}`}>
-                            {totalStockP} {lowStock && <AlertTriangle size={11} className="inline -mt-0.5" />}
+                            {visibleStock} {lowStock && <AlertTriangle size={11} className="inline -mt-0.5" />}
                           </span>
                         </div>
                       </div>
