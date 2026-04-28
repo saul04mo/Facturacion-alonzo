@@ -195,8 +195,11 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   return `
     <div class="invoice-print-area">
       <div class="title" style="text-align:center;">
-        ${biz.logoUrl ? `<img src="${biz.logoUrl}" alt="Logo" style="height:36px;display:block;margin:auto;" onerror="this.style.display='none'">` : ''}
-        <div class="business-name">${biz.name}</div>
+        ${biz.logoUrl
+          ? `<img src="${biz.logoUrl}" alt="${biz.name}" style="height:48px;display:block;margin:auto;" onerror="this.style.display='none';this.parentElement.querySelector('.business-name')?.removeAttribute('hidden');">
+             <div class="business-name" hidden>${biz.name}</div>`
+          : `<div class="business-name">${biz.name}</div>`
+        }
       </div>
       <div class="subtitle">RIF: ${biz.rif}</div>
       ${(biz.address || []).map((l) => `<div class="subtitle">${l}</div>`).join('')}
