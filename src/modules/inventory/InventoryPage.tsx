@@ -733,7 +733,7 @@ export function InventoryPage() {
               </div>
 
               {/* Grid of product columns — wraps to next row */}
-              <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
+              <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
                 {group.products.map((product) => {
                     const totalStockP = product.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0;
                     const lowStock = totalStockP <= 5;
@@ -817,7 +817,7 @@ export function InventoryPage() {
 
                         {/* Info */}
                         <div className="px-2.5 pt-2 pb-1.5 border-b border-surface-100">
-                          <p className="font-display font-bold text-navy-900 text-[11px] leading-tight uppercase truncate">
+                          <p className="font-display font-bold text-navy-900 text-[11px] leading-tight uppercase line-clamp-2 min-h-[26px]">
                             {product.name}
                           </p>
                           <p className="text-[10px] text-navy-500 font-display uppercase truncate mt-0.5">
