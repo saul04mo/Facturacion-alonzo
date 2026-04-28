@@ -91,20 +91,17 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
 
     itemsHtml += `
       <tr>
-        <td class="py-1">${label.barcode}</td>
-        <td class="py-1" colspan="3">${label.name} (${label.size}, ${label.color})</td>
+        <td class="py-1 item-desc">${label.name} (${label.size}, ${label.color})</td>
+        <td class="py-1 text-right item-total">${(itemTotal * rate).toFixed(2)}</td>
       </tr>
       <tr>
-        <td></td>
-        <td class="py-1 text-right" colspan="2">${item.quantity} x ${(price * rate).toFixed(2)}</td>
-        <td class="py-1 text-right">${(itemTotal * rate).toFixed(2)}</td>
+        <td class="py-1 item-qty" colspan="2">${item.quantity} x ${(price * rate).toFixed(2)}</td>
       </tr>`;
 
     if (itemDiscount > 0) {
       itemsHtml += `
         <tr>
-          <td></td>
-          <td colspan="3" class="py-1 text-right text-xs">Desc: -${(itemDiscount * rate).toFixed(2)}</td>
+          <td colspan="2" class="py-1 text-right text-xs">Desc: -${(itemDiscount * rate).toFixed(2)}</td>
         </tr>`;
     }
   });
@@ -217,8 +214,8 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
       <div class="subtitle">Ingreso No: ${String(invoice.numericId).padStart(8, '0')} - ${invoiceDate.toLocaleTimeString('es-VE')}</div>
       <div class="subtitle">Emitida el: ${invoiceDate.toLocaleDateString('es-VE')} Expira: ${expirationDate.toLocaleDateString('es-VE')}</div>
       <hr>
-      <table>
-        <thead><tr><th>Código</th><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
+      <table class="items-table">
+        <thead><tr><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
       <hr>
@@ -275,6 +272,12 @@ const RECEIPT_STYLES = `
   .invoice-print-area .datos-cliente { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
   .invoice-print-area .label { font-weight: 900; }
   .invoice-print-area table { width: 100%; border-collapse: collapse; font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+  .invoice-print-area .items-table { table-layout: fixed; }
+  .invoice-print-area .items-table th { border-bottom: 2px solid #000; font-size: 12px; font-weight: 900; padding: 3px 0; text-align: left; }
+  .invoice-print-area .items-table th:last-child { width: 30%; }
+  .invoice-print-area .items-table .item-desc { font-weight: 800; }
+  .invoice-print-area .items-table .item-total { font-weight: 900; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .invoice-print-area .items-table .item-qty { font-size: 11px; font-weight: 700; padding-left: 6px; padding-bottom: 4px; }
   .invoice-print-area th { border-bottom: 2px solid #000; font-size: 12px; font-weight: 900; padding: 3px 0; text-align: left; }
   .invoice-print-area td { padding: 2px 0; word-break: break-word; vertical-align: top; font-size: 12px; font-weight: 700; }
   .invoice-print-area .totals-table { table-layout: fixed; width: 100%; }
