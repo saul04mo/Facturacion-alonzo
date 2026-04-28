@@ -41,12 +41,18 @@ export function InvoicesPage() {
   const [dStart, setDStart] = useState(today);
   const [dEnd, setDEnd] = useState(today);
   const [dStatus, setDStatus] = useState('all');
+  const [dSeller, setDSeller] = useState('all');
+  const [dMethod, setDMethod] = useState('all');
+  const [dDelivery, setDDelivery] = useState('all');
 
   // Applied filters
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sellerFilter, setSellerFilter] = useState('all');
+  const [methodFilter, setMethodFilter] = useState('all');
+  const [deliveryFilter, setDeliveryFilter] = useState('all');
 
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -107,6 +113,9 @@ export function InvoicesPage() {
     setStartDate(dStart); 
     setEndDate(dEnd); 
     setStatusFilter(dStatus); 
+    setSellerFilter(dSeller);
+    setMethodFilter(dMethod);
+    setDeliveryFilter(dDelivery);
     setCurrentPage(1); 
     
     if (dStart || dEnd) {
@@ -127,11 +136,24 @@ export function InvoicesPage() {
 
   function clearFilters() { 
     setDSearch(''); setDStart(today); setDEnd(today); setDStatus('all'); 
+    setDSeller('all'); setDMethod('all'); setDDelivery('all');
     setSearch(''); setStartDate(today); setEndDate(today); setStatusFilter('all'); 
+    setSellerFilter('all'); setMethodFilter('all'); setDeliveryFilter('all');
     setCurrentPage(1); 
     setServerInvoices(null);
   }
-  const hasActive = search || startDate !== today || endDate !== today || statusFilter !== 'all';
+  const hasActive = search || startDate !== today || endDate !== today
+    || statusFilter !== 'all' || sellerFilter !== 'all'
+    || methodFilter !== 'all' || deliveryFilter !== 'all';
+
+  // Lista de vendedores únicos derivada de las facturas en memoria/servidor
+  const availableSellers = useMemo(() => {
+    const set = new Set<string>();
+    (serverInvoices || invoices).forEach((inv: any) => {
+      if (inv.sellerName) set.add(inv.sellerName);
+    });
+    return Array.from(set).sort();
+  }, [invoices, serverInvoices]);
 
   const filtered = useMemo(() => {
     let result = [...(serverInvoices || invoices)];
@@ -144,6 +166,18 @@ export function InvoicesPage() {
     
     if (statusFilter !== 'all') result = result.filter((inv: any) => inv.status === statusFilter);
     else result = result.filter((inv: any) => inv.status !== 'Cancelado' && inv.status !== 'Devolución');
+
+    if (sellerFilter !== 'all') {
+      result = result.filter((inv: any) => inv.sellerName === sellerFilter);
+    }
+    if (methodFilter !== 'all') {
+      result = result.filter((inv: any) =>
+        Array.isArray(inv.payments) && inv.payments.some((p: any) => p.method === methodFilter)
+      );
+    }
+    if (deliveryFilter !== 'all') {
+      result = result.filter((inv: any) => inv.deliveryType === deliveryFilter);
+    }
     
     if (search) {
       const s = search.toLowerCase();
@@ -154,7 +188,7 @@ export function InvoicesPage() {
       });
     }
     return result;
-  }, [invoices, serverInvoices, startDate, endDate, statusFilter, search]);
+  }, [invoices, serverInvoices, startDate, endDate, statusFilter, sellerFilter, methodFilter, deliveryFilter, search]);
 
   const totals = useMemo(() => {
     let totalAll = 0, delivery = 0;
@@ -295,7 +329,7 @@ export function InvoicesPage() {
 
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-surface-200 animate-fade-up">
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Buscar</label>
                 <input value={dSearch} onChange={(e) => setDSearch(e.target.value)} className="input-field text-sm" placeholder="Cliente, factura..." /></div>
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Desde</label>
@@ -307,6 +341,21 @@ export function InvoicesPage() {
                   <option value="all">Activas</option><option value="Finalizado">Finalizado</option>
                   <option value="Pendiente de pago">Crédito</option><option value="Devolución">Devolución</option>
                   <option value="Cancelado">Cancelado</option><option value="Creada">Web</option>
+                </select></div>
+              <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Vendedor</label>
+                <select value={dSeller} onChange={(e) => setDSeller(e.target.value)} className="input-field text-sm">
+                  <option value="all">Todos</option>
+                  {availableSellers.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select></div>
+              <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Método de Pago</label>
+                <select value={dMethod} onChange={(e) => setDMethod(e.target.value)} className="input-field text-sm">
+                  <option value="all">Todos</option>
+                  {PAYMENT_METHODS.filter((m) => m.currency !== 'none').map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
+                </select></div>
+              <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Entrega</label>
+                <select value={dDelivery} onChange={(e) => setDDelivery(e.target.value)} className="input-field text-sm">
+                  <option value="all">Todas</option>
+                  {DELIVERY_TYPES.map((dt) => <option key={dt.value} value={dt.value}>{dt.label}</option>)}
                 </select></div>
               <div className="flex items-end gap-2">
                 <button onClick={applyFilters} disabled={isSearchingServer} className="btn-primary text-sm flex-1">
