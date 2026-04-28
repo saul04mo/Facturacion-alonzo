@@ -31,21 +31,18 @@ export default {
       fontFamily: {
         display: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
         body: ['"DM Sans"', 'system-ui', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
-      },
-      boxShadow: {
-        'sm': '0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04)',
-        'md': '0 4px 12px 0 rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.04)',
-        'nav': '0 1px 2px 0 rgb(0 0 0 / 0.03)',
-        'modal': '0 20px 60px -12px rgb(0 0 0 / 0.15)',
-      },
-      fontFamily: {
         // 'mono' default usa fuentes del SO que pueden tener glifos
         // ambiguos (el 0 con barra/cruz parece 8 a la distancia).
         // JetBrains Mono ya viene cargada desde Google Fonts en
         // index.html y tiene un 0 con un punto en el centro,
         // imposible de confundir con el 8.
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+      },
+      boxShadow: {
+        'sm': '0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04)',
+        'md': '0 4px 12px 0 rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.04)',
+        'nav': '0 1px 2px 0 rgb(0 0 0 / 0.03)',
+        'modal': '0 20px 60px -12px rgb(0 0 0 / 0.15)',
       },
     },
   },
