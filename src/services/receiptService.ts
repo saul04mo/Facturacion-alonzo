@@ -196,7 +196,7 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
     <div class="invoice-print-area">
       <div class="title" style="text-align:center;">
         ${biz.logoUrl ? `<img src="${biz.logoUrl}" alt="Logo" style="height:36px;display:block;margin:auto;" onerror="this.style.display='none'">` : ''}
-        <div style="font-size:14px;font-weight:bold;margin-top:4px;">${biz.name}</div>
+        <div class="business-name">${biz.name}</div>
       </div>
       <div class="subtitle">RIF: ${biz.rif}</div>
       ${(biz.address || []).map((l) => `<div class="subtitle">${l}</div>`).join('')}
@@ -259,11 +259,15 @@ const RECEIPT_STYLES = `
     /* Doble sombra: una a la derecha y una abajo. La térmica ve un
        glifo más "lleno" sin que se note borroso a simple vista. */
     text-shadow: 0.4px 0 0 #000, 0 0.4px 0 #000;
+    /* Aumenta el contraste — el preview se ve más oscuro y la térmica
+       recibe un bitmap con más pixeles 100% negros (vs grises). */
+    filter: contrast(1.15);
   }
   @page { margin-top: 5mm; margin-bottom: 4mm; margin-left: 0mm; margin-right: 0mm; }
   .invoice-print-area { width: 5.5cm; max-width: 5.5cm; margin: auto; padding: 0; line-height: 1.45; font-size: 13px; font-weight: 700; }
   .invoice-print-area hr { border: none; border-top: 2px solid #000; margin: 5px 0; }
   .invoice-print-area .title { font-size: 18px; font-weight: 900; text-align: center; margin-bottom: 3px; letter-spacing: 0.5px; }
+  .invoice-print-area .business-name { font-size: 16px; font-weight: 900; margin-top: 4px; letter-spacing: 1px; }
   .invoice-print-area .subtitle { font-size: 11px; font-weight: 700; text-align: center; margin-bottom: 1px; }
   .invoice-print-area .datos-cliente { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
   .invoice-print-area .label { font-weight: 900; }
