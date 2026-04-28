@@ -309,7 +309,7 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={product?.id ? 'Editar Producto' : (product ? '📋 Duplicar — Nuevo Producto' : 'Nuevo Producto')} size="lg">
+    <Modal open={open} onClose={onClose} title={product?.id ? 'Editar Producto' : (product ? '📋 Duplicar — Nuevo Producto' : 'Nuevo Producto')} size="xl">
       <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
         {/* Duplicate warning */}
         {product && !product.id && (
