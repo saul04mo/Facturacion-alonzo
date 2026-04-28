@@ -5,14 +5,14 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { Modal } from '@/components/Modal';
-import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId } from './invoiceService';
+import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData } from './invoiceService';
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
-import type { Product } from '@/types';
+import type { Product, Invoice } from '@/types';
 import {
   FileText, Filter, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon, Hash,
+  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2,
 } from 'lucide-react';
 
 const STATUS_BADGES: Record<string, { class: string; label: string }> = {
@@ -59,6 +59,13 @@ export function InvoicesPage() {
   const [abonoAmount, setAbonoAmount] = useState('');
   const [abonoMethod, setAbonoMethod] = useState<string>(PAYMENT_METHODS[0].name);
   const [abonoRef, setAbonoRef] = useState('');
+  // Editar datos del cliente / observación de una factura ya emitida
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRif, setEditRif] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editObs, setEditObs] = useState('');
   const [loading, setLoading] = useState(false);
   const [serverInvoices, setServerInvoices] = useState<any[] | null>(null);
   const [isSearchingServer, setIsSearchingServer] = useState(false);
@@ -189,6 +196,42 @@ export function InvoicesPage() {
     } catch { toast.error('Error al cancelar.'); } finally { setLoading(false); }
   }
   async function handleApproveWeb(invoice: any) { setLoading(true); try { await approveWebOrder(invoice.id); toast.success('Pedido web aprobado.'); await refetchIfServer(); } catch { toast.error('Error.'); } finally { setLoading(false); } }
+
+  // Abre el modal de edición y precarga los valores actuales del snapshot
+  function openEditModal(invoice: Invoice) {
+    setEditInvoice(invoice);
+    setEditName(invoice.clientSnapshot?.name || '');
+    setEditRif(invoice.clientSnapshot?.rif_ci || '');
+    setEditAddress(invoice.clientSnapshot?.address || '');
+    setEditPhone(invoice.clientSnapshot?.phone || '');
+    setEditObs(invoice.observation || '');
+  }
+
+  async function handleSaveEdit() {
+    if (!editInvoice) return;
+    if (!editName.trim()) { toast.warning('El nombre del cliente no puede estar vacío.'); return; }
+    setLoading(true);
+    try {
+      await updateInvoiceCustomerData(editInvoice.id, {
+        clientSnapshot: {
+          ...(editInvoice.clientSnapshot || {}),
+          name: editName.trim(),
+          rif_ci: editRif.trim(),
+          address: editAddress.trim(),
+          phone: editPhone.trim(),
+        },
+        observation: editObs.trim() || null,
+      });
+      toast.success('Datos actualizados.');
+      setEditInvoice(null);
+      await refetchIfServer();
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al actualizar.');
+    } finally {
+      setLoading(false);
+    }
+  }
   
   async function handleMarkAsPaid(invoice: any) {
     if (!confirm('¿Marcar pago de delivery como completado y finalizar?')) return;
@@ -326,6 +369,9 @@ export function InvoicesPage() {
                           <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1.5 text-navy-400 hover:text-purple-600"><ImageIcon size={14} /></a>
                         )}
                         <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1.5 text-navy-400 hover:text-navy-800"><Printer size={14} /></button>
+                        {(inv.status === 'Finalizado' || inv.status === 'Pendiente de pago') && can('canEditInvoices') && (
+                          <button onClick={() => openEditModal(inv)} className="btn-ghost p-1.5 text-navy-400 hover:text-blue-600" title="Editar datos"><Edit2 size={14} /></button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -378,6 +424,9 @@ export function InvoicesPage() {
                             </a>
                           )}
                           <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1 text-navy-400 hover:text-navy-800"><Printer size={12} /></button>
+                          {(inv.status === 'Finalizado' || inv.status === 'Pendiente de pago') && can('canEditInvoices') && (
+                            <button onClick={() => openEditModal(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600" title="Editar datos del cliente / observación"><Edit2 size={12} /></button>
+                          )}
                           {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setReturnInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-amber-600"><RotateCcw size={12} /></button>}
                           {inv.status === 'Finalizado' && can('canEditInvoices') && <button onClick={() => handleCancel(inv)} className="btn-ghost p-1 text-navy-400 hover:text-accent-red"><XCircle size={12} /></button>}
                           {inv.status === 'Creada' && <button onClick={() => handleApproveWeb(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600"><CheckCircle size={12} /></button>}
@@ -585,6 +634,61 @@ export function InvoicesPage() {
             <div className="flex justify-end gap-3 pt-4 border-t border-surface-200">
               <button onClick={() => setAbonoInvoice(null)} className="btn-secondary">Cancelar</button>
               <button onClick={handleAbono} disabled={loading} className="btn-primary">{loading ? 'Guardando...' : 'Registrar Abono'}</button></div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Editar Datos del Cliente / Observación */}
+      {editInvoice && (
+        <Modal open={!!editInvoice} onClose={() => setEditInvoice(null)} title="Editar Datos de la Factura" size="md">
+          <div className="space-y-5">
+            <div>
+              <p className="text-xs text-navy-400 font-display uppercase tracking-wide mb-1">Factura</p>
+              <p className="text-sm font-mono text-navy-700">#{editInvoice.numericId} · {format(editInvoice.total || 0)}</p>
+            </div>
+
+            {/* Datos del cliente */}
+            <div className="space-y-3 pb-4 border-b border-surface-200">
+              <h3 className="text-sm font-display font-bold text-navy-900">Datos del Cliente</h3>
+              <div>
+                <label className="block text-xs font-display font-medium text-navy-700 mb-1">Nombre</label>
+                <input value={editName} onChange={(e) => setEditName(e.target.value)} className="input-field" placeholder="Nombre del cliente" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-display font-medium text-navy-700 mb-1">RIF / C.I.</label>
+                  <input value={editRif} onChange={(e) => setEditRif(e.target.value)} className="input-field font-mono" placeholder="V12345678" />
+                </div>
+                <div>
+                  <label className="block text-xs font-display font-medium text-navy-700 mb-1">Teléfono</label>
+                  <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="input-field font-mono" placeholder="04141234567" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-display font-medium text-navy-700 mb-1">Dirección</label>
+                <input value={editAddress} onChange={(e) => setEditAddress(e.target.value)} className="input-field" placeholder="Dirección de envío" />
+              </div>
+            </div>
+
+            {/* Observación */}
+            <div>
+              <h3 className="text-sm font-display font-bold text-navy-900 mb-2">Observación de la Venta</h3>
+              <textarea
+                value={editObs}
+                onChange={(e) => setEditObs(e.target.value)}
+                className="input-field min-h-[80px] resize-y"
+                placeholder="Notas internas sobre la factura (envío, cambio pendiente, etc.)"
+              />
+            </div>
+
+            <p className="text-[11px] text-navy-400 leading-relaxed">
+              Estos cambios solo afectan al snapshot de esta factura. No modifican el registro maestro del cliente.
+            </p>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-surface-200">
+              <button onClick={() => setEditInvoice(null)} className="btn-secondary" disabled={loading}>Cancelar</button>
+              <button onClick={handleSaveEdit} disabled={loading} className="btn-primary">{loading ? 'Guardando...' : 'Guardar Cambios'}</button>
+            </div>
           </div>
         </Modal>
       )}

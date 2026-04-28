@@ -282,6 +282,34 @@ export async function addAbono(opts: {
 }
 
 // ================================
+// ================================
+// UPDATE INVOICE CUSTOMER DATA + OBSERVATION
+// Edita los datos del cliente snapshot y la observación de una factura
+// existente. Útil cuando se cargó mal el RIF/dirección/teléfono al
+// momento de facturar y se quiere corregir post-venta sin tener que
+// anular la factura. NO toca el cliente original (clients/{id}); solo
+// el snapshot embebido en la factura. Si el cajero también quiere
+// actualizar el registro maestro del cliente, se hace por separado.
+// ================================
+export async function updateInvoiceCustomerData(
+  invoiceId: string,
+  patch: {
+    clientSnapshot?: Partial<ClientSnapshot> | null;
+    observation?: string | null;
+  }
+): Promise<void> {
+  const updates: Record<string, any> = {};
+  if (patch.clientSnapshot !== undefined) {
+    updates.clientSnapshot = patch.clientSnapshot;
+  }
+  if (patch.observation !== undefined) {
+    updates.observation = patch.observation;
+  }
+  if (Object.keys(updates).length === 0) return;
+  await updateDoc(doc(db, 'invoices', invoiceId), updates);
+}
+
+// ================================
 // CONFIRM DELIVERY PAYMENT
 // ================================
 export async function confirmDeliveryPayment(invoiceId: string, currentStatus?: string): Promise<void> {
