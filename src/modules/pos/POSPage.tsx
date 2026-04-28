@@ -124,8 +124,8 @@ export function POSPage() {
   }
 
   return (
-    <div className="animate-fade-up">
-      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100dvh-140px)] lg:h-[calc(100vh-140px)]">
+    <div className="animate-fade-up md:-mx-6 lg:-mx-12 xl:-mx-20 2xl:-mx-32 md:px-2 lg:px-4">
+      <div className="flex flex-col lg:flex-row gap-4 h-[calc(100dvh-140px)] lg:h-[calc(100vh-140px)]">
         {/* Left: Catalog */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Header */}
@@ -215,7 +215,7 @@ export function POSPage() {
                     <p className="text-navy-400 text-sm">No se encontraron productos.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3 stagger">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2 sm:gap-3 stagger">
                     {displayProducts.map((product) => {
                       const currentOfferValue = product.offer?.value || 0;
                       const currentOfferType = product.offer?.type || 'percentage';
@@ -291,7 +291,7 @@ export function POSPage() {
         </div>
 
         {/* Right: Cart — desktop only */}
-        <div className="hidden lg:flex w-80 xl:w-[400px] flex-col min-h-0">
+        <div className="hidden lg:flex w-[340px] xl:w-[400px] 2xl:w-[440px] flex-col min-h-0">
           <CartPanel />
         </div>
       </div>
