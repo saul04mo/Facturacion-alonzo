@@ -840,6 +840,9 @@ export function SettingsPage() {
                   Facturas en caché: últimas 500. Para exportar todas usa el botón Excel en Informes.
                 </p>
               </div>
+
+              {/* Migración a inventario dual (Tienda + Almacén) */}
+              <DualBranchMigrationCard />
             </div>
           </div>
         )}
@@ -862,6 +865,92 @@ function ToggleSetting({ label, description, enabled, onToggle }: {
         className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${enabled ? 'bg-emerald-500' : 'bg-navy-200 dark:bg-gray-600'}`}>
         <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
       </button>
+    </div>
+  );
+}
+
+/**
+ * Tarjeta para correr la migración a inventario dual (Tienda + Almacén).
+ * Solo visible para admin. Idempotente — se puede correr varias veces.
+ */
+function DualBranchMigrationCard() {
+  const toast = useToast();
+  const [running, setRunning] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [confirm, setConfirm] = useState(false);
+
+  async function handleRun() {
+    setRunning(true);
+    setLogs([]);
+    try {
+      const { migrateToDualBranch } = await import('@/utils/migrations/migrateToDualBranch');
+      const result = await migrateToDualBranch((msg) => {
+        setLogs((prev) => [...prev, msg]);
+      });
+      if (result.errors.length === 0) {
+        toast.success(`Migración OK — ${result.productsMigrated} productos, ${result.invoicesMigrated} facturas migradas.`);
+      } else {
+        toast.warning(`Migración con ${result.errors.length} errores. Revisa el log.`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || 'Error en la migración.');
+    } finally {
+      setRunning(false);
+      setConfirm(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 bg-amber-50/40 dark:bg-amber-900/10 rounded-lg border border-amber-200 dark:border-amber-800/30 p-4">
+      <div className="flex items-start gap-3 mb-3">
+        <Database size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100">
+            Migración a Inventario Dual (Tienda + Almacén)
+          </p>
+          <p className="text-[11px] text-navy-500 dark:text-gray-400 mt-1 leading-relaxed">
+            Mueve el stock actual de cada producto al campo <code>stockStore</code>.
+            El <code>stockWarehouse</code> arranca en 0 — vas a tener que generar
+            transferencias para mover mercancía al almacén. Las facturas viejas se
+            asumen como ventas de la tienda. <b>Es idempotente</b>, podés correrla
+            varias veces sin problema.
+          </p>
+        </div>
+      </div>
+
+      {!confirm && !running && (
+        <button
+          onClick={() => setConfirm(true)}
+          className="btn-secondary text-xs"
+        >
+          Iniciar migración…
+        </button>
+      )}
+
+      {confirm && !running && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] text-amber-700 dark:text-amber-300 font-display font-semibold">
+            ¿Confirmás? Esto modifica TODOS los productos y facturas:
+          </span>
+          <button onClick={handleRun} className="btn-primary text-xs">Sí, ejecutar</button>
+          <button onClick={() => setConfirm(false)} className="btn-ghost text-xs">Cancelar</button>
+        </div>
+      )}
+
+      {running && (
+        <div className="text-[11px] text-navy-600 dark:text-gray-400 font-mono">
+          Ejecutando migración… no cierres la pestaña.
+        </div>
+      )}
+
+      {logs.length > 0 && (
+        <div className="mt-3 max-h-40 overflow-y-auto bg-navy-900/5 dark:bg-black/30 rounded p-2 text-[10px] font-mono text-navy-700 dark:text-gray-300 space-y-0.5">
+          {logs.map((log, i) => (
+            <div key={i}>{log}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

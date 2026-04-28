@@ -168,6 +168,22 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════
+    // 12. INVENTORY TRANSFERS (Almacén ↔ Tienda)
+    // ════════════════════════════════════════
+    // Órdenes de transferencia de stock entre sucursales.
+    // Flujo: pending → in_transit → received (o cancelled).
+    // Cualquier usuario autenticado puede leer y crear/actualizar.
+    // No permitimos delete — las transferencias son auditables, si
+    // hay un error la solución es marcarlas como 'cancelled' con
+    // motivo, no borrarlas.
+    match /inventoryTransfers/{transferId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if false;
+    }
+
+    // ════════════════════════════════════════
     // DENY EVERYTHING ELSE
     // ════════════════════════════════════════
     match /{document=**} {

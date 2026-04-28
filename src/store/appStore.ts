@@ -66,6 +66,7 @@ const INITIAL_SALE: CurrentSale = {
   items: [], clientId: null, total: 0, payments: [],
   totalDiscount: { type: 'none', value: 0 }, deliveryType: 'pickup',
   deliveryCostUsd: 0, deliveryPaidInStore: true, observation: null,
+  branch: 'store',
   appliedCoupon: null, appliedPromotions: [],
 };
 

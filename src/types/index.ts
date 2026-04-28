@@ -22,9 +22,80 @@ export interface AppUser {
 export interface ProductVariant {
   color: string;
   size: string;
+  /**
+   * Stock TOTAL agregado (warehouse + store + inTransit).
+   * Mantenido para compatibilidad con código legacy.
+   * En queries y UI nuevas, usar los campos por sucursal directamente.
+   * Este campo se debe mantener sincronizado en cada operación que
+   * modifique el stock (escribir el helper getTotalStock(variant)).
+   */
   stock: number;
+  /** Stock disponible en el almacén central. Default: 0 */
+  stockWarehouse?: number;
+  /** Stock disponible en la tienda física. Default: 0 */
+  stockStore?: number;
+  /**
+   * Stock que salió del almacén pero aún no fue recibido por la tienda.
+   * Se incrementa cuando una transferencia pasa a 'En tránsito'.
+   * Se decrementa cuando la tienda confirma recepción.
+   * Esta cantidad NO está disponible para venta — está bloqueada.
+   */
+  stockInTransit?: number;
   price: number;
   barcode?: string;
+}
+
+/** Sucursal donde ocurre una operación (venta, devolución, ajuste). */
+export type Branch = 'store' | 'warehouse';
+
+/** Estados posibles de una orden de transferencia entre sucursales. */
+export type TransferStatus = 'pending' | 'in_transit' | 'received' | 'cancelled';
+
+/** Item dentro de una orden de transferencia. */
+export interface TransferItem {
+  productId: string;
+  productName: string;
+  size: string;
+  color: string;
+  /** Cantidad solicitada (la que envía el almacén). */
+  quantitySent: number;
+  /**
+   * Cantidad efectivamente recibida por la tienda.
+   * Solo se setea cuando status === 'received'.
+   * Si difiere de quantitySent, indica una discrepancia.
+   */
+  quantityReceived?: number;
+}
+
+/**
+ * Orden de transferencia de stock entre sucursales.
+ * Flujo: pending → in_transit → received (o cancelled en cualquier punto).
+ */
+export interface InventoryTransfer {
+  id: string;
+  /** Número incremental para mostrar al usuario (TR-0001, TR-0002...). */
+  numericId: number;
+  from: Branch;
+  to: Branch;
+  status: TransferStatus;
+  items: TransferItem[];
+  /** Foto del despacho (Firebase Storage URL). Opcional. */
+  proofUrl?: string;
+  observation?: string;
+  /** UID y nombre del usuario que creó la orden. */
+  createdBy: string;
+  createdByName: string;
+  createdAt: any; // Firestore Timestamp
+  /** UID y nombre del usuario que confirmó "En tránsito". */
+  shippedBy?: string;
+  shippedByName?: string;
+  shippedAt?: any;
+  /** UID y nombre del usuario que confirmó la recepción. */
+  receivedBy?: string;
+  receivedByName?: string;
+  receivedAt?: any;
+  cancelledAt?: any;
+  cancelReason?: string;
 }
 
 export interface Product {
@@ -105,6 +176,12 @@ export interface CurrentSale {
   deliveryCostUsd: number;
   deliveryPaidInStore: boolean;
   observation: string | null;
+  /**
+   * Sucursal activa de esta venta. Default: 'store'.
+   * El cajero la elige antes/durante el armado del carrito.
+   * Todos los items se descuentan de esa sucursal.
+   */
+  branch: Branch;
   // ── Promotions & Coupons ──
   appliedCoupon: AppliedCoupon | null;
   appliedPromotions: AppliedPromotion[];
@@ -134,6 +211,13 @@ export interface InvoiceItem {
   productName: string;
   /** Variant description snapshot. */
   variantLabel: string;
+  /**
+   * Sucursal de la que se descontó el stock de este item específico.
+   * Si no está definido, se hereda de invoice.branch.
+   * Permite carritos mixtos en el futuro (algunos items de tienda,
+   * otros de almacén).
+   */
+  branch?: Branch;
 }
 
 export interface ClientSnapshot {
@@ -164,6 +248,15 @@ export interface Invoice {
   exchangeRate: number;
   status: InvoiceStatus;
   date: Timestamp;
+  /**
+   * Sucursal de donde se descontó el stock para esta venta.
+   * 'store' por default para facturas viejas migradas (asumimos que
+   * antes del cambio toda venta era de la única sucursal).
+   * Para web orders se asigna automáticamente según deliveryType:
+   * - pickup, showroom, pick-up → 'store'
+   * - local, national, web → 'warehouse'
+   */
+  branch?: Branch;
   abonos: Abono[];
   // ── Promo / Coupon audit trail ──
   appliedCoupon?: AppliedCoupon | null;
