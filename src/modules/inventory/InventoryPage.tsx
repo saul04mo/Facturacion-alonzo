@@ -622,7 +622,7 @@ export function InventoryPage() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    <div className="space-y-5 animate-fade-up md:-mx-6 lg:-mx-12 xl:-mx-20 2xl:-mx-32 md:px-2 lg:px-4">
       {/* Header */}
       <div className="card p-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -733,7 +733,7 @@ export function InventoryPage() {
               </div>
 
               {/* Grid of product columns — wraps to next row */}
-              <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+              <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
                 {group.products.map((product) => {
                     const totalStockP = product.variants?.reduce((a, v) => a + (v.stock || 0), 0) || 0;
                     const lowStock = totalStockP <= 5;
