@@ -1,7 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { initFontPreset } from './utils/fontUtils';
 import './index.css';
+
+// Aplicar la fuente guardada antes de renderizar React.
+// Si el usuario eligió 'Inter' en la última sesión, esto inyecta el
+// <link> a Google Fonts y la <style> override antes del primer paint,
+// evitando el flash de fuente por defecto.
+initFontPreset();
 
 // ────────────────────────────────────────────────────────────────────
 // KILL SWITCH del service worker antiguo de PWA

@@ -10,7 +10,7 @@ import {
   DollarSign, RefreshCw, Check, AlertTriangle,
   Database, Users, Package, FileText, TrendingUp,
   Globe, Sun, Moon, Monitor, Clock, MapPin, Zap, Megaphone,
-  Plus, Trash2, Save, ToggleLeft, ToggleRight, Download, Upload,
+  Plus, Trash2, Save, ToggleLeft, ToggleRight, Download, Upload, Type,
 } from 'lucide-react';
 
 export function SettingsPage() {
@@ -841,6 +841,9 @@ export function SettingsPage() {
                 </p>
               </div>
 
+              {/* Selector de tipografía global */}
+              <FontPresetCard />
+
               {/* Migración a inventario dual (Tienda + Almacén) */}
               <DualBranchMigrationCard />
 
@@ -1038,6 +1041,96 @@ function StockToWarehouseMigrationCard() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Selector de tipografía global del sistema. El cambio se aplica al instante
+ * y persiste en localStorage. Carga las fuentes de Google Fonts on-demand.
+ */
+function FontPresetCard() {
+  const [currentId, setCurrentId] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'default';
+    return localStorage.getItem('pos-alonzo-font-preset') || 'default';
+  });
+  const [previewFamily, setPreviewFamily] = useState<string>(''); // family aplicada para el preview live
+
+  async function handleSelect(presetId: string) {
+    const { setFontPreset, FONT_PRESETS } = await import('@/utils/fontUtils');
+    setCurrentId(presetId);
+    setFontPreset(presetId);
+    const preset = FONT_PRESETS.find((p) => p.id === presetId);
+    setPreviewFamily(preset?.family || '');
+  }
+
+  return (
+    <div className="mt-6 bg-purple-50/40 dark:bg-purple-900/10 rounded-lg border border-purple-200 dark:border-purple-800/30 p-4">
+      <div className="flex items-start gap-3 mb-3">
+        <Type size={18} className="text-purple-500 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100">
+            Tipografía del sistema
+          </p>
+          <p className="text-[11px] text-navy-500 dark:text-gray-400 mt-1 leading-relaxed">
+            Cambia la fuente de todo el sistema (textos, números, headers, tablas, todo).
+            Las fuentes se cargan al elegirlas y se aplican al instante. Tu selección se guarda
+            en este navegador — si entrás desde otra computadora vas a tener que elegir de nuevo.
+          </p>
+        </div>
+      </div>
+
+      <FontPresetSelector currentId={currentId} onSelect={handleSelect} />
+
+      {/* Preview de muestra */}
+      <div className="mt-3 p-3 rounded-lg bg-white dark:bg-dark-200/40 border border-surface-200 dark:border-dark-300" style={previewFamily ? { fontFamily: previewFamily } : undefined}>
+        <p className="text-[9px] uppercase tracking-wider text-navy-400 dark:text-gray-500 font-semibold mb-1">Preview</p>
+        <p className="text-lg font-bold text-navy-900 dark:text-gray-100">FACT-4110</p>
+        <p className="text-sm text-navy-600 dark:text-gray-400">Total: $ 22,771.80 — Bs. 1,234,567.89</p>
+        <p className="text-xs text-navy-500 dark:text-gray-500 mt-1">The quick brown fox jumps over the lazy dog · 0123456789</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Componente interno que renderiza la lista de FontPresets como botones.
+ * Importa dinámicamente el catálogo para no engordar el bundle inicial.
+ */
+function FontPresetSelector({ currentId, onSelect }: { currentId: string; onSelect: (id: string) => void }) {
+  const [presets, setPresets] = useState<any[]>([]);
+  useEffect(() => {
+    import('@/utils/fontUtils').then((mod) => setPresets(mod.FONT_PRESETS));
+  }, []);
+
+  if (presets.length === 0) {
+    return <p className="text-[11px] text-navy-400">Cargando opciones…</p>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {presets.map((preset) => {
+        const isActive = preset.id === currentId;
+        return (
+          <button
+            key={preset.id}
+            type="button"
+            onClick={() => onSelect(preset.id)}
+            className={`text-left p-3 rounded-lg border-2 transition-all ${
+              isActive
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-surface-200 dark:border-dark-300 hover:border-purple-300 hover:bg-surface-50 dark:hover:bg-dark-200'
+            }`}
+          >
+            <p className="font-display font-semibold text-xs text-navy-900 dark:text-gray-100" style={preset.family ? { fontFamily: preset.family } : undefined}>
+              {preset.label} {isActive && <Check size={12} className="inline text-purple-600 ml-1" />}
+            </p>
+            <p className="text-[10px] text-navy-400 dark:text-gray-500 mt-0.5">
+              {preset.description}
+            </p>
+          </button>
+        );
+      })}
     </div>
   );
 }
