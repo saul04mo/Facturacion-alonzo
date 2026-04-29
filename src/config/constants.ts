@@ -5,6 +5,7 @@ export const ROUTES = {
   POS: '/ventas',
   INVOICES: '/facturas',
   INVENTORY: '/inventario',
+  TRANSFERS: '/transferencias',
   CLIENTS: '/clientes',
   DELIVERY: '/delivery',
   REPORTS: '/informes',
@@ -19,6 +20,7 @@ export const ALL_PERMISSIONS = {
   canAccessDashboard: 'Acceder a Dashboard',
   canAccessVentas: 'Acceder a Ventas',
   canAccessInventario: 'Acceder a Inventario',
+  canAccessTransfers: 'Acceder a Transferencias',
   canAccessClientes: 'Acceder a Clientes',
   canAccessCRM: 'Acceder a CRM Marketing',
   canAccessDelivery: 'Acceder a Delivery',
@@ -46,7 +48,9 @@ export type PermissionKey = keyof typeof ALL_PERMISSIONS;
 
 export const DEFAULT_PERMISSIONS: Record<string, Record<PermissionKey, boolean>> = {
   vendedor: {
-    canAccessDashboard: true, canAccessVentas: true, canAccessInventario: true, canAccessClientes: true,
+    canAccessDashboard: true, canAccessVentas: true, canAccessInventario: true,
+    canAccessTransfers: true,
+    canAccessClientes: true,
     canAccessCRM: false, canAccessDelivery: false, canAccessFacturas: true, canManageUsers: false,
     canCreateProducts: false, canEditProducts: false, canDeleteProducts: false,
     canCreateClients: true, canEditClients: true, canDeleteClients: false,

@@ -17,6 +17,7 @@ const NAV_GROUPS = [
       { path: ROUTES.CRM, label: 'CRM Marketing', icon: <Crown size={18} />, permission: 'canAccessCRM' },
       { path: ROUTES.DELIVERY, label: 'Delivery', icon: <Truck size={18} />, permission: 'canAccessDelivery' },
       { path: ROUTES.INVENTORY, label: 'Inventario', icon: <Package size={18} />, permission: 'canAccessInventario' },
+      { path: ROUTES.TRANSFERS, label: 'Transferencias', icon: <Truck size={18} />, permission: 'canAccessTransfers' },
       { path: ROUTES.OFFERS, label: 'Ofertas', icon: <Tag size={18} />, permission: 'canManageOffers' },
     ]
   },

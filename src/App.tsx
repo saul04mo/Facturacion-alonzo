@@ -12,6 +12,7 @@ const POSPage = lazy(() => import('@/modules/pos/POSPage').then((m) => ({ defaul
 const DashboardPage = lazy(() => import('@/modules/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const InvoicesPage = lazy(() => import('@/modules/invoices/InvoicesPage').then((m) => ({ default: m.InvoicesPage })));
 const InventoryPage = lazy(() => import('@/modules/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })));
+const TransfersPage = lazy(() => import('@/modules/transfers/TransfersPage').then((m) => ({ default: m.TransfersPage })));
 const ClientsPage = lazy(() => import('@/modules/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
 const DeliveryPage = lazy(() => import('@/modules/delivery/DeliveryPage').then((m) => ({ default: m.DeliveryPage })));
 const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
@@ -35,6 +36,7 @@ export function App() {
               <Route path={ROUTES.POS} element={<POSPage />} />
               <Route path={ROUTES.INVOICES} element={<InvoicesPage />} />
               <Route path={ROUTES.INVENTORY} element={<InventoryPage />} />
+              <Route path={ROUTES.TRANSFERS} element={<TransfersPage />} />
               <Route path={ROUTES.CLIENTS} element={<ClientsPage />} />
               <Route path={ROUTES.DELIVERY} element={<DeliveryPage />} />
               <Route path={ROUTES.REPORTS} element={<ReportsPage />} />
