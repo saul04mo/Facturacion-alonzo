@@ -108,7 +108,17 @@ export function Sidebar() {
         
         <div className={`flex items-center ${collapsed ? 'md:justify-center' : 'justify-between'} p-4 border-b border-surface-200`}>
           <div className="flex items-center gap-2">
-            <div className="bg-blue-500 text-white p-1.5 rounded-lg shadow-sm flex-shrink-0">
+            {/* Logo / botón colapsar — solo desktop. En mobile mantiene el logo decorativo. */}
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+              className="hidden md:flex bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-lg shadow-sm flex-shrink-0 transition-colors items-center justify-center cursor-pointer"
+            >
+              {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            </button>
+            {/* En mobile mostramos el carrito decorativo (no clickeable, no hace falta colapsar) */}
+            <div className="md:hidden bg-blue-500 text-white p-1.5 rounded-lg shadow-sm flex-shrink-0">
               <ShoppingCart size={18} />
             </div>
           </div>
@@ -160,17 +170,10 @@ export function Sidebar() {
           })}
         </nav>
 
-        <div className="p-3 border-t border-surface-200 mt-auto flex items-center justify-between gap-2">
-          <p className={`hidden md:block px-2 text-[10px] text-navy-300 dark:text-gray-600 font-display ${collapsed ? 'md:hidden' : ''}`}>
+        <div className="p-3 border-t border-surface-200 mt-auto">
+          <p className={`hidden md:block px-2 text-[10px] text-navy-300 dark:text-gray-600 font-display text-center ${collapsed ? 'md:hidden' : ''}`}>
             POS Alonzo v2.0
           </p>
-          <button
-            onClick={toggleCollapsed}
-            title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-            className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg text-navy-400 dark:text-gray-500 hover:bg-surface-100 dark:hover:bg-dark-300 hover:text-navy-700 dark:hover:text-gray-300 transition-colors ml-auto"
-          >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
         </div>
       </aside>
     </>
