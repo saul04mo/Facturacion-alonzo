@@ -4,7 +4,9 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { CartPanel } from './CartPanel';
 import { VariantSelector } from './VariantSelector';
-import type { Product, Discount } from '@/types';
+import { BranchSelector } from '@/components/BranchSelector';
+import { getAvailableStock } from '@/utils/branchUtils';
+import type { Product, Discount, Branch } from '@/types';
 import {
   ArrowLeft, Search, Tag, Calculator, ChevronRight, ShoppingCart, X,
 } from 'lucide-react';
@@ -83,15 +85,20 @@ export function POSPage() {
 
     const variant = product.variants[variantIndex];
     const allowNegative = useAppStore.getState().allowNegativeStock;
+    const branch = currentSale.branch;
 
-    // Validate stock (skip if negative stock allowed)
+    // Validate stock against the ACTIVE BRANCH only (not aggregate).
+    // El cajero no puede vender desde la tienda algo que solo tiene
+    // stock en almacén — debe primero hacer una transferencia.
     if (!allowNegative) {
       const existingItem = currentSale.items.find(
         (i) => i.productId === productId && i.variantIndex === variantIndex,
       );
       const currentQty = existingItem ? existingItem.quantity : 0;
-      if (variant.stock <= currentQty) {
-        toast.warning(`Sin stock disponible para "${product.name}" (${variant.size}/${variant.color})`);
+      const availableInBranch = getAvailableStock(variant, branch);
+      if (availableInBranch <= currentQty) {
+        const branchLabel = branch === 'store' ? 'la tienda' : 'el almacén';
+        toast.warning(`Sin stock en ${branchLabel} para "${product.name}" (${variant.size}/${variant.color})`);
         return;
       }
     }
@@ -136,6 +143,13 @@ export function POSPage() {
                 <h1 className="text-base sm:text-lg font-display font-bold text-navy-900">Punto de Venta</h1>
                 <p className="text-navy-400 text-[10px] sm:text-xs">Selecciona género, categoría y producto.</p>
               </div>
+              {/* Branch selector — cuál sucursal descuenta el stock */}
+              <BranchSelector
+                value={currentSale.branch}
+                onChange={(b: Branch) => setCurrentSale({ ...currentSale, branch: b, items: [] })}
+                requireConfirm={currentSale.items.length > 0}
+                compact
+              />
               {/* Calculator */}
               <div className="hidden md:flex items-center gap-2 bg-surface-50 border border-surface-200 rounded-lg p-2">
                 <Calculator size={14} className="text-navy-400" />
@@ -220,10 +234,23 @@ export function POSPage() {
                       const currentOfferValue = product.offer?.value || 0;
                       const currentOfferType = product.offer?.type || 'percentage';
                       const hasOffer = currentOfferValue > 0;
+                      // Stock disponible para esta sucursal
+                      const branchStock = (product.variants || []).reduce(
+                        (acc, v) => acc + getAvailableStock(v, currentSale.branch),
+                        0
+                      );
+                      const allowNeg = useAppStore.getState().allowNegativeStock;
+                      const outOfBranch = branchStock <= 0 && !allowNeg;
 
                       return (
-                        <button key={product.id} onClick={() => handleProductClick(product)}
-                          className="card-hover p-2 text-left animate-fade-up group cursor-pointer relative">
+                        <button key={product.id} onClick={() => !outOfBranch && handleProductClick(product)}
+                          disabled={outOfBranch}
+                          title={outOfBranch ? `Sin stock en ${currentSale.branch === 'store' ? 'tienda' : 'almacén'}` : product.name}
+                          className={`card-hover p-2 text-left animate-fade-up group relative ${
+                            outOfBranch
+                              ? 'opacity-40 cursor-not-allowed grayscale'
+                              : 'cursor-pointer'
+                          }`}>
                           <div className="aspect-square rounded-lg bg-surface-50 dark:bg-surface-100/50 mb-2 overflow-hidden flex items-center justify-center relative">
                             {product.imageUrl ? (
                               <img src={product.imageUrl} alt={product.name} loading="lazy"
@@ -238,6 +265,16 @@ export function POSPage() {
                                 -{currentOfferType === 'percentage' ? `${currentOfferValue}%` : `$${currentOfferValue}`}
                               </div>
                             )}
+                            {/* Badge de stock por sucursal — abajo izquierda */}
+                            <div className={`absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shadow-sm ${
+                              outOfBranch
+                                ? 'bg-red-500/90 text-white'
+                                : branchStock <= 5
+                                  ? 'bg-amber-500/90 text-white'
+                                  : 'bg-navy-900/85 text-white'
+                            }`}>
+                              {branchStock}
+                            </div>
                           </div>
                           <p className="font-display font-semibold text-navy-900 text-[11px] line-clamp-2 leading-tight">
                             {product.name}

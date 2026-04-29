@@ -49,10 +49,11 @@ export async function processSale(opts: {
   const isCreditSale = !sale.deliveryPaidInStore;
 
   // ── Pre-validation ──
-  const stockError = validateStock(sale.items, products, allowNegativeStock);
+  const stockError = validateStock(sale.items, products, allowNegativeStock, sale.branch || 'store');
   if (stockError) throw new Error(stockError);
 
   // ── Build item snapshots with priceAtSale ──
+  const saleBranch = sale.branch || 'store';
   const itemSnapshots = sale.items.map((item) => {
     const product = products.find((p) => p.id === item.productId)!;
     const variant = product.variants[item.variantIndex];
@@ -64,6 +65,7 @@ export async function processSale(opts: {
       priceAtSale: variant.price,
       productName: product.name,
       variantLabel: `${variant.size || 'N/A'} / ${variant.color || 'N/A'}`,
+      branch: saleBranch,
     };
   });
 
@@ -104,7 +106,11 @@ export async function processSale(opts: {
     const nextId = currentId + 1;
     transaction.set(counterRef, { lastNumericId: nextId }, { merge: true });
 
-    // 2. Deduct stock (inside the same transaction)
+    // 2. Deduct stock (inside the same transaction).
+    // El descuento se hace contra el campo de la SUCURSAL ACTIVA
+    // (stockStore o stockWarehouse), no contra el agregado. Después
+    // del descuento se recalcula el agregado `stock` para mantener
+    // sincronización con código legacy que aún lo lee.
     const productUpdates: Record<string, any[]> = {};
     sale.items.forEach((item) => {
       if (!productUpdates[item.productId]) {
@@ -112,7 +118,16 @@ export async function processSale(opts: {
         productUpdates[item.productId] = JSON.parse(JSON.stringify(product.variants));
       }
       const variant = productUpdates[item.productId][item.variantIndex];
-      if (variant) variant.stock -= item.quantity;
+      if (variant) {
+        if (saleBranch === 'store') {
+          variant.stockStore = (variant.stockStore ?? 0) - item.quantity;
+        } else {
+          variant.stockWarehouse = (variant.stockWarehouse ?? 0) - item.quantity;
+        }
+        // Recalcular agregado total (legacy) para que reportes y otros
+        // consumidores que aún leen `stock` vean el valor correcto.
+        variant.stock = (variant.stockStore ?? 0) + (variant.stockWarehouse ?? 0) + (variant.stockInTransit ?? 0);
+      }
     });
     for (const productId in productUpdates) {
       transaction.update(doc(db, 'products', productId), { variants: productUpdates[productId] });
@@ -137,6 +152,8 @@ export async function processSale(opts: {
       deliveryCostUsd: sale.deliveryCostUsd,
       deliveryPaidInStore: sale.deliveryPaidInStore,
       observation: sale.observation || null,
+      // Sucursal de donde se descontó el stock
+      branch: saleBranch,
       // ── Promo / Coupon audit trail ──
       appliedCoupon: sale.appliedCoupon || null,
       appliedPromotions: sale.appliedPromotions || [],
@@ -178,15 +195,20 @@ export async function processReturn(opts: {
   const { invoiceId, invoice, reason, details, currentUser, products, returnItems } = opts;
   const batch = writeBatch(db);
 
+  // itemsToRestore preserves item.branch from the original invoice items
+  // so each item is restored to the correct branch (store or warehouse).
+  // Si el item no trae branch (facturas viejas pre-migración), el
+  // defaultBranch=invoice.branch ('store' para facturas migradas) lo cubre.
   const itemsToRestore = returnItems || invoice.items.map((i) => ({
     productId: i.productId,
     variantIndex: i.variantIndex,
     quantity: i.quantity,
+    branch: i.branch,
   }));
 
   // Restore stock (unless product is damaged)
   if (reason !== 'Producto Dañado (Merma)') {
-    batchRestoreStock(batch, itemsToRestore, products);
+    batchRestoreStock(batch, itemsToRestore, products, invoice.branch || 'store');
   }
 
   const isPartial = returnItems && returnItems.length < invoice.items.length;
@@ -220,7 +242,7 @@ export async function cancelInvoice(opts: {
   const { invoice, products } = opts;
   const batch = writeBatch(db);
 
-  batchRestoreStock(batch, invoice.items, products);
+  batchRestoreStock(batch, invoice.items, products, invoice.branch || 'store');
   batch.update(doc(db, 'invoices', invoice.id), { status: 'Cancelado' });
   await batch.commit();
 }
