@@ -62,7 +62,8 @@ export function ReceiveTransferModal({
         currentUser,
         receivedQuantities: received,
       });
-      toast.success(`TR-${transfer.numericId} recibida — stock agregado a la tienda.`);
+      const receiverName = `${currentUser.nombre} ${currentUser.apellido}`;
+      toast.success(`TR-${transfer.numericId} recibida por ${receiverName} — stock agregado a la tienda.`);
       onReceived();
     } catch (e: any) {
       console.error(e);

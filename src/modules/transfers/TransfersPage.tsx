@@ -162,14 +162,15 @@ export function TransfersPage() {
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50 dark:bg-dark-200/50">
                 {[
-                  { h: 'TR', w: 'w-[6%]' },
-                  { h: 'Estado', w: 'w-[10%]' },
-                  { h: 'De → A', w: 'w-[12%]' },
-                  { h: 'Items', w: 'w-[8%]' },
-                  { h: 'Unidades', w: 'w-[8%]' },
-                  { h: 'Creó', w: 'w-[12%]' },
-                  { h: 'Fecha', w: 'w-[12%]' },
-                  { h: 'Foto', w: 'w-[6%]' },
+                  { h: 'TR', w: 'w-[5%]' },
+                  { h: 'Estado', w: 'w-[9%]' },
+                  { h: 'De → A', w: 'w-[11%]' },
+                  { h: 'Items', w: 'w-[6%]' },
+                  { h: 'Unidades', w: 'w-[7%]' },
+                  { h: 'Creó', w: 'w-[10%]' },
+                  { h: 'Recibió', w: 'w-[10%]' },
+                  { h: 'Fecha', w: 'w-[11%]' },
+                  { h: 'Foto', w: 'w-[5%]' },
                   { h: 'Observaciones', w: 'w-[14%]' },
                   { h: 'Acciones', w: 'w-[12%]' },
                 ].map((c) => (
@@ -204,6 +205,17 @@ export function TransfersPage() {
                     <td className="px-3 py-3 font-mono text-[12px] text-navy-700 dark:text-gray-300">{itemsCount}</td>
                     <td className="px-3 py-3 font-mono font-bold text-[12px] text-navy-900 dark:text-gray-100">{totalUnits}</td>
                     <td className="px-3 py-3 text-[12px] text-navy-500 dark:text-gray-400 break-words leading-tight">{t.createdByName}</td>
+                    <td className="px-3 py-3 text-[12px] break-words leading-tight">
+                      {t.receivedByName ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-display font-medium">
+                          {t.receivedByName}
+                        </span>
+                      ) : t.status === 'cancelled' ? (
+                        <span className="text-navy-200 dark:text-gray-600 italic text-[10px]">Cancelada</span>
+                      ) : (
+                        <span className="text-navy-200 dark:text-gray-600">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-[11px] text-navy-500 dark:text-gray-400 leading-tight">
                       {date ? date.toLocaleString('es-VE') : '—'}
                     </td>
