@@ -328,6 +328,7 @@ function ProductPickerModal({
 }) {
   const products = useAppStore((s) => s.products);
   const [search, setSearch] = useState('');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
 
   // Solo productos con al menos una variante con stock en almacén
   const productsWithWarehouseStock = useMemo(() => {
@@ -336,28 +337,73 @@ function ProductPickerModal({
     );
   }, [products]);
 
+  // Categorías únicas (con género para diferenciar "PANTALONES Hombre" vs
+  // "PANTALONES Mujer"). Cada opción del dropdown lleva un id sintético
+  // gender|||category — coincide con el formato usado en InventoryPage.
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    productsWithWarehouseStock.forEach((p) => {
+      const key = `${p.gender || 'Sin género'}|||${p.category || 'Sin categoría'}`;
+      set.add(key);
+    });
+    return Array.from(set).sort();
+  }, [productsWithWarehouseStock]);
+
   const filtered = useMemo(() => {
+    let list = productsWithWarehouseStock;
+
+    // Filtro por categoría
+    if (filterCategory !== 'all') {
+      const [g, c] = filterCategory.split('|||');
+      list = list.filter((p) => (p.gender || 'Sin género') === g && (p.category || 'Sin categoría') === c);
+    }
+
+    // Filtro por búsqueda de texto
     const q = search.trim().toLowerCase();
-    if (!q) return productsWithWarehouseStock;
-    return productsWithWarehouseStock.filter((p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.category?.toLowerCase().includes(q) ||
-      p.gender?.toLowerCase().includes(q),
-    );
-  }, [productsWithWarehouseStock, search]);
+    if (q) {
+      list = list.filter((p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.category?.toLowerCase().includes(q) ||
+        p.gender?.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [productsWithWarehouseStock, search, filterCategory]);
 
   return (
     <Modal open onClose={onClose} title="Seleccionar producto" size="md">
       <div className="space-y-3">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar producto…"
-            autoFocus
-            className="input-field text-sm pl-9"
-          />
+        {/* Buscador + filtro de categoría */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-300" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar producto…"
+              autoFocus
+              className="input-field text-sm pl-9"
+            />
+          </div>
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="input-field text-sm sm:w-56"
+            title="Filtrar por categoría"
+          >
+            <option value="all">Todas las categorías ({productsWithWarehouseStock.length})</option>
+            {categoryOptions.map((opt) => {
+              const [g, c] = opt.split('|||');
+              const count = productsWithWarehouseStock.filter(
+                (p) => (p.gender || 'Sin género') === g && (p.category || 'Sin categoría') === c,
+              ).length;
+              return (
+                <option key={opt} value={opt}>
+                  {g} · {c} ({count})
+                </option>
+              );
+            })}
+          </select>
         </div>
 
         {filtered.length === 0 ? (
