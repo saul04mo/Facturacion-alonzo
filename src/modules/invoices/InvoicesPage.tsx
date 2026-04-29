@@ -11,8 +11,8 @@ import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import type { Product, Invoice } from '@/types';
 import {
-  FileText, Filter, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, ChevronDown, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2,
+  FileText, RotateCcw, XCircle, CheckCircle, DollarSign,
+  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2,
 } from 'lucide-react';
 
 const STATUS_BADGES: Record<string, { class: string; label: string }> = {
@@ -54,7 +54,6 @@ export function InvoicesPage() {
   const [methodFilter, setMethodFilter] = useState('all');
   const [deliveryFilter, setDeliveryFilter] = useState('all');
 
-  const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
   const [detailInvoice, setDetailInvoice] = useState<any>(null);
@@ -320,15 +319,10 @@ export function InvoicesPage() {
                 {isQuickSearching ? '...' : 'Buscar'}
               </button>
             </div>
-            <button onClick={() => setShowFilters(!showFilters)}
-              className={`btn-secondary text-sm ${showFilters ? 'border-purple-300 bg-purple-50' : ''}`}>
-              <Filter size={14} /> Filtros <ChevronDown size={14} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-            </button>
           </div>
         </div>
 
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-surface-200 animate-fade-up">
+        <div className="mt-4 pt-4 border-t border-surface-200">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Buscar</label>
                 <input value={dSearch} onChange={(e) => setDSearch(e.target.value)} className="input-field text-sm" placeholder="Cliente, factura..." /></div>
@@ -365,7 +359,6 @@ export function InvoicesPage() {
               </div>
             </div>
           </div>
-        )}
       </div>
 
       {/* Summary */}
