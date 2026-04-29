@@ -14,6 +14,7 @@ import type { InventoryTransfer, TransferStatus } from '@/types';
 import {
   Truck, Plus, RefreshCw, Eye, Send, CheckCircle2, XCircle, Image as ImageIcon,
   Package, Calendar, User, FileText, AlertTriangle, ArrowRight, Clock, Store, Warehouse,
+  Printer,
 } from 'lucide-react';
 
 const STATUS_BADGES: Record<TransferStatus, { class: string; label: string; icon: React.ReactNode }> = {
@@ -308,7 +309,10 @@ export function TransfersPage() {
 
       {detailTransfer && (
         <Modal open onClose={() => setDetailTransfer(null)} title={`TR-${detailTransfer.numericId} — Detalle`} size="md">
-          <TransferDetail transfer={detailTransfer} />
+          <TransferDetail
+            transfer={detailTransfer}
+            onPrinted={(updated) => { setDetailTransfer(updated); refresh(); }}
+          />
         </Modal>
       )}
 
@@ -325,7 +329,7 @@ export function TransfersPage() {
 // DETAIL VIEW
 // ════════════════════════════════════════
 
-function TransferDetail({ transfer }: { transfer: InventoryTransfer }) {
+function TransferDetail({ transfer, onPrinted }: { transfer: InventoryTransfer; onPrinted?: (updated: InventoryTransfer) => void }) {
   const st = STATUS_BADGES[transfer.status];
   const totalSent = transfer.items.reduce((a, i) => a + i.quantitySent, 0);
   const totalReceived = transfer.items.reduce((a, i) => a + (i.quantityReceived ?? 0), 0);
@@ -487,6 +491,118 @@ function TransferDetail({ transfer }: { transfer: InventoryTransfer }) {
               La diferencia ({totalSent - totalReceived}) se contabiliza como merma en tránsito.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Botón de impresión de comanda — único uso */}
+      <PrintCommandSection transfer={transfer} onPrinted={onPrinted} />
+    </div>
+  );
+}
+
+// ════════════════════════════════════════
+// PRINT COMMAND SECTION
+// ════════════════════════════════════════
+
+function PrintCommandSection({
+  transfer,
+  onPrinted,
+}: {
+  transfer: InventoryTransfer;
+  onPrinted?: (updated: InventoryTransfer) => void;
+}) {
+  const currentUser = useAppStore((s) => s.currentUser);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  const alreadyPrinted = !!transfer.printedBy;
+  const printedDate = transfer.printedAt?.toDate
+    ? transfer.printedAt.toDate().toLocaleString('es-VE')
+    : transfer.printedAt
+      ? new Date(transfer.printedAt).toLocaleString('es-VE')
+      : null;
+
+  async function handlePrint() {
+    if (!currentUser) {
+      toast.error('Usuario no identificado.');
+      return;
+    }
+    if (alreadyPrinted) return;
+
+    // Confirmación: una sola oportunidad de imprimir
+    const ok = window.confirm(
+      `Vas a imprimir la comanda de TR-${transfer.numericId}.\n\n` +
+      `Por seguridad solo se permite imprimir UNA VEZ. Después de esto, la opción quedará deshabilitada y se registrará tu nombre como responsable de la impresión.\n\n` +
+      `¿Continuar?`
+    );
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      // Importes dinámicos: el ticket lleva HTML/CSS pesado y el servicio
+      // de print no se necesita en otras pantallas.
+      const [{ markTransferPrinted }, { printTransferTicket }] = await Promise.all([
+        import('./transferService'),
+        import('./transferTicket'),
+      ]);
+
+      // Primero marcamos como impresa (si esto falla, no abrimos la
+      // ventana — evita que alguien imprima sin que quede registrado).
+      const result = await markTransferPrinted({ transferId: transfer.id, currentUser });
+
+      // Build el objeto actualizado para reflejar el cambio en la UI sin
+      // tener que esperar al refresh
+      const updated: InventoryTransfer = {
+        ...transfer,
+        printedBy: currentUser.uid,
+        printedByName: result.printedByName,
+        printedAt: { toDate: () => result.printedAt } as any,
+      };
+
+      // Lanzar la ventana de impresión
+      printTransferTicket(updated);
+
+      toast.success(`Comanda impresa por ${result.printedByName}.`);
+      if (onPrinted) onPrinted(updated);
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || 'Error al imprimir la comanda.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-surface-200 dark:border-dark-300 pt-4 mt-4">
+      <p className="text-[11px] font-display font-semibold text-navy-500 uppercase mb-2 flex items-center gap-1">
+        <Printer size={12} /> Comanda física
+      </p>
+      {alreadyPrinted ? (
+        <div className="bg-surface-50 dark:bg-dark-200/40 rounded-lg p-3 text-xs space-y-1">
+          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 font-display font-semibold">
+            <CheckCircle2 size={14} /> Comanda ya impresa
+          </div>
+          <p className="text-navy-600 dark:text-gray-400">
+            Por <strong>{transfer.printedByName}</strong>{printedDate && <> el {printedDate}</>}
+          </p>
+          <p className="text-[10px] text-navy-400 dark:text-gray-500 italic">
+            Por seguridad solo se imprime una vez. Si necesitás un duplicado, contactá al administrador.
+          </p>
+        </div>
+      ) : (
+        <div>
+          <button
+            onClick={handlePrint}
+            disabled={busy}
+            type="button"
+            className="btn-primary text-sm w-full sm:w-auto"
+          >
+            <Printer size={14} />
+            {busy ? 'Procesando…' : 'Imprimir comanda (una sola vez)'}
+          </button>
+          <p className="text-[10px] text-navy-400 dark:text-gray-500 italic mt-1.5">
+            Esta acción solo se permite una vez. Quedará registrado tu nombre como responsable.
+          </p>
         </div>
       )}
     </div>

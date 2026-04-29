@@ -96,6 +96,14 @@ export interface InventoryTransfer {
   receivedAt?: any;
   cancelledAt?: any;
   cancelReason?: string;
+  /**
+   * UID/nombre del usuario que imprimió la comanda. Solo se setea
+   * UNA VEZ — el primer print gana, los siguientes intentos fallan.
+   * Sirve como auditoría de quién despachó físicamente.
+   */
+  printedBy?: string;
+  printedByName?: string;
+  printedAt?: any;
 }
 
 export interface Product {
