@@ -12,7 +12,7 @@ import {
 // ============================
 // CLIENT FORM MODAL
 // ============================
-export function ClientFormModal({ open, onClose, client }: { open: boolean; onClose: () => void; client: any | null }) {
+export function ClientFormModal({ open, onClose, client, onSaved }: { open: boolean; onClose: () => void; client: any | null; onSaved?: (clientId: string) => void }) {
   const toast = useToast();
   const [form, setForm] = useState({
     name: client?.name || client?.nombre || '',
@@ -36,11 +36,16 @@ export function ClientFormModal({ open, onClose, client }: { open: boolean; onCl
         const dupMessage = await checkDuplicate({ rif_ci: form.rif_ci || null, phone: form.phone || null }, client?.id);
         if (dupMessage) { toast.warning(dupMessage); setSaving(false); return; }
       }
-      await saveClient(client?.id || null, {
+      // saveClient retorna el id (creado o existente).
+      // Cuando hay onSaved (e.g. desde el POS), notificamos para que
+      // el CartPanel pueda auto-seleccionar el cliente recién creado
+      // sin que el usuario tenga que hacer un segundo paso.
+      const savedId = await saveClient(client?.id || null, {
         name: form.name, rif_ci: form.rif_ci || null,
         phone: form.phone || null, email: form.email || null,
         address: form.address || null,
       });
+      if (onSaved) onSaved(savedId);
       onClose();
     } catch (err) { console.error(err); toast.error('Error al guardar cliente.'); }
     finally { setSaving(false); }

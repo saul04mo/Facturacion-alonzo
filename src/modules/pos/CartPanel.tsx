@@ -516,6 +516,25 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
           open={true}
           onClose={() => setShowClientModal(false)}
           client={selectedClient || { rif_ci: searchCedula } as any}
+          onSaved={async (clientId) => {
+            // Fetcheamos el cliente recién guardado y lo seleccionamos en
+            // el carrito. Sin esto, el usuario tendría que volver a buscar
+            // por cédula después de guardar — bug reportado por el cliente.
+            try {
+              const { getDoc, doc } = await import('firebase/firestore');
+              const { db } = await import('@/config/firebase');
+              const snap = await getDoc(doc(db, 'clients', clientId));
+              if (snap.exists()) {
+                const fresh = normalizeClient({ id: snap.id, ...snap.data() });
+                setSelectedClient(fresh);
+                setCurrentSale({ ...currentSale, clientId: fresh.id });
+                setSearchCedula('');
+                setClientNotFound(false);
+              }
+            } catch (err) {
+              console.error('Error fetching saved client:', err);
+            }
+          }}
         />
       )}
     </div>
