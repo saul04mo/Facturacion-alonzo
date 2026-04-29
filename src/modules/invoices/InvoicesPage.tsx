@@ -372,7 +372,7 @@ export function InvoicesPage() {
       <div className="grid grid-cols-3 gap-3">
         {[{ l: 'Ventas', v: totals.sales, c: 'text-navy-900' }, { l: 'Delivery', v: totals.delivery, c: 'text-blue-600' }, { l: 'Total', v: totals.general, c: 'text-emerald-600' }].map((i) => (
           <div key={i.l} className="card p-4 text-center hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">{i.l}</p>
-            <p className={`text-lg font-mono font-bold mt-1 ${i.c}`}>{format(i.v)}</p></div>
+            <p className={`text-2xl font-display font-bold tabular-nums tracking-tight mt-1 ${i.c}`}>{format(i.v)}</p></div>
         ))}
       </div>
 
