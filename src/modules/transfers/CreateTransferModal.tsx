@@ -27,7 +27,6 @@ export function CreateTransferModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const products = useAppStore((s) => s.products);
   const currentUser = useAppStore((s) => s.currentUser);
   const toast = useToast();
 
