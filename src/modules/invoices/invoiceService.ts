@@ -11,14 +11,14 @@ import type { CurrentSale, AppUser, Product, Invoice, ClientSnapshot } from '@/t
 // ================================
 export const PAYMENT_METHODS = [
   { id: 'pago-movil', name: 'Pago movil', currency: 'ves' as const, hasRef: true },
-  { id: 'punto-debito', name: 'Punto de venta (Débito)', currency: 'ves' as const },
-  { id: 'efectivo-bs', name: 'Efectivo (Bs)', currency: 'ves' as const },
-  { id: 'efectivo-usd', name: 'Efectivo ($)', currency: 'usd' as const },
-  { id: 'zelle', name: 'Zelle', currency: 'usd' as const },
-  { id: 'zinli', name: 'Zinli', currency: 'usd' as const },
-  { id: 'binance', name: 'Binance', currency: 'usd' as const },
-  { id: 'paypal', name: 'Paypal', currency: 'usd' as const },
-  { id: 'credito', name: 'Crédito', currency: 'none' as const },
+  { id: 'punto-debito', name: 'Punto de venta (Débito)', currency: 'ves' as const, hasRef: true },
+  { id: 'efectivo-bs', name: 'Efectivo (Bs)', currency: 'ves' as const, hasRef: false },
+  { id: 'efectivo-usd', name: 'Efectivo ($)', currency: 'usd' as const, hasRef: false },
+  { id: 'zelle', name: 'Zelle', currency: 'usd' as const, hasRef: true },
+  { id: 'zinli', name: 'Zinli', currency: 'usd' as const, hasRef: true },
+  { id: 'binance', name: 'Binance', currency: 'usd' as const, hasRef: true },
+  { id: 'paypal', name: 'Paypal', currency: 'usd' as const, hasRef: true },
+  { id: 'credito', name: 'Crédito', currency: 'none' as const, hasRef: false },
 ] as const;
 
 export type PaymentMethodId = (typeof PAYMENT_METHODS)[number]['id'];
@@ -355,6 +355,45 @@ export async function confirmDeliveryPayment(invoiceId: string, currentStatus?: 
     updates.status = 'Finalizado';
   }
   await updateDoc(doc(db, 'invoices', invoiceId), updates);
+}
+
+// ================================
+// UPDATE PAYMENT REF
+// ================================
+/**
+ * Actualiza la referencia (ref) de un pago específico de una factura.
+ * Útil cuando el cajero olvidó cargar el N° de Pago Móvil al facturar
+ * y lo agrega después desde el panel de Facturas.
+ *
+ * Cómo identificamos el pago: por su INDEX dentro del array payments.
+ * Una factura puede tener varios pagos (mezcla de métodos), por eso
+ * no alcanza con method+amount como identificador.
+ *
+ * Solo se permite actualizar pagos cuyo método tenga hasRef=true
+ * (Pago Móvil, Zelle, Binance, etc.). Para efectivo el ref no aplica.
+ */
+export async function updatePaymentRef(
+  invoiceId: string,
+  paymentIndex: number,
+  newRef: string,
+): Promise<void> {
+  const ref = doc(db, 'invoices', invoiceId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('Factura no encontrada.');
+  const inv = snap.data() as any;
+  const payments = Array.isArray(inv.payments) ? [...inv.payments] : [];
+  if (!payments[paymentIndex]) throw new Error('Pago no encontrado.');
+
+  // Validar que el método del pago acepte ref
+  const methodName = payments[paymentIndex].method;
+  const methodConfig = PAYMENT_METHODS.find((m) => m.name === methodName);
+  if (methodConfig && (methodConfig as any).hasRef === false) {
+    throw new Error(`El método "${methodName}" no requiere referencia.`);
+  }
+
+  // Reemplazar inmutable
+  payments[paymentIndex] = { ...payments[paymentIndex], ref: newRef.trim() || undefined };
+  await updateDoc(ref, { payments });
 }
 
 // ================================

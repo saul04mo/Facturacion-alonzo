@@ -5,7 +5,7 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { Modal } from '@/components/Modal';
-import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData } from './invoiceService';
+import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData, updatePaymentRef } from './invoiceService';
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
@@ -452,7 +452,7 @@ export function InvoicesPage() {
                       <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight">{dt?.label || inv.deliveryType || 'N/A'}</td>
                       <td className="px-3 py-3 font-mono text-[12px] text-navy-900">{format(inv.deliveryCostUsd || 0)}</td>
                       <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight" title={inv.payments?.map((p: any) => p.method).join(', ')}>{inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}</td>
-                      <td className="px-3 py-3 text-[12px] text-navy-400 break-all leading-tight" title={inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ')}>{inv.payments?.map((p: any) => p.ref).filter(Boolean).join(', ') || 'N/A'}</td>
+                      <RefCell invoice={inv} onUpdated={refetchIfServer} />
                       <td className="px-3 py-3 font-mono font-bold text-[12px] text-navy-900">{format(inv.total || 0)}</td>
                       <td className="px-3 py-3 font-mono text-[12px] text-navy-500 break-all leading-tight">{formatBoth(inv.total || 0).ves}</td>
                       <td className="px-3 py-3 text-[11px] text-navy-500 leading-tight">{date?.toLocaleString('es-VE')}</td>
@@ -736,4 +736,203 @@ export function InvoicesPage() {
       )}
     </div>
   );
+}
+
+// ════════════════════════════════════════════
+// Celda REF editable
+// ════════════════════════════════════════════
+function RefCell({ invoice, onUpdated }: { invoice: any; onUpdated: () => void }) {
+  const toast = useToast();
+  const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+
+  // Identificar qué pagos aceptan ref (Pago Móvil, Zelle, Binance, etc.)
+  const editablePayments = payments
+    .map((p: any, idx: number) => ({ payment: p, idx }))
+    .filter(({ payment }: any) => {
+      const method = PAYMENT_METHODS.find((m) => m.name === payment.method);
+      return method && (method as any).hasRef !== false;
+    });
+
+  const hasEditable = editablePayments.length > 0;
+  const isSinglePayment = editablePayments.length === 1;
+
+  // Estado para edit inline (caso 1 solo pago editable)
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  // Display value: todas las refs concatenadas
+  const displayRef = payments
+    .map((p: any) => p.ref)
+    .filter(Boolean)
+    .join(', ') || (hasEditable ? '—' : 'N/A');
+
+  function startEditing() {
+    if (!hasEditable) return; // no editable: no hace nada
+    if (isSinglePayment) {
+      setDraft(editablePayments[0].payment.ref || '');
+      setEditing(true);
+    } else {
+      // Múltiples pagos editables: abrir modal para que el cajero
+      // sepa exactamente cuál ref está editando
+      setShowModal(true);
+    }
+  }
+
+  async function commitInline() {
+    if (saving) return;
+    const idx = editablePayments[0].idx;
+    setSaving(true);
+    try {
+      await updatePaymentRef(invoice.id, idx, draft);
+      toast.success('Referencia actualizada.');
+      setEditing(false);
+      onUpdated();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Error al actualizar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function cancelInline() {
+    setEditing(false);
+    setDraft('');
+  }
+
+  // ── Render ──
+  if (editing) {
+    return (
+      <td className="px-3 py-2">
+        <input
+          autoFocus
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { if (!saving) commitInline(); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commitInline(); }
+            if (e.key === 'Escape') { e.preventDefault(); cancelInline(); }
+          }}
+          disabled={saving}
+          placeholder="N° de referencia..."
+          className="w-full px-2 py-1 text-[13px] font-mono font-semibold text-white bg-navy-900/40 border border-blue-500 rounded outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </td>
+    );
+  }
+
+  return (
+    <>
+      <td
+        onDoubleClick={startEditing}
+        title={hasEditable ? 'Doble click para editar' : 'Esta factura no tiene pagos con referencia'}
+        className={`px-3 py-3 text-[13px] font-mono break-all leading-tight ${
+          hasEditable
+            ? 'text-white dark:text-gray-100 cursor-text hover:bg-blue-900/20 transition-colors'
+            : 'text-navy-400'
+        }`}
+      >
+        {displayRef}
+      </td>
+
+      {/* Modal para editar refs cuando hay múltiples pagos editables */}
+      {showModal && (
+        <RefMultiEditModal
+          invoice={invoice}
+          editablePayments={editablePayments}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); onUpdated(); }}
+        />
+      )}
+    </>
+  );
+}
+
+function RefMultiEditModal({
+  invoice,
+  editablePayments,
+  onClose,
+  onSaved,
+}: {
+  invoice: any;
+  editablePayments: { payment: any; idx: number }[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  // Estado: array paralelo a editablePayments con los drafts de ref
+  const [drafts, setDrafts] = useState<string[]>(
+    editablePayments.map(({ payment }) => payment.ref || '')
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleSaveAll() {
+    setSaving(true);
+    try {
+      // Actualizamos solo los que cambiaron
+      for (let i = 0; i < editablePayments.length; i++) {
+        const original = editablePayments[i].payment.ref || '';
+        const newRef = drafts[i];
+        if (newRef !== original) {
+          await updatePaymentRef(invoice.id, editablePayments[i].idx, newRef);
+        }
+      }
+      toast.success('Referencias actualizadas.');
+      onSaved();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Error al actualizar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Editar referencias — ${invoiceLabel(invoice)}`} size="md">
+      <div className="space-y-3">
+        <p className="text-xs text-navy-500 dark:text-gray-400">
+          Esta factura tiene varios pagos. Editá la referencia de cada uno individualmente.
+        </p>
+        {editablePayments.map(({ payment }, i) => (
+          <div key={i} className="border border-surface-200 dark:border-dark-300 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100">
+                {payment.method}
+              </span>
+              <span className="font-mono text-xs text-navy-500 dark:text-gray-400">
+                {payment.amountUsd ? `$ ${Number(payment.amountUsd).toFixed(2)}` : ''}
+                {payment.amountVes ? ` · Bs. ${Number(payment.amountVes).toFixed(2)}` : ''}
+              </span>
+            </div>
+            <input
+              type="text"
+              value={drafts[i]}
+              onChange={(e) => {
+                const next = [...drafts];
+                next[i] = e.target.value;
+                setDrafts(next);
+              }}
+              placeholder="N° de referencia..."
+              className="input-field text-sm font-mono"
+            />
+          </div>
+        ))}
+        <div className="flex gap-2 justify-end pt-2">
+          <button onClick={onClose} disabled={saving} className="btn-ghost text-sm">Cancelar</button>
+          <button onClick={handleSaveAll} disabled={saving} className="btn-primary text-sm">
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Helper local — repite la lógica del label de factura sin tener
+// que exportarla. label() en el componente principal hace esto mismo.
+function invoiceLabel(inv: any): string {
+  return inv.numericId ? `FACT-${String(inv.numericId).padStart(4, '0')}` : (inv.id?.slice(0, 6) || '—');
 }
