@@ -260,7 +260,7 @@ function ProductOffersTab() {
             <p className="text-navy-400 text-sm font-display">No hay productos que mostrar en esta lista.</p>
           </div>
         ) : (
-          <div className="divide-y divide-surface-100">
+          <div className="grid gap-3 p-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {filteredProducts
               .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
               .map((product) => (
@@ -378,110 +378,130 @@ function ProductRow({
   }
 
   return (
-    <div className={`p-4 flex flex-col md:flex-row items-start md:items-center gap-4 transition-colors hover-lift ${hasOffer ? 'bg-pink-50/30 shadow-sm' : 'hover:bg-surface-50'}`}>
-      {/* Image */}
-      <div className="w-14 h-14 rounded-lg bg-surface-100 overflow-hidden flex-shrink-0 border border-surface-200 relative">
+    <div className={`group/card relative flex flex-col rounded-xl border bg-card transition-all overflow-hidden ${
+      hasLocalChanges
+        ? 'border-amber-400 ring-2 ring-amber-200 shadow-lg'
+        : hasOffer
+          ? 'border-pink-300 shadow-sm hover:shadow-md'
+          : 'border-surface-200 hover:border-surface-300 hover:shadow-md'
+    }`}>
+      {/* Imagen grande */}
+      <div className="relative aspect-[4/5] bg-surface-50 dark:bg-surface-100/50 overflow-hidden">
         {product.imageUrl ? (
-          <img src={product.imageUrl} alt="" className="w-full h-full object-contain p-1 mix-blend-multiply dark:mix-blend-normal" />
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            className="w-full h-full object-contain p-2 mix-blend-multiply dark:mix-blend-normal"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Package size={20} className="text-navy-300" />
+            <Package size={32} className="text-navy-200" />
           </div>
         )}
+        {/* Badge de descuento (preview o real) — esquina superior izquierda */}
         {hasPreviewOffer && (
-          <div className="absolute inset-x-0 bottom-0 bg-accent-red text-white text-[9px] font-bold text-center py-0.5">
+          <div className="absolute top-2 left-2 bg-accent-red text-white text-[11px] font-bold px-2 py-0.5 rounded-md shadow-md">
             -{previewType === 'percentage' ? `${previewValue}%` : `$${previewValue}`}
           </div>
         )}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1">
-        <h3 className="font-display font-semibold text-navy-900 text-sm">{product.name}</h3>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="badge badge-gray text-[10px]">{product.category}</span>
-          <span className="text-xs text-navy-400 font-mono">
-            {product.variants?.length || 0} vars
-          </span>
-        </div>
-      </div>
-      
-      {/* Prices pre-viz */}
-      <div className="w-full md:w-32 text-left md:text-right hidden sm:block">
-        {hasPreviewOffer ? (
-          <div>
-            <p className="text-[10px] text-navy-400 line-through">{format(minPrice)}</p>
-            <p className={`text-sm font-mono font-bold ${hasLocalChanges ? 'text-amber-500' : 'text-accent-red'}`}>{format(discountPrice)}</p>
+        {/* Estado de oferta — esquina superior derecha */}
+        {hasOffer && !hasLocalChanges && (
+          <div className="absolute top-2 right-2 bg-pink-500/95 text-white text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow flex items-center gap-1">
+            <Percent size={9} /> Activo
           </div>
-        ) : (
-          <p className="text-sm font-mono font-semibold text-navy-900">{format(minPrice)}</p>
         )}
-        <p className="text-[10px] text-navy-300">{hasLocalChanges ? 'Vista previa' : 'Precio Base'}</p>
+        {hasLocalChanges && (
+          <div className="absolute top-2 right-2 bg-amber-500/95 text-white text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow animate-pulse">
+            Sin guardar
+          </div>
+        )}
       </div>
 
-      {/* Offer Controller */}
-      <div className={`w-full md:w-auto bg-white border rounded-lg p-2 shadow-sm flex items-center gap-2 transition-all ${hasLocalChanges ? 'border-amber-400 ring-1 ring-amber-200' : 'border-surface-200'}`}>
-        <div className="min-w-[52px]">
-          <p className="text-[10px] font-display font-semibold text-navy-500 uppercase mb-0.5">Descuento</p>
-          {hasOffer ? (
-            <span className="text-xs font-bold text-accent-red flex items-center gap-1">
-              <Percent size={10} /> Activo
+      {/* Info + precio */}
+      <div className="p-2.5 flex flex-col gap-1.5">
+        <div>
+          <h3 className="font-display font-semibold text-navy-900 dark:text-gray-100 text-sm line-clamp-2 leading-tight" title={product.name}>
+            {product.name}
+          </h3>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="badge badge-gray text-[9px] py-0">{product.category}</span>
+            <span className="text-[10px] text-navy-400 font-mono">
+              {product.variants?.length || 0} vars
             </span>
+          </div>
+        </div>
+
+        {/* Precio */}
+        <div className="flex items-baseline gap-2">
+          {hasPreviewOffer ? (
+            <>
+              <span className={`font-mono font-bold text-base ${hasLocalChanges ? 'text-amber-600' : 'text-accent-red'}`}>
+                {format(discountPrice)}
+              </span>
+              <span className="text-[10px] text-navy-400 line-through">
+                {format(minPrice)}
+              </span>
+            </>
           ) : (
-            <span className="text-xs text-navy-400">Inactivo</span>
+            <span className="font-mono font-semibold text-navy-900 dark:text-gray-100 text-base">
+              {format(minPrice)}
+            </span>
           )}
         </div>
-        
-        <div className="flex items-center bg-surface-50 rounded-md border border-surface-200 overflow-hidden">
-          <select 
-            value={localType}
-            onChange={(e) => {
-              setLocalType(e.target.value as 'percentage' | 'fixed');
-            }}
-            disabled={updatingId === product.id}
-            className="w-10 h-8 bg-surface-100 border-r border-surface-200 text-xs font-semibold text-center outline-none disabled:opacity-50"
-          >
-            <option value="percentage">%</option>
-            <option value="fixed">$</option>
-          </select>
-          <input 
-            ref={inputRef}
-            type="number"
-            min="0"
-            value={localValue}
-            onChange={(e) => setLocalValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="0"
-            disabled={updatingId === product.id}
-            className="w-14 h-8 text-center font-mono font-bold text-sm bg-transparent border-none focus:ring-0 text-navy-900 disabled:opacity-50 outline-none"
-          />
-        </div>
+      </div>
 
-        {/* Confirm / Cancel buttons */}
-        {hasLocalChanges && (
-          <div className="flex items-center gap-1 animate-fade-up">
-            <button
-              onClick={handleConfirm}
+      {/* Controlador de descuento — pegado al fondo */}
+      <div className={`mt-auto px-2.5 pb-2.5 pt-1 border-t ${hasLocalChanges ? 'border-amber-200 bg-amber-50/50' : 'border-surface-100 bg-surface-50/30'}`}>
+        <p className="text-[9px] font-display font-semibold text-navy-500 uppercase mb-1 tracking-wide">Descuento</p>
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center bg-white border border-surface-200 rounded-md overflow-hidden flex-1">
+            <select
+              value={localType}
+              onChange={(e) => setLocalType(e.target.value as 'percentage' | 'fixed')}
               disabled={updatingId === product.id}
-              className="w-7 h-7 flex items-center justify-center rounded-md bg-emerald-500 hover:bg-emerald-600 text-white transition-all shadow-sm disabled:opacity-50"
-              title="Confirmar cambio"
+              className="w-9 h-7 bg-surface-100 border-r border-surface-200 text-xs font-semibold text-center outline-none disabled:opacity-50"
             >
-              <Check size={14} strokeWidth={3} />
-            </button>
-            <button
-              onClick={handleCancel}
+              <option value="percentage">%</option>
+              <option value="fixed">$</option>
+            </select>
+            <input
+              ref={inputRef}
+              type="number"
+              min="0"
+              value={localValue}
+              onChange={(e) => setLocalValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="0"
               disabled={updatingId === product.id}
-              className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-200 hover:bg-surface-300 text-navy-500 transition-all disabled:opacity-50"
-              title="Cancelar"
-            >
-              <X size={14} strokeWidth={2.5} />
-            </button>
+              className="flex-1 min-w-0 h-7 px-1 text-center font-mono font-bold text-sm bg-transparent border-none focus:ring-0 text-navy-900 disabled:opacity-50 outline-none"
+            />
           </div>
-        )}
-        
-        {updatingId === product.id && (
-          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-        )}
+
+          {hasLocalChanges && (
+            <div className="flex items-center gap-0.5 animate-fade-up">
+              <button
+                onClick={handleConfirm}
+                disabled={updatingId === product.id}
+                className="w-7 h-7 flex items-center justify-center rounded-md bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm disabled:opacity-50"
+                title="Guardar (Enter)"
+              >
+                <Check size={13} strokeWidth={3} />
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={updatingId === product.id}
+                className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-200 hover:bg-surface-300 text-navy-500 disabled:opacity-50"
+                title="Cancelar (Esc)"
+              >
+                <X size={13} strokeWidth={2.5} />
+              </button>
+            </div>
+          )}
+
+          {updatingId === product.id && (
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          )}
+        </div>
       </div>
     </div>
   );
