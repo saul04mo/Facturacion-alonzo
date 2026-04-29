@@ -14,7 +14,7 @@ export function LoginPage() {
   // Apply dark class (auth pages are outside Layout)
   useEffect(() => { document.documentElement.classList.toggle('dark', theme === 'dark'); }, [theme]);
 
-  if (isAuthenticated) return <Navigate to={ROUTES.POS} replace />;
+  if (isAuthenticated) return <Navigate to={ROUTES.INVOICES} replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

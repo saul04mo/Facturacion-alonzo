@@ -47,7 +47,7 @@ export function App() {
               <Route path={ROUTES.CRM} element={<CRMPage />} />
             </Route>
 
-            <Route path="*" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
+            <Route path="*" element={<Navigate to={ROUTES.INVOICES} replace />} />
           </Routes>
         </Suspense>
       </AuthProvider>

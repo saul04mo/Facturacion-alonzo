@@ -10,9 +10,9 @@ const NAV_GROUPS = [
   {
     title: 'PRINCIPAL',
     items: [
+      { path: ROUTES.INVOICES, label: 'Facturas', icon: <FileText size={18} />, permission: 'canAccessFacturas' },
       { path: ROUTES.DASHBOARD, label: 'Dashboard', icon: <LayoutDashboard size={18} />, permission: 'canAccessDashboard' },
       { path: ROUTES.POS, label: 'Ventas', icon: <ShoppingCart size={18} />, permission: 'canAccessVentas' },
-      { path: ROUTES.INVOICES, label: 'Facturas', icon: <FileText size={18} />, permission: 'canAccessFacturas' },
       { path: ROUTES.CLIENTS, label: 'Clientes', icon: <Users size={18} />, permission: 'canAccessClientes' },
       { path: ROUTES.CRM, label: 'CRM Marketing', icon: <Crown size={18} />, permission: 'canAccessCRM' },
       { path: ROUTES.DELIVERY, label: 'Delivery', icon: <Truck size={18} />, permission: 'canAccessDelivery' },
@@ -111,7 +111,6 @@ export function Sidebar() {
             <div className="bg-blue-500 text-white p-1.5 rounded-lg shadow-sm flex-shrink-0">
               <ShoppingCart size={18} />
             </div>
-            <span className={`font-display font-bold text-navy-900 dark:text-gray-100 text-[15px] ${collapsed ? 'md:hidden' : ''}`}>W-Pro Ventas</span>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden btn-ghost p-1.5"><X size={18} /></button>
         </div>
