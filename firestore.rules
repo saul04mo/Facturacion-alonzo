@@ -131,19 +131,23 @@ service cloud.firestore {
     // ════════════════════════════════════════
     // 9. EMPLOYEES / PAYROLL
     // ════════════════════════════════════════
+    // NOTA: los nombres en snake_case (employee_incidents, payroll_periods,
+    // payroll_receipts) coinciden con la nomenclatura que usa el código
+    // en src/. Cualquier rule con camelCase causaría permission-denied
+    // al caer en el catch-all final.
     match /employees/{id} {
       allow read: if isAuth();
       allow write: if isAdmin();
     }
-    match /payrollPeriods/{id} {
+    match /payroll_periods/{id} {
       allow read: if isAuth();
       allow write: if isAdmin();
     }
-    match /payrollReceipts/{id} {
+    match /payroll_receipts/{id} {
       allow read: if isAuth();
       allow write: if isAdmin();
     }
-    match /employeeIncidents/{id} {
+    match /employee_incidents/{id} {
       allow read: if isAuth();
       allow write: if isAdmin();
     }
