@@ -47,7 +47,10 @@ export function ClientFormModal({ open, onClose, client, onSaved }: { open: bool
       });
       if (onSaved) onSaved(savedId);
       onClose();
-    } catch (err) { console.error(err); toast.error('Error al guardar cliente.'); }
+    } catch (err: any) {
+      console.error('saveClient error:', err);
+      toast.error(`Error al guardar: ${err?.message || err?.code || 'desconocido'}`);
+    }
     finally { setSaving(false); }
   }
 

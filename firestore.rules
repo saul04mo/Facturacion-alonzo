@@ -60,12 +60,16 @@ service cloud.firestore {
     // ════════════════════════════════════════
     // 3. CLIENTS
     // ════════════════════════════════════════
+    // El POS necesita que cualquier cajero pueda crear/actualizar
+    // clientes (clientes nuevos al momento de facturar, edición de
+    // direcciones para envío, etc.). El ID del documento es generado
+    // por addDoc() — NO coincide con el UID del cajero, por eso
+    // la regla anterior 'isOwner(clientId)' rompía la creación.
     match /clients/{clientId} {
-      // Anyone auth can read (needed for RIF lookup)
       allow read: if isAuth();
-      // Users can create/update ONLY their own doc
-      allow create: if isOwner(clientId) || isAdmin();
-      allow update: if isOwner(clientId) || isAdmin();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      // Solo admins pueden borrar (auditoría)
       allow delete: if isAdmin();
     }
 
