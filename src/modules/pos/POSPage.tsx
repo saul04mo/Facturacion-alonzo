@@ -4,11 +4,11 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { CartPanel } from './CartPanel';
 import { VariantSelector } from './VariantSelector';
-import { BranchSelector } from '@/components/BranchSelector';
 import { getAvailableStock } from '@/utils/branchUtils';
-import type { Product, Discount, Branch } from '@/types';
+import type { Product, Discount } from '@/types';
 import {
   ArrowLeft, Search, Tag, Calculator, ChevronRight, ShoppingCart, X,
+  Store, Warehouse,
 } from 'lucide-react';
 
 type CatalogView = 'gender' | 'category' | 'products';
@@ -143,13 +143,21 @@ export function POSPage() {
                 <h1 className="text-base sm:text-lg font-display font-bold text-navy-900">Punto de Venta</h1>
                 <p className="text-navy-400 text-[10px] sm:text-xs">Selecciona género, categoría y producto.</p>
               </div>
-              {/* Branch selector — cuál sucursal descuenta el stock */}
-              <BranchSelector
-                value={currentSale.branch}
-                onChange={(b: Branch) => setCurrentSale({ ...currentSale, branch: b, items: [] })}
-                requireConfirm={currentSale.items.length > 0}
-                compact
-              />
+              {/* Sucursal activa — derivada del tipo de entrega seleccionado
+                  en el carrito. NO es un selector: el cajero la cambia
+                  modificando el "Tipo de Entrega" dentro del carrito. */}
+              <div
+                title={`La sucursal se determina por el tipo de entrega:\nRetiro/Showroom → Tienda\nDelivery/Envío → Almacén`}
+                className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-display font-semibold ${
+                  currentSale.branch === 'store'
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800/40 dark:text-emerald-300'
+                    : 'border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800/40 dark:text-blue-300'
+                }`}
+              >
+                {currentSale.branch === 'store' ? <Store size={14} /> : <Warehouse size={14} />}
+                <span className="hidden md:inline">Vendiendo desde</span>
+                <span>{currentSale.branch === 'store' ? 'Tienda' : 'Almacén'}</span>
+              </div>
               {/* Calculator */}
               <div className="hidden md:flex items-center gap-2 bg-surface-50 border border-surface-200 rounded-lg p-2">
                 <Calculator size={14} className="text-navy-400" />
@@ -229,6 +237,30 @@ export function POSPage() {
                     <p className="text-navy-400 text-sm">No se encontraron productos.</p>
                   </div>
                 ) : (
+                  <>
+                  {/* Hint cuando TODOS los productos visibles están sin stock en la sucursal activa */}
+                  {(() => {
+                    const allowNeg = useAppStore.getState().allowNegativeStock;
+                    const allOut = !allowNeg && displayProducts.every((p) =>
+                      (p.variants || []).reduce((a, v) => a + getAvailableStock(v, currentSale.branch), 0) <= 0
+                    );
+                    if (!allOut) return null;
+                    return (
+                      <div className={`mb-3 px-3 py-2 rounded-lg border text-xs font-display flex items-start gap-2 ${
+                        currentSale.branch === 'store'
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/40 dark:text-emerald-300'
+                          : 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800/40 dark:text-blue-300'
+                      }`}>
+                        {currentSale.branch === 'store' ? <Store size={14} className="flex-shrink-0 mt-0.5" /> : <Warehouse size={14} className="flex-shrink-0 mt-0.5" />}
+                        <span>
+                          Estás vendiendo desde <strong>{currentSale.branch === 'store' ? 'Tienda' : 'Almacén'}</strong>, pero ningún producto de esta categoría tiene stock acá.
+                          {currentSale.branch === 'store'
+                            ? ' Si la venta es para envío/delivery, cambiá el "Tipo de Entrega" en el carrito y vas a ver el stock del almacén.'
+                            : ' Si es venta presencial, cambiá el "Tipo de Entrega" en el carrito a Showroom o Retiro en Tienda.'}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2 sm:gap-3 stagger">
                     {displayProducts.map((product) => {
                       const currentOfferValue = product.offer?.value || 0;
@@ -302,6 +334,7 @@ export function POSPage() {
                       );
                     })}
                   </div>
+                  </>
                 )}
               </div>
             )}

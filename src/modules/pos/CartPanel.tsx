@@ -11,6 +11,7 @@ import { ClientFormModal } from '@/modules/clients/ClientsPage';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { validateCoupon, calculateCouponDiscount, evaluatePromotions } from '@/services/promotionService';
 import { DELIVERY_TYPES } from '@/config/constants';
+import { branchFromDeliveryType, branchLabel } from '@/utils/branchUtils';
 import { normalizeClient } from '@/types';
 import type { AppliedPromotion } from '@/types';
 import {
@@ -315,9 +316,42 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
             onChange={(e) => {
               const type = e.target.value as any;
               const hasCost = type === 'local';
+              const newBranch = branchFromDeliveryType(type);
+              const branchChanged = newBranch !== currentSale.branch;
+
+              // Si el cambio de tipo de entrega cambia la sucursal Y hay
+              // items en el carrito, hay que rearmarlo: el stock de los
+              // items actuales pertenece a otra sucursal y no podemos
+              // descontar mezclado (rompería la integridad del inventario).
+              if (branchChanged && currentSale.items.length > 0) {
+                const ok = window.confirm(
+                  `"${DELIVERY_TYPES.find(t => t.value === type)?.label}" descuenta del ${branchLabel(newBranch)}.\n\n` +
+                  `Tu carrito tiene ${currentSale.items.length} item(s) seleccionados desde ${branchLabel(currentSale.branch)}.\n\n` +
+                  `Para cambiar a ${branchLabel(newBranch)} necesito vaciar el carrito y volverlo a armar con productos del nuevo stock.\n\n` +
+                  `¿Continuar?`
+                );
+                if (!ok) {
+                  // Cancelar el cambio: forzamos el select a re-renderizar al valor anterior
+                  // (no necesita acción explícita porque no cambiamos el state)
+                  return;
+                }
+                setCurrentSale({
+                  ...currentSale,
+                  deliveryType: type,
+                  branch: newBranch,
+                  deliveryCostUsd: hasCost ? currentSale.deliveryCostUsd : 0,
+                  items: [], // ← vaciar el carrito
+                  payments: [], // pagos también, por si ya había alguno cargado
+                });
+                toast.info(`Carrito vaciado. Ahora vendés desde ${branchLabel(newBranch)}.`);
+                return;
+              }
+
+              // Sin items: cambio limpio
               setCurrentSale({
                 ...currentSale,
                 deliveryType: type,
+                branch: newBranch,
                 deliveryCostUsd: hasCost ? currentSale.deliveryCostUsd : 0,
               });
             }}
