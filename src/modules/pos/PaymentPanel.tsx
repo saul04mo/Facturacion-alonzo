@@ -75,7 +75,22 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
 
     let activePayments: ActivePayment[] = [];
     if (isPending) {
-      activePayments = [{ method: 'Crédito', amountVes: 0, amountUsd: 0 }];
+      // Venta a crédito: la factura queda en 'Pendiente de pago'.
+      // Si el cajero anotó algún método previsto, lo registramos como
+      // pago futuro (con monto 0 — se completará cuando entre el dinero).
+      // Si no anotó nada, default a 'Crédito'.
+      const annotated = entries
+        .filter((e) => e.enabled)
+        .map((e) => {
+          const method = PAYMENT_METHODS.find((m) => m.id === e.methodId)!;
+          return {
+            method: method.name,
+            amountVes: 0,
+            amountUsd: 0,
+            ...(e.ref ? { ref: e.ref } : {}),
+          };
+        });
+      activePayments = annotated.length > 0 ? annotated : [{ method: 'Crédito', amountVes: 0, amountUsd: 0 }];
     } else {
       activePayments = entries
         .filter((e) => e.enabled)
@@ -132,37 +147,55 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
         </div>
       </div>
 
-      {!isPending && (
-        <>
-          <div className="flex items-center gap-2 mb-1">
-            <CreditCard size={16} className="text-navy-500" />
-            <h3 className="font-display font-bold text-navy-900 text-sm">Métodos de Pago</h3>
-          </div>
+      {/* Métodos de pago: SIEMPRE visibles. Cuando el toggle está en
+          'Pendiente' (venta a crédito), igual mostramos los métodos
+          para que el cajero pueda anotar el método previsto si lo desea.
+          La lógica de procesamiento toma el toggle como fuente de verdad
+          (si Pendiente → factura como crédito, si Recibido → cobra los
+          montos cargados). */}
+      {isPending && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 items-start text-amber-800 text-xs font-display">
+          <span className="font-bold mt-0.5">⚠️</span>
+          <span>
+            Esta venta se va a crear como <strong>Crédito</strong> (Pendiente de pago).
+            El stock se descuenta y la factura queda esperando el cobro.
+            Podés anotar el método previsto abajo si querés.
+          </span>
+        </div>
+      )}
 
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-            {PAYMENT_METHODS.map((method) => {
-              const entry = entries.find((e) => e.methodId === method.id)!;
-              return (
-                <div key={method.id} className={`rounded-lg border transition-all duration-200 hover-lift ${entry.enabled ? 'border-blue-200 bg-blue-50/30 shadow-sm' : 'border-surface-200 bg-white'}`}>
-                  <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
-                    <input type="checkbox" checked={entry.enabled}
-                      onChange={(e) => { updateEntry(method.id, 'enabled', e.target.checked); if (!e.target.checked) { updateEntry(method.id, 'amount', ''); updateEntry(method.id, 'ref', ''); } }}
-                      className="w-4 h-4 rounded border-surface-300 text-navy-900 focus:ring-navy-900/20" />
-                    <span className="text-sm font-display font-medium text-navy-800 flex-1">{method.name}</span>
-                    {method.currency !== 'none' && (
-                      <span className="text-[10px] font-mono text-navy-400 uppercase">{method.currency}</span>
-                    )}
-                  </label>
+      <>
+        <div className="flex items-center gap-2 mb-1">
+          <CreditCard size={16} className="text-navy-500" />
+          <h3 className="font-display font-bold text-navy-900 text-sm">
+            {isPending ? 'Método previsto (opcional)' : 'Métodos de Pago'}
+          </h3>
+        </div>
 
-                  {entry.enabled && method.currency !== 'none' && (
-                    <div className="px-3 pb-3 space-y-2">
-                      <input type="number" step="0.01" value={entry.amount}
-                        onChange={(e) => updateEntry(method.id, 'amount', e.target.value)}
-                        placeholder={method.currency === 'ves' ? 'Monto Bs.' : 'Monto $'}
-                        className="input-field text-sm py-1.5 font-mono" />
-                      {(method as any).hasRef && (
-                        <input type="text" value={entry.ref}
-                          onChange={(e) => updateEntry(method.id, 'ref', e.target.value)}
+        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+          {PAYMENT_METHODS.map((method) => {
+            const entry = entries.find((e) => e.methodId === method.id)!;
+            return (
+              <div key={method.id} className={`rounded-lg border transition-all duration-200 hover-lift ${entry.enabled ? 'border-blue-200 bg-blue-50/30 shadow-sm' : 'border-surface-200 bg-white'}`}>
+                <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
+                  <input type="checkbox" checked={entry.enabled}
+                    onChange={(e) => { updateEntry(method.id, 'enabled', e.target.checked); if (!e.target.checked) { updateEntry(method.id, 'amount', ''); updateEntry(method.id, 'ref', ''); } }}
+                    className="w-4 h-4 rounded border-surface-300 text-navy-900 focus:ring-navy-900/20" />
+                  <span className="text-sm font-display font-medium text-navy-800 flex-1">{method.name}</span>
+                  {method.currency !== 'none' && (
+                    <span className="text-[10px] font-mono text-navy-400 uppercase">{method.currency}</span>
+                  )}
+                </label>
+
+                {entry.enabled && method.currency !== 'none' && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <input type="number" step="0.01" value={entry.amount}
+                      onChange={(e) => updateEntry(method.id, 'amount', e.target.value)}
+                      placeholder={method.currency === 'ves' ? 'Monto Bs.' : 'Monto $'}
+                      className="input-field text-sm py-1.5 font-mono" />
+                    {(method as any).hasRef && (
+                      <input type="text" value={entry.ref}
+                        onChange={(e) => updateEntry(method.id, 'ref', e.target.value)}
                           placeholder="Referencia" className="input-field text-sm py-1.5" />
                       )}
                     </div>
@@ -172,22 +205,23 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
             })}
           </div>
 
-          <div className="bg-surface-50 rounded-lg border border-surface-200 p-3 space-y-1.5 text-sm hover-lift">
-            <div className="flex justify-between text-navy-500">
-              <span>Restante</span>
-              <span className={`font-mono font-medium ${remaining > 0.01 ? 'text-accent-red' : 'text-emerald-600'}`}>
-                {format(remaining / exchangeRate)}
-              </span>
-            </div>
-            {change > 0.01 && (
-              <div className="flex justify-between text-emerald-600">
-                <span>Cambio</span>
-                <span className="font-mono font-medium">{format(change / exchangeRate)}</span>
+          {!isPending && (
+            <div className="bg-surface-50 rounded-lg border border-surface-200 p-3 space-y-1.5 text-sm hover-lift">
+              <div className="flex justify-between text-navy-500">
+                <span>Restante</span>
+                <span className={`font-mono font-medium ${remaining > 0.01 ? 'text-accent-red' : 'text-emerald-600'}`}>
+                  {format(remaining / exchangeRate)}
+                </span>
               </div>
-            )}
-          </div>
+              {change > 0.01 && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>Cambio</span>
+                  <span className="font-mono font-medium">{format(change / exchangeRate)}</span>
+                </div>
+              )}
+            </div>
+          )}
         </>
-      )}
 
       <button onClick={handleCheckout} disabled={!canProcess || processing}
         className="btn-primary w-full py-3">
