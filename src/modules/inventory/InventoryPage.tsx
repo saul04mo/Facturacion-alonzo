@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -518,6 +518,66 @@ export function InventoryPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
+
+  // ───────────────────────────────────────────────────────────
+  // Categorías ocultas en la web pública
+  // ───────────────────────────────────────────────────────────
+  // Las categorías que listamos acá quedan FUERA del menú y catálogo
+  // de alonzo-store-web. Usamos el doc config/webSettings (ya existente
+  // para otros toggles de la web) para persistir el array. Cada toggle
+  // hace un setDoc({hiddenCategories: [...]}, {merge: true}) y la web
+  // los lee al cargar.
+  // Clave del item: "Gender|||Category" \u2014 una categor\u00eda con el mismo
+  // nombre puede existir en Hombre y Mujer y querer ocultar solo una.
+  const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
+  const [togglingCategoryKey, setTogglingCategoryKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { doc: docRef, getDoc } = await import('firebase/firestore');
+        const { db } = await import('@/config/firebase');
+        const snap = await getDoc(docRef(db, 'config', 'webSettings'));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (Array.isArray(data.hiddenCategories)) {
+            setHiddenCategories(data.hiddenCategories);
+          }
+        }
+      } catch (err) {
+        console.error('Error cargando hiddenCategories:', err);
+      }
+    })();
+  }, []);
+
+  async function handleToggleCategoryVisibility(gender: string, category: string) {
+    const key = `${gender}|||${category}`;
+    if (togglingCategoryKey) return; // evitar doble-click
+    setTogglingCategoryKey(key);
+    const isHidden = hiddenCategories.includes(key);
+    const next = isHidden
+      ? hiddenCategories.filter((k) => k !== key)
+      : [...hiddenCategories, key];
+    // Optimistic UI
+    setHiddenCategories(next);
+    try {
+      const { doc: docRef, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/config/firebase');
+      await setDoc(docRef(db, 'config', 'webSettings'), { hiddenCategories: next }, { merge: true });
+      toast.success(
+        isHidden
+          ? `"${category}" (${gender}) ahora se muestra en la web.`
+          : `"${category}" (${gender}) ocultada en la web.`,
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al actualizar visibilidad.');
+      // Revertir si falló
+      setHiddenCategories(hiddenCategories);
+    } finally {
+      setTogglingCategoryKey(null);
+    }
+  }
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   // Vista de stock: total / por sucursal
@@ -828,7 +888,31 @@ export function InventoryPage() {
                     <span className="text-xs text-navy-500 font-display">{group.gender}</span>
                   </div>
                 </div>
-                <span className="badge badge-gray text-[10px]">{group.products.length} productos</span>
+                <div className="flex items-center gap-3">
+                  {/* Toggle visibilidad en la web */}
+                  {(() => {
+                    const key = `${group.gender}|||${group.category}`;
+                    const isHidden = hiddenCategories.includes(key);
+                    const isToggling = togglingCategoryKey === key;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleCategoryVisibility(group.gender, group.category)}
+                        disabled={isToggling}
+                        title={isHidden ? 'Categoría OCULTA en la web — click para mostrar' : 'Categoría visible en la web — click para ocultar'}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-display font-semibold uppercase tracking-wider transition-colors ${
+                          isHidden
+                            ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+                            : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                        } ${isToggling ? 'opacity-50 cursor-wait' : ''}`}
+                      >
+                        {isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                        {isHidden ? 'Oculta' : 'Visible'} <span className="text-navy-300 font-normal normal-case">en web</span>
+                      </button>
+                    );
+                  })()}
+                  <span className="badge badge-gray text-[10px]">{group.products.length} productos</span>
+                </div>
               </div>
 
               {/* Grid of product columns — wraps to next row */}
