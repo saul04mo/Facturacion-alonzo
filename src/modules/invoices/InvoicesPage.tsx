@@ -648,7 +648,9 @@ export function InvoicesPage() {
                   nonCashUsd += (Number(p.amountVes) || 0) / rate;
                 });
                 const totalCobradoUsd = cashUsd + nonCashUsd;
-                const totalVentaUsd = Number(detailInvoice.total || 0) + Number(detailInvoice.deliveryCostUsd || 0);
+                // invoice.total YA incluye el delivery — NO sumar
+                // deliveryCostUsd otra vez (estaríamos duplicando)
+                const totalVentaUsd = Number(detailInvoice.total || 0);
                 const exceso = totalCobradoUsd - totalVentaUsd;
                 // Solo consideramos vuelto si hubo efectivo y el total
                 // cobrado supera al total de la venta

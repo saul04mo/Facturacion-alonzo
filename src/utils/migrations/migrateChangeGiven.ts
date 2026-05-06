@@ -65,7 +65,12 @@ function calculateRetroactiveChange(invoiceData: any): number {
   });
 
   const totalCobradoUsd = cashUsd + nonCashUsd;
-  const totalVentaUsd = Number(invoiceData.total || 0) + Number(invoiceData.deliveryCostUsd || 0);
+  // IMPORTANTE: invoice.total YA incluye el delivery sumado (se calcula
+  // en el carrito como subtotalAfterDiscounts + deliveryCost). No hay
+  // que sumarlo otra vez aquí o estaríamos contando el delivery dos
+  // veces y el vuelto saldría negativo (mostrando $0 cuando debería
+  // ser positivo).
+  const totalVentaUsd = Number(invoiceData.total || 0);
   const exceso = totalCobradoUsd - totalVentaUsd;
 
   if (cashUsd > 0 && exceso > 0.01) return exceso;

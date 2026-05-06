@@ -191,7 +191,10 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
       else nonCashUsd += amtUsd;
     });
     const totalCobradoUsd = cashUsd + nonCashUsd;
-    const totalVentaUsd = Number(invoice.total || 0) + Number((invoice as any).deliveryCostUsd || 0);
+    // invoice.total YA incluye el delivery sumado (se calcula así
+    // en el carrito: subtotalAfterDiscounts + deliveryCost).
+    // NO sumar deliveryCostUsd otra vez o duplicaríamos.
+    const totalVentaUsd = Number(invoice.total || 0);
     const exceso = totalCobradoUsd - totalVentaUsd;
     if (cashUsd > 0 && exceso > 0.01) changeUsd = exceso;
   }
