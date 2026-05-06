@@ -114,6 +114,9 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
         sale: { ...currentSale, total }, payments: activePayments,
         exchangeRate, currentUser, products, clients,
         allowNegativeStock: useAppStore.getState().allowNegativeStock,
+        // Vuelto a entregar (USD). Si fue venta a crédito o no hay
+        // exceso de efectivo, change será 0 y no se persiste el campo.
+        changeUsd: !isPending && change > 0 ? change / exchangeRate : 0,
       });
       resetCurrentSale();
       setEntries(buildDefaultEntries());

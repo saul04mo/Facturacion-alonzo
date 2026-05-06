@@ -170,16 +170,36 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
       <div style="text-align:center;font-size:9px;color:#666;">Total: Bs. ${grandTotalVES.toFixed(2)} • Pagado: Bs. ${totalPaid.toFixed(2)}</div>`;
   }
 
-  let changeHtml = '';
-  if ((invoice as any).changeGiven && (invoice as any).changeGiven > 0) {
-    const cg = (invoice as any).changeGiven;
-    changeHtml = `
+  // Vuelto entregado al cliente. Siempre se muestra una línea con
+  // el valor (incluso si es $0), por requerimiento del cliente.
+  // - Facturas nuevas: tienen invoice.changeGiven en USD
+  // - Facturas viejas: calculamos al vuelo sumando efectivo recibido
+  //   y restando el total + delivery (igual lógica que el modal de
+  //   detalle en InvoicesPage)
+  let changeUsd = 0;
+  const stored = (invoice as any).changeGiven;
+  if (typeof stored === 'number' && stored > 0) {
+    changeUsd = stored;
+  } else if (Array.isArray(invoice.payments)) {
+    let cashUsd = 0, nonCashUsd = 0;
+    invoice.payments.forEach((p: any) => {
+      const amtUsd = (Number(p.amountUsd) || 0) + (Number(p.amountVes) || 0) / rate;
+      if (String(p.method || '').toLowerCase().includes('efectivo')) cashUsd += amtUsd;
+      else nonCashUsd += amtUsd;
+    });
+    const totalCobradoUsd = cashUsd + nonCashUsd;
+    const totalVentaUsd = Number(invoice.total || 0) + Number((invoice as any).deliveryCostUsd || 0);
+    const exceso = totalCobradoUsd - totalVentaUsd;
+    if (cashUsd > 0 && exceso > 0.01) changeUsd = exceso;
+  }
+  const changeVes = changeUsd * rate;
+  const changeColor = changeUsd > 0.01 ? '#388e3c' : '#666';
+  const changeHtml = `
       <hr>
       <table class="totals-table">
-        <tr><td class="label" style="color:#388e3c;">Vuelto (Bs):</td><td class="value" style="color:#388e3c;">${cg.toFixed(2)}</td></tr>
-        <tr><td class="label" style="color:#388e3c;">Vuelto ($):</td><td class="value" style="color:#388e3c;">${(cg / rate).toFixed(2)}</td></tr>
+        <tr><td class="label" style="color:${changeColor};">Vuelto (Bs):</td><td class="value" style="color:${changeColor};">${changeVes.toFixed(2)}</td></tr>
+        <tr><td class="label" style="color:${changeColor};">Vuelto (\$):</td><td class="value" style="color:${changeColor};">${changeUsd.toFixed(2)}</td></tr>
       </table>`;
-  }
 
   const deliveryRowHtml = deliveryCost > 0
     ? `<tr><td class="label">Envío:</td><td class="value">${(deliveryCost * rate).toFixed(2)}</td></tr>`

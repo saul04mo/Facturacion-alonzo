@@ -614,16 +614,62 @@ export function InvoicesPage() {
               <div className="text-right"><p className="font-mono font-bold text-lg">{formatBoth(detailInvoice.total || 0).usd}</p>
                 <p className="font-mono text-sm text-white/60">{formatBoth(detailInvoice.total || 0).ves}</p></div></div></div>
 
-            {/* Vuelto (cambio en efectivo) */}
-            {(detailInvoice.changeGiven || 0) > 0 && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex justify-between items-center">
-                <span className="text-sm font-display font-semibold text-amber-700 dark:text-amber-400">Vuelto entregado</span>
-                <div className="text-right">
-                  <p className="font-mono font-bold text-amber-700 dark:text-amber-400">Bs. {Number(detailInvoice.changeGiven).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
-                  <p className="font-mono text-xs text-amber-500">{format(detailInvoice.changeGiven / (detailInvoice.exchangeRate || exchangeRate))}</p>
+            {/* Vuelto (cambio en efectivo) — SIEMPRE visible.
+                Para facturas nuevas: lee changeGiven (USD) directo.
+                Para facturas viejas sin el campo: lo calcula al vuelo
+                sumando pagos en efectivo y restando el total. */}
+            {(() => {
+              const stored = (detailInvoice as any).changeGiven;
+              let changeUsd = 0;
+              if (typeof stored === 'number' && stored > 0) {
+                changeUsd = stored;
+              } else {
+                // Fallback retroactivo: sumar todo el efectivo y ver
+                // si excede el total. Esto cubre las facturas viejas
+                // sin field changeGiven.
+                const rate = detailInvoice.exchangeRate || exchangeRate || 1;
+                const cashPayments = (detailInvoice.payments || []).filter((p: any) => {
+                  const m = String(p.method || '').toLowerCase();
+                  return m.includes('efectivo');
+                });
+                let cashUsd = 0;
+                cashPayments.forEach((p: any) => {
+                  cashUsd += (Number(p.amountUsd) || 0);
+                  cashUsd += (Number(p.amountVes) || 0) / rate;
+                });
+                // Sumar también pagos no-efectivo para saber el total cobrado
+                let nonCashUsd = 0;
+                (detailInvoice.payments || []).filter((p: any) => !String(p.method || '').toLowerCase().includes('efectivo')).forEach((p: any) => {
+                  nonCashUsd += (Number(p.amountUsd) || 0);
+                  nonCashUsd += (Number(p.amountVes) || 0) / rate;
+                });
+                const totalCobradoUsd = cashUsd + nonCashUsd;
+                const totalVentaUsd = Number(detailInvoice.total || 0) + Number(detailInvoice.deliveryCostUsd || 0);
+                const exceso = totalCobradoUsd - totalVentaUsd;
+                // Solo consideramos vuelto si hubo efectivo y el total
+                // cobrado supera al total de la venta
+                if (cashUsd > 0 && exceso > 0.01) changeUsd = exceso;
+              }
+              return (
+                <div className={`rounded-lg p-3 flex justify-between items-center border ${
+                  changeUsd > 0.01
+                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                    : 'bg-surface-50 dark:bg-dark-200/40 border-surface-200 dark:border-dark-300'
+                }`}>
+                  <span className={`text-sm font-display font-semibold ${changeUsd > 0.01 ? 'text-amber-700 dark:text-amber-400' : 'text-navy-500 dark:text-gray-400'}`}>
+                    Vuelto entregado
+                  </span>
+                  <div className="text-right">
+                    <p className={`font-mono font-bold ${changeUsd > 0.01 ? 'text-amber-700 dark:text-amber-400' : 'text-navy-600 dark:text-gray-300'}`}>
+                      {format(changeUsd)}
+                    </p>
+                    <p className={`font-mono text-xs ${changeUsd > 0.01 ? 'text-amber-500' : 'text-navy-400'}`}>
+                      Bs. {(changeUsd * (detailInvoice.exchangeRate || exchangeRate || 1)).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Print / Download actions */}
             <div className="flex gap-2 pt-2">

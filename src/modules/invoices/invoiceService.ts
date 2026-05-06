@@ -44,8 +44,14 @@ export async function processSale(opts: {
   products: Product[];
   clients: Array<{ id: string; name?: string; rif_ci?: string; phone?: string; address?: string }>;
   allowNegativeStock?: boolean;
+  /**
+   * Vuelto a entregar al cliente, en USD. Si los pagos en efectivo
+   * superan el total, el cajero le devuelve la diferencia. Solo se
+   * persiste si > 0.01 — facturas viejas o exactas no tienen el campo.
+   */
+  changeUsd?: number;
 }): Promise<{ numericId: number }> {
-  const { sale, payments, exchangeRate, currentUser, products, clients, allowNegativeStock } = opts;
+  const { sale, payments, exchangeRate, currentUser, products, clients, allowNegativeStock, changeUsd } = opts;
   const isCreditSale = !sale.deliveryPaidInStore;
 
   // ── Pre-validation ──
@@ -158,6 +164,10 @@ export async function processSale(opts: {
       appliedCoupon: sale.appliedCoupon || null,
       appliedPromotions: sale.appliedPromotions || [],
       stockDeducted: true, // Stock deducted in this transaction
+      // Vuelto entregado al cliente (en USD). Solo se setea cuando hay
+      // efectivo en exceso. Facturas que no lo tienen se interpretan
+      // como vuelto = 0 (lectura defensiva en el cliente con ?? 0).
+      ...((changeUsd ?? 0) > 0.01 ? { changeGiven: Number(changeUsd!.toFixed(2)) } : {}),
     };
 
     const newInvoiceRef = doc(collection(db, 'invoices'));
