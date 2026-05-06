@@ -849,6 +849,9 @@ export function SettingsPage() {
 
               {/* Mover todo el stock inicial al almacén */}
               <StockToWarehouseMigrationCard />
+
+              {/* Backfill del campo changeGiven en facturas viejas */}
+              <ChangeGivenMigrationCard />
             </div>
           </div>
         )}
@@ -1131,6 +1134,109 @@ function FontPresetSelector({ currentId, onSelect }: { currentId: string; onSele
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Backfill del campo changeGiven en facturas históricas.
+ *
+ * Recorre todas las facturas existentes y para cada una calcula
+ * el vuelto retroactivo (suma de pagos en efectivo - total). Si
+ * resulta > $0.01, persiste el valor en invoice.changeGiven.
+ *
+ * Idempotente: facturas que ya tienen el campo se saltean.
+ */
+function ChangeGivenMigrationCard() {
+  const toast = useToast();
+  const [running, setRunning] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [progress, setProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [result, setResult] = useState<any>(null);
+
+  async function handleRun() {
+    setRunning(true);
+    setProgress(null);
+    setResult(null);
+    try {
+      const { migrateChangeGiven } = await import('@/utils/migrations/migrateChangeGiven');
+      const r = await migrateChangeGiven((info) => setProgress(info));
+      setResult(r);
+      if (r.errors === 0) {
+        toast.success(`Migración completa. ${r.updated} facturas actualizadas.`);
+      } else {
+        toast.warning(`Migración con ${r.errors} errores. Revisá el resumen.`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || 'Error en la migración.');
+    } finally {
+      setRunning(false);
+      setConfirm(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 bg-emerald-50/40 dark:bg-emerald-900/10 rounded-lg border border-emerald-200 dark:border-emerald-800/30 p-4">
+      <div className="flex items-start gap-3 mb-3">
+        <Database size={18} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100">
+            Calcular vuelto en facturas históricas
+          </p>
+          <p className="text-[11px] text-navy-500 dark:text-gray-400 mt-1 leading-relaxed">
+            Recorre todas las facturas y agrega el campo <code>changeGiven</code> (vuelto
+            entregado) calculado retroactivamente para cada una. El cálculo:
+            efectivo recibido − total de la venta. Si el cliente pagó exacto o no
+            hubo efectivo, no se setea nada. <b>Es idempotente</b>: las facturas
+            que ya tienen el campo se saltean. Tu factura FACT-4198 (que pagó
+            $50 efectivo de $45) debería quedar con changeGiven = $5.00.
+          </p>
+        </div>
+      </div>
+
+      {!confirm && !running && !result && (
+        <button onClick={() => setConfirm(true)} className="btn-secondary text-xs">
+          Calcular vueltos retroactivos…
+        </button>
+      )}
+
+      {confirm && !running && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-display font-semibold">
+            ¿Ejecutar? Esto recorre TODAS las facturas (puede tardar):
+          </span>
+          <button onClick={handleRun} className="btn-primary text-xs">Sí, ejecutar</button>
+          <button onClick={() => setConfirm(false)} className="btn-ghost text-xs">Cancelar</button>
+        </div>
+      )}
+
+      {running && (
+        <div className="text-[11px] text-navy-600 dark:text-gray-400 font-mono">
+          Procesando facturas…
+          {progress && ` (${progress.processed} / ${progress.total})`}
+          <br />No cierres la pestaña.
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-3 p-3 bg-white dark:bg-dark-200/40 rounded-lg border border-surface-200 dark:border-dark-300 text-[11px] font-mono space-y-1">
+          <p>📊 <b>Resumen:</b></p>
+          <p>· Facturas escaneadas: {result.totalScanned}</p>
+          <p>· Ya tenían el campo: {result.alreadyMigrated}</p>
+          <p className="text-emerald-700 dark:text-emerald-400">· Actualizadas con vuelto: {result.updated}</p>
+          <p>· Pago exacto / sin vuelto: {result.noChangeNeeded}</p>
+          <p className="text-amber-600">· Errores: {result.errors}</p>
+          {result.totalChangeUsd > 0 && (
+            <p className="pt-1 border-t border-surface-200 dark:border-dark-300 text-emerald-700 dark:text-emerald-400">
+              💰 Total de vuelto identificado: ${result.totalChangeUsd.toFixed(2)}
+            </p>
+          )}
+          <button onClick={() => setResult(null)} className="btn-ghost text-[10px] mt-2">
+            Cerrar resumen
+          </button>
+        </div>
+      )}
     </div>
   );
 }
