@@ -621,7 +621,11 @@ export function InvoicesPage() {
             {(() => {
               const stored = (detailInvoice as any).changeGiven;
               let changeUsd = 0;
-              if (typeof stored === 'number' && stored > 0) {
+              // Defensa: solo confiamos en stored si es razonable (<$10,000).
+              // Si es absurdamente grande, lo tratamos como dato corrupto
+              // y recalculamos al vuelo.
+              const storedIsReasonable = typeof stored === 'number' && stored > 0 && stored < 10000;
+              if (storedIsReasonable) {
                 changeUsd = stored;
               } else {
                 // Fallback retroactivo: sumar todo el efectivo y ver

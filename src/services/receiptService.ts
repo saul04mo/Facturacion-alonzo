@@ -178,7 +178,10 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   //   detalle en InvoicesPage)
   let changeUsd = 0;
   const stored = (invoice as any).changeGiven;
-  if (typeof stored === 'number' && stored > 0) {
+  // Defensa: solo confiamos en stored si es razonable (<$10,000).
+  // Si es absurdamente grande, lo tratamos como dato corrupto y
+  // recalculamos al vuelo desde los pagos.
+  if (typeof stored === 'number' && stored > 0 && stored < 10000) {
     changeUsd = stored;
   } else if (Array.isArray(invoice.payments)) {
     let cashUsd = 0, nonCashUsd = 0;

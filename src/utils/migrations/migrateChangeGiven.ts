@@ -103,13 +103,26 @@ export async function migrateChangeGiven(
       try {
         const data = docSnap.data();
 
-        // Skip: ya tiene el campo
-        if (typeof data.changeGiven === 'number' && data.changeGiven > 0) {
+        // Calcular el vuelto correcto desde los pagos
+        const computed = calculateRetroactiveChange(data);
+
+        // Detectar si el campo existente está corrupto.
+        // Heurística: si changeGiven existe pero es ENORMEMENTE distinto
+        // del computed (más de 10x), o si es absurdamente grande
+        // (>$10,000 — ningún vuelto real es así de alto), lo tratamos
+        // como dato corrupto y lo sobrescribimos con el cálculo correcto.
+        const existing = typeof data.changeGiven === 'number' ? data.changeGiven : null;
+        const looksCorrupt = existing !== null && (
+          existing > 10000 ||
+          (computed > 0 && Math.abs(existing - computed) > Math.max(computed * 5, 100))
+        );
+
+        // Skip: ya tiene el campo Y se ve consistente con el cálculo
+        if (existing !== null && existing > 0 && !looksCorrupt) {
           result.alreadyMigrated++;
           continue;
         }
 
-        const computed = calculateRetroactiveChange(data);
         if (computed > 0.01) {
           batch.update(doc(db, 'invoices', docSnap.id), {
             changeGiven: Number(computed.toFixed(2)),
@@ -117,6 +130,24 @@ export async function migrateChangeGiven(
           result.updated++;
           result.totalChangeUsd += computed;
           writesInBatch++;
+          if (looksCorrupt) {
+            console.warn(
+              `[fix] FACT-${data.numericId}: valor corrupto reemplazado. ` +
+              `Anterior: ${existing}, Nuevo: ${computed.toFixed(2)}`,
+            );
+          }
+        } else if (looksCorrupt) {
+          // El campo existe corrupto pero el cálculo da 0 → eliminarlo
+          // Firestore deleteField:
+          const { deleteField } = await import('firebase/firestore');
+          batch.update(doc(db, 'invoices', docSnap.id), {
+            changeGiven: deleteField(),
+          });
+          writesInBatch++;
+          console.warn(
+            `[fix] FACT-${data.numericId}: campo corrupto eliminado (cálculo dio 0). ` +
+            `Anterior: ${existing}`,
+          );
         } else {
           result.noChangeNeeded++;
         }
