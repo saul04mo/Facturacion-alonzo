@@ -619,61 +619,78 @@ export function InvoicesPage() {
                 Para facturas viejas sin el campo: lo calcula al vuelo
                 sumando pagos en efectivo y restando el total. */}
             {(() => {
+              // Calcular SIEMPRE el efectivo recibido (suma de pagos
+              // método "efectivo") para mostrarlo en una línea aparte.
+              // Útil para que el cajero/admin vea cuánto recibió en
+              // mano y cuánto le entregó de vuelto, sin tener que
+              // anotarlo en observaciones.
+              const rate = detailInvoice.exchangeRate || exchangeRate || 1;
+              const cashPayments = (detailInvoice.payments || []).filter((p: any) => {
+                return String(p.method || '').toLowerCase().includes('efectivo');
+              });
+              let cashReceivedUsd = 0;
+              cashPayments.forEach((p: any) => {
+                cashReceivedUsd += (Number(p.amountUsd) || 0);
+                cashReceivedUsd += (Number(p.amountVes) || 0) / rate;
+              });
+              // Para vuelto: seguir la misma lógica que antes.
               const stored = (detailInvoice as any).changeGiven;
-              let changeUsd = 0;
-              // Defensa: solo confiamos en stored si es razonable (<$10,000).
-              // Si es absurdamente grande, lo tratamos como dato corrupto
-              // y recalculamos al vuelo.
               const storedIsReasonable = typeof stored === 'number' && stored > 0 && stored < 10000;
+              let changeUsd = 0;
               if (storedIsReasonable) {
                 changeUsd = stored;
               } else {
-                // Fallback retroactivo: sumar todo el efectivo y ver
-                // si excede el total. Esto cubre las facturas viejas
-                // sin field changeGiven.
-                const rate = detailInvoice.exchangeRate || exchangeRate || 1;
-                const cashPayments = (detailInvoice.payments || []).filter((p: any) => {
-                  const m = String(p.method || '').toLowerCase();
-                  return m.includes('efectivo');
-                });
-                let cashUsd = 0;
-                cashPayments.forEach((p: any) => {
-                  cashUsd += (Number(p.amountUsd) || 0);
-                  cashUsd += (Number(p.amountVes) || 0) / rate;
-                });
-                // Sumar también pagos no-efectivo para saber el total cobrado
+                // Fallback: calcular al vuelo
                 let nonCashUsd = 0;
                 (detailInvoice.payments || []).filter((p: any) => !String(p.method || '').toLowerCase().includes('efectivo')).forEach((p: any) => {
                   nonCashUsd += (Number(p.amountUsd) || 0);
                   nonCashUsd += (Number(p.amountVes) || 0) / rate;
                 });
-                const totalCobradoUsd = cashUsd + nonCashUsd;
-                // invoice.total YA incluye el delivery — NO sumar
-                // deliveryCostUsd otra vez (estaríamos duplicando)
+                const totalCobradoUsd = cashReceivedUsd + nonCashUsd;
                 const totalVentaUsd = Number(detailInvoice.total || 0);
                 const exceso = totalCobradoUsd - totalVentaUsd;
-                // Solo consideramos vuelto si hubo efectivo y el total
-                // cobrado supera al total de la venta
-                if (cashUsd > 0 && exceso > 0.01) changeUsd = exceso;
+                if (cashReceivedUsd > 0 && exceso > 0.01) changeUsd = exceso;
               }
+
+              const showCashLine = cashReceivedUsd > 0;
               return (
-                <div className={`rounded-lg p-3 flex justify-between items-center border ${
-                  changeUsd > 0.01
-                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
-                    : 'bg-surface-50 dark:bg-dark-200/40 border-surface-200 dark:border-dark-300'
-                }`}>
-                  <span className={`text-sm font-display font-semibold ${changeUsd > 0.01 ? 'text-amber-700 dark:text-amber-400' : 'text-navy-500 dark:text-gray-400'}`}>
-                    Vuelto entregado
-                  </span>
-                  <div className="text-right">
-                    <p className={`font-mono font-bold ${changeUsd > 0.01 ? 'text-amber-700 dark:text-amber-400' : 'text-navy-600 dark:text-gray-300'}`}>
-                      {format(changeUsd)}
-                    </p>
-                    <p className={`font-mono text-xs ${changeUsd > 0.01 ? 'text-amber-500' : 'text-navy-400'}`}>
-                      Bs. {(changeUsd * (detailInvoice.exchangeRate || exchangeRate || 1)).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
-                    </p>
+                <>
+                  {/* Recibido en efectivo — solo si hubo pago en efectivo */}
+                  {showCashLine && (
+                    <div className="bg-emerald-50/60 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3 flex justify-between items-center">
+                      <span className="text-sm font-display font-semibold text-emerald-700 dark:text-emerald-400">
+                        Recibido en efectivo
+                      </span>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                          {format(cashReceivedUsd)}
+                        </p>
+                        <p className="font-mono text-xs text-emerald-500">
+                          Bs. {(cashReceivedUsd * rate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Vuelto entregado */}
+                  <div className={`rounded-lg p-3 flex justify-between items-center border ${
+                    changeUsd > 0.01
+                      ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                      : 'bg-surface-50 dark:bg-dark-200/40 border-surface-200 dark:border-dark-300'
+                  }`}>
+                    <span className={`text-sm font-display font-semibold ${changeUsd > 0.01 ? 'text-amber-700 dark:text-amber-400' : 'text-navy-500 dark:text-gray-400'}`}>
+                      Vuelto entregado
+                    </span>
+                    <div className="text-right">
+                      <p className={`font-mono font-bold ${changeUsd > 0.01 ? 'text-amber-700 dark:text-amber-400' : 'text-navy-600 dark:text-gray-300'}`}>
+                        {format(changeUsd)}
+                      </p>
+                      <p className={`font-mono text-xs ${changeUsd > 0.01 ? 'text-amber-500' : 'text-navy-400'}`}>
+                        Bs. {(changeUsd * rate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </>
               );
             })()}
 

@@ -176,6 +176,19 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   // - Facturas viejas: calculamos al vuelo sumando efectivo recibido
   //   y restando el total + delivery (igual lógica que el modal de
   //   detalle en InvoicesPage)
+  // Calcular SIEMPRE el efectivo recibido (suma de pagos cuyo método
+  // contiene "efectivo"). Lo usamos para mostrar una línea aparte
+  // en el recibo y también en el cálculo retroactivo del vuelto.
+  let cashUsdReceived = 0;
+  let nonCashUsd = 0;
+  if (Array.isArray(invoice.payments)) {
+    invoice.payments.forEach((p: any) => {
+      const amtUsd = (Number(p.amountUsd) || 0) + (Number(p.amountVes) || 0) / rate;
+      if (String(p.method || '').toLowerCase().includes('efectivo')) cashUsdReceived += amtUsd;
+      else nonCashUsd += amtUsd;
+    });
+  }
+
   let changeUsd = 0;
   const stored = (invoice as any).changeGiven;
   // Defensa: solo confiamos en stored si es razonable (<$10,000).
@@ -183,26 +196,28 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   // recalculamos al vuelo desde los pagos.
   if (typeof stored === 'number' && stored > 0 && stored < 10000) {
     changeUsd = stored;
-  } else if (Array.isArray(invoice.payments)) {
-    let cashUsd = 0, nonCashUsd = 0;
-    invoice.payments.forEach((p: any) => {
-      const amtUsd = (Number(p.amountUsd) || 0) + (Number(p.amountVes) || 0) / rate;
-      if (String(p.method || '').toLowerCase().includes('efectivo')) cashUsd += amtUsd;
-      else nonCashUsd += amtUsd;
-    });
-    const totalCobradoUsd = cashUsd + nonCashUsd;
-    // invoice.total YA incluye el delivery sumado (se calcula así
-    // en el carrito: subtotalAfterDiscounts + deliveryCost).
-    // NO sumar deliveryCostUsd otra vez o duplicaríamos.
+  } else if (cashUsdReceived > 0) {
+    const totalCobradoUsd = cashUsdReceived + nonCashUsd;
+    // invoice.total YA incluye el delivery sumado.
     const totalVentaUsd = Number(invoice.total || 0);
     const exceso = totalCobradoUsd - totalVentaUsd;
-    if (cashUsd > 0 && exceso > 0.01) changeUsd = exceso;
+    if (exceso > 0.01) changeUsd = exceso;
   }
   const changeVes = changeUsd * rate;
   const changeColor = changeUsd > 0.01 ? '#388e3c' : '#666';
+
+  // Línea "Recibido en efectivo" — solo si hubo pago en efectivo.
+  // Útil para que cliente y cajero vean cuánto entregó el cliente
+  // y cuánto se le devolvió.
+  const cashReceivedHtml = cashUsdReceived > 0.01
+    ? `
+        <tr><td class="label" style="color:#1976d2;">Recibido (Bs):</td><td class="value" style="color:#1976d2;">${(cashUsdReceived * rate).toFixed(2)}</td></tr>
+        <tr><td class="label" style="color:#1976d2;">Recibido (\$):</td><td class="value" style="color:#1976d2;">${cashUsdReceived.toFixed(2)}</td></tr>`
+    : '';
+
   const changeHtml = `
       <hr>
-      <table class="totals-table">
+      <table class="totals-table">${cashReceivedHtml}
         <tr><td class="label" style="color:${changeColor};">Vuelto (Bs):</td><td class="value" style="color:${changeColor};">${changeVes.toFixed(2)}</td></tr>
         <tr><td class="label" style="color:${changeColor};">Vuelto (\$):</td><td class="value" style="color:${changeColor};">${changeUsd.toFixed(2)}</td></tr>
       </table>`;
