@@ -266,18 +266,31 @@ export function POSPage() {
                       const currentOfferValue = product.offer?.value || 0;
                       const currentOfferType = product.offer?.type || 'percentage';
                       const hasOffer = currentOfferValue > 0;
-                      // Stock disponible para esta sucursal
-                      const branchStock = (product.variants || []).reduce(
-                        (acc, v) => acc + getAvailableStock(v, currentSale.branch),
+                      // Stock disponible por sucursal (calculados por separado
+                      // para mostrar ambos al cajero sin tener que cambiar
+                      // el tipo de entrega).
+                      const storeStock = (product.variants || []).reduce(
+                        (acc, v) => acc + getAvailableStock(v, 'store'),
                         0
                       );
+                      const warehouseStock = (product.variants || []).reduce(
+                        (acc, v) => acc + getAvailableStock(v, 'warehouse'),
+                        0
+                      );
+                      // Stock de la sucursal ACTIVA — define si la card es
+                      // clickeable o queda gris (la regla actual: solo
+                      // podés vender desde donde tenés stock disponible
+                      // según el tipo de entrega elegido)
+                      const branchStock = currentSale.branch === 'store' ? storeStock : warehouseStock;
                       const allowNeg = useAppStore.getState().allowNegativeStock;
                       const outOfBranch = branchStock <= 0 && !allowNeg;
 
                       return (
                         <button key={product.id} onClick={() => !outOfBranch && handleProductClick(product)}
                           disabled={outOfBranch}
-                          title={outOfBranch ? `Sin stock en ${currentSale.branch === 'store' ? 'tienda' : 'almacén'}` : product.name}
+                          title={outOfBranch
+                            ? `Sin stock en ${currentSale.branch === 'store' ? 'tienda' : 'almacén'} (Tienda: ${storeStock} / Almacén: ${warehouseStock})`
+                            : `${product.name} — Tienda: ${storeStock} / Almacén: ${warehouseStock}`}
                           className={`card-hover p-2 text-left animate-fade-up group relative ${
                             outOfBranch
                               ? 'opacity-40 cursor-not-allowed grayscale'
@@ -297,15 +310,26 @@ export function POSPage() {
                                 -{currentOfferType === 'percentage' ? `${currentOfferValue}%` : `$${currentOfferValue}`}
                               </div>
                             )}
-                            {/* Badge de stock por sucursal — abajo izquierda */}
-                            <div className={`absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shadow-sm ${
-                              outOfBranch
-                                ? 'bg-red-500/90 text-white'
-                                : branchStock <= 5
-                                  ? 'bg-amber-500/90 text-white'
-                                  : 'bg-navy-900/85 text-white'
-                            }`}>
-                              {branchStock}
+                            {/* Badges de stock — uno por sucursal.
+                                Verde = Tienda (esquina inferior IZQ)
+                                Azul = Almacén (esquina inferior DER)
+                                El borde más grueso resalta la sucursal
+                                ACTIVA según el tipo de entrega elegido. */}
+                            <div className={`absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shadow-sm flex items-center gap-0.5 ${
+                              storeStock <= 0
+                                ? 'bg-navy-900/60 text-white/60'
+                                : 'bg-emerald-600/90 text-white'
+                            } ${currentSale.branch === 'store' ? 'ring-1 ring-white/80' : ''}`}>
+                              <Store size={9} strokeWidth={2.5} />
+                              {storeStock}
+                            </div>
+                            <div className={`absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shadow-sm flex items-center gap-0.5 ${
+                              warehouseStock <= 0
+                                ? 'bg-navy-900/60 text-white/60'
+                                : 'bg-blue-600/90 text-white'
+                            } ${currentSale.branch === 'warehouse' ? 'ring-1 ring-white/80' : ''}`}>
+                              <Warehouse size={9} strokeWidth={2.5} />
+                              {warehouseStock}
                             </div>
                           </div>
                           <p className="font-display font-semibold text-navy-900 text-[11px] line-clamp-2 leading-tight">
