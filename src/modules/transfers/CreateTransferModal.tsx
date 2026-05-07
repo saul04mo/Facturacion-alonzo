@@ -418,6 +418,10 @@ function ProductPickerModal({
           <div className="max-h-96 overflow-y-auto border border-surface-200 dark:border-dark-300 rounded-lg divide-y divide-surface-100 dark:divide-dark-300/40">
             {filtered.map((product) => {
               const variantsInStock = (product.variants || []).filter((v) => (v.stockWarehouse ?? 0) > 0);
+              // Suma total de unidades en almacén (todas las variantes)
+              // \u2014 al cajero le sirve saber el total general del producto
+              // sin tener que sumar mentalmente cada variante.
+              const totalUnits = variantsInStock.reduce((acc, v) => acc + (v.stockWarehouse ?? 0), 0);
               return (
                 <div key={product.id} className="p-3">
                   <div className="flex items-center gap-3 mb-2">
@@ -429,7 +433,14 @@ function ProductPickerModal({
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100 truncate">{product.name}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100 truncate">{product.name}</p>
+                        {/* Badge total de unidades \u2014 destacado para
+                            lectura r\u00e1pida sin sumar variantes a mano */}
+                        <span className="flex-shrink-0 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800/40 text-blue-700 dark:text-blue-300 text-[10px] font-mono font-bold">
+                          {totalUnits} {totalUnits === 1 ? 'unidad' : 'unidades'}
+                        </span>
+                      </div>
                       <p className="text-[10px] text-navy-400">
                         {product.gender} · {product.category} · {variantsInStock.length} variante{variantsInStock.length === 1 ? '' : 's'} con stock
                       </p>
