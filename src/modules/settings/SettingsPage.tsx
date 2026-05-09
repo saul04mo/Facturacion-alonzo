@@ -588,36 +588,96 @@ export function SettingsPage() {
                 <p className="text-[11px] text-navy-400 dark:text-gray-500 mb-3">
                   Tiempo que la web guarda los productos en memoria antes de consultar Firestore otra vez.
                 </p>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 flex-1">
-                    {[
-                      { label: '10s', value: 10 },
-                      { label: '30s', value: 30 },
-                      { label: '1m', value: 60 },
-                      { label: '5m', value: 300 },
-                      { label: '15m', value: 900 },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setCacheTTL(opt.value)}
-                        className={`flex-1 py-2 text-xs font-display font-semibold rounded-lg transition-colors ${
-                          cacheTTL === opt.value
-                            ? 'bg-navy-900 dark:bg-gray-100 text-white dark:text-gray-900'
-                            : 'bg-surface-50 text-navy-500 dark:text-gray-400 border border-surface-200 hover:border-navy-300'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    onClick={handleSaveCacheTTL}
-                    disabled={cacheSaving}
-                    className="px-4 py-2 bg-emerald-600 text-white text-xs font-display font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                  >
-                    {cacheSaving ? '...' : 'Guardar'}
-                  </button>
+
+                {/* Presets rápidos */}
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  {[
+                    { label: '10s', value: 10 },
+                    { label: '30s', value: 30 },
+                    { label: '1m', value: 60 },
+                    { label: '5m', value: 300 },
+                    { label: '15m', value: 900 },
+                    { label: '30m', value: 1800 },
+                    { label: '1h', value: 3600 },
+                    { label: '6h', value: 21600 },
+                    { label: '24h', value: 86400 },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setCacheTTL(opt.value)}
+                      className={`flex-1 min-w-[55px] py-2 text-xs font-display font-semibold rounded-lg transition-colors ${
+                        cacheTTL === opt.value
+                          ? 'bg-navy-900 dark:bg-gray-100 text-white dark:text-gray-900'
+                          : 'bg-surface-50 text-navy-500 dark:text-gray-400 border border-surface-200 hover:border-navy-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
+
+                {/* Input personalizado */}
+                <div className="flex items-center gap-2 mb-3 p-3 bg-surface-50 dark:bg-dark-200/40 rounded-lg border border-dashed border-surface-300 dark:border-dark-300">
+                  <span className="text-[11px] text-navy-500 dark:text-gray-400 font-display font-semibold whitespace-nowrap">
+                    O personalizado:
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={(() => {
+                      // Mostrar el valor actual en la unidad más cómoda
+                      if (cacheTTL >= 3600 && cacheTTL % 3600 === 0) return cacheTTL / 3600;
+                      if (cacheTTL >= 60 && cacheTTL % 60 === 0) return cacheTTL / 60;
+                      return cacheTTL;
+                    })()}
+                    onChange={(e) => {
+                      const num = parseInt(e.target.value) || 0;
+                      // Mantener la misma unidad que está mostrada
+                      if (cacheTTL >= 3600 && cacheTTL % 3600 === 0) setCacheTTL(num * 3600);
+                      else if (cacheTTL >= 60 && cacheTTL % 60 === 0) setCacheTTL(num * 60);
+                      else setCacheTTL(num);
+                    }}
+                    className="w-20 px-2 py-1.5 text-sm font-mono font-bold rounded-md border border-surface-300 dark:border-dark-300 bg-white dark:bg-dark-100 text-navy-900 dark:text-gray-100 outline-none focus:border-blue-400"
+                  />
+                  <select
+                    value={(() => {
+                      if (cacheTTL >= 3600 && cacheTTL % 3600 === 0) return 'hours';
+                      if (cacheTTL >= 60 && cacheTTL % 60 === 0) return 'minutes';
+                      return 'seconds';
+                    })()}
+                    onChange={(e) => {
+                      // Convertir el número actual a la nueva unidad
+                      const currentNum = (() => {
+                        if (cacheTTL >= 3600 && cacheTTL % 3600 === 0) return cacheTTL / 3600;
+                        if (cacheTTL >= 60 && cacheTTL % 60 === 0) return cacheTTL / 60;
+                        return cacheTTL;
+                      })();
+                      const factor = e.target.value === 'hours' ? 3600 : e.target.value === 'minutes' ? 60 : 1;
+                      setCacheTTL(currentNum * factor);
+                    }}
+                    className="px-2 py-1.5 text-xs font-display rounded-md border border-surface-300 dark:border-dark-300 bg-white dark:bg-dark-100 text-navy-700 dark:text-gray-300 outline-none focus:border-blue-400"
+                  >
+                    <option value="seconds">segundos</option>
+                    <option value="minutes">minutos</option>
+                    <option value="hours">horas</option>
+                  </select>
+                  <span className="text-[10px] text-navy-400 dark:text-gray-500 font-mono ml-auto">
+                    = {cacheTTL.toLocaleString()} seg
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleSaveCacheTTL}
+                  disabled={cacheSaving}
+                  className="w-full px-4 py-2 bg-emerald-600 text-white text-xs font-display font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                >
+                  {cacheSaving ? 'Guardando…' : `Guardar (${
+                    cacheTTL >= 3600 && cacheTTL % 3600 === 0 ? `${cacheTTL / 3600}h` :
+                    cacheTTL >= 60 && cacheTTL % 60 === 0 ? `${cacheTTL / 60}m` :
+                    `${cacheTTL}s`
+                  })`}
+                </button>
+
                 <p className="text-[10px] text-navy-400 dark:text-gray-500 mt-2">
                   Más tiempo = menos consultas a Firestore (más rápido). Menos tiempo = cambios se reflejan más rápido.
                 </p>
