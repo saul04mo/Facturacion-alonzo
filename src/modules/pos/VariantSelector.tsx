@@ -70,7 +70,7 @@ export function VariantSelector({ product, onSelect, onClose }: {
                           ? (stockStore <= 0
                               ? 'bg-accent-red/10 text-accent-red font-bold ring-1 ring-accent-red/40'
                               : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-900/20 dark:text-emerald-300')
-                          : 'bg-surface-100 text-navy-500 dark:bg-navy-700 dark:text-navy-100 dark:ring-1 dark:ring-navy-600'}`}
+                          : 'bg-surface-100 text-navy-500 ring-1 ring-surface-200 dark:bg-dark-300 dark:text-gray-100 dark:ring-dark-400'}`}
                       title={branch === 'store' ? 'Sucursal activa de la venta' : 'Stock en Tienda (no se descuenta de aquí)'}
                     >
                       <Store size={10} />
@@ -82,7 +82,7 @@ export function VariantSelector({ product, onSelect, onClose }: {
                           ? (stockWarehouse <= 0
                               ? 'bg-accent-red/10 text-accent-red font-bold ring-1 ring-accent-red/40'
                               : 'bg-blue-50 text-blue-700 ring-1 ring-blue-300 dark:bg-blue-900/20 dark:text-blue-300')
-                          : 'bg-surface-100 text-navy-500 dark:bg-navy-700 dark:text-navy-100 dark:ring-1 dark:ring-navy-600'}`}
+                          : 'bg-surface-100 text-navy-500 ring-1 ring-surface-200 dark:bg-dark-300 dark:text-gray-100 dark:ring-dark-400'}`}
                       title={branch === 'warehouse' ? 'Sucursal activa de la venta' : 'Stock en Almacén (no se descuenta de aquí)'}
                     >
                       <Warehouse size={10} />
