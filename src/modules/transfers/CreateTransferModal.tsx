@@ -176,34 +176,34 @@ export function CreateTransferModal({
     <Modal open onClose={onClose} title="Nueva transferencia" size="lg">
       <div className="space-y-4">
         {/* Origen → Destino (toggle) */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-surface-50 dark:bg-dark-200/40 rounded-lg">
+        <div className="flex items-center gap-2.5 px-3 py-2.5 bg-surface-50 dark:bg-dark-200/40 rounded-lg">
           {from === 'warehouse' ? (
-            <Warehouse size={14} className="text-blue-500" />
+            <Warehouse size={18} className="text-blue-500" />
           ) : (
-            <Store size={14} className="text-emerald-500" />
+            <Store size={18} className="text-emerald-500" />
           )}
-          <span className="text-xs font-display font-semibold text-navy-700 dark:text-gray-300">
+          <span className="text-sm font-display font-bold text-navy-900 dark:text-gray-100">
             {sourceLabel}
           </span>
-          <ArrowRight size={14} className="mx-1 text-navy-300" />
+          <ArrowRight size={16} strokeWidth={2.5} className="mx-1 text-navy-500 dark:text-gray-400" />
           {to === 'warehouse' ? (
-            <Warehouse size={14} className="text-blue-500" />
+            <Warehouse size={18} className="text-blue-500" />
           ) : (
-            <Store size={14} className="text-emerald-500" />
+            <Store size={18} className="text-emerald-500" />
           )}
-          <span className="text-xs font-display font-semibold text-navy-700 dark:text-gray-300">
+          <span className="text-sm font-display font-bold text-navy-900 dark:text-gray-100">
             {destLabel}
           </span>
           <button
             type="button"
             onClick={flipDirection}
             disabled={submitting}
-            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-display font-semibold uppercase tracking-wide text-navy-600 dark:text-gray-300 bg-white dark:bg-dark-300 ring-1 ring-surface-200 dark:ring-dark-400 hover:bg-surface-100 dark:hover:bg-dark-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="ml-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-display font-bold uppercase tracking-wider text-navy-800 dark:text-gray-100 bg-white dark:bg-dark-400 ring-1 ring-surface-300 dark:ring-dark-400 shadow-sm hover:bg-blue-50 dark:hover:bg-dark-300 hover:ring-blue-300 dark:hover:ring-blue-500/50 hover:text-blue-700 dark:hover:text-blue-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             title="Invertir dirección de la transferencia"
           >
-            <ArrowLeftRight size={11} /> Invertir
+            <ArrowLeftRight size={13} strokeWidth={2.5} /> Invertir
           </button>
-          <span className="ml-auto text-[10px] text-navy-400">
+          <span className="ml-auto text-[10px] text-navy-400 dark:text-gray-500">
             Estado inicial: <strong className="text-amber-600">Pendiente</strong> (no descuenta stock todavía)
           </span>
         </div>
