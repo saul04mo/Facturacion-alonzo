@@ -48,7 +48,7 @@ export function ReceiveTransferModal({
     if (hasDiscrepancy) {
       const ok = window.confirm(
         `Hay una diferencia entre lo enviado (${totalSent}) y lo recibido (${totalReceived}).\n\n` +
-        `La diferencia (${totalSent - totalReceived} unidades) se contabilizará como merma en tránsito y NO volverá al almacén.\n\n` +
+        `La diferencia (${totalSent - totalReceived} unidades) se contabilizará como merma en tránsito y NO volverá al origen.\n\n` +
         `¿Confirmar recepción con esta diferencia?`
       );
       if (!ok) return;
@@ -63,7 +63,8 @@ export function ReceiveTransferModal({
         receivedQuantities: received,
       });
       const receiverName = `${currentUser.nombre} ${currentUser.apellido}`;
-      toast.success(`TR-${transfer.numericId} recibida por ${receiverName} — stock agregado a la tienda.`);
+      const destLabel = transfer.to === 'store' ? 'tienda' : 'almacén';
+      toast.success(`TR-${transfer.numericId} recibida por ${receiverName} — stock agregado a ${destLabel}.`);
       onReceived();
     } catch (e: any) {
       console.error(e);
@@ -150,7 +151,7 @@ export function ReceiveTransferModal({
               <p className="font-display font-semibold text-amber-700 dark:text-amber-300">Diferencia detectada</p>
               <p className="text-amber-600 dark:text-amber-400 mt-0.5">
                 Faltan <strong>{totalSent - totalReceived}</strong> unidades respecto a lo enviado.
-                Estas unidades se contabilizarán como <strong>merma en tránsito</strong> y NO regresan al almacén.
+                Estas unidades se contabilizarán como <strong>merma en tránsito</strong> y NO regresan al origen.
                 Solo confirmá si efectivamente perdiste esas unidades en el camino.
               </p>
             </div>

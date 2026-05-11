@@ -70,11 +70,12 @@ export function TransfersPage() {
 
   async function handleShip(t: InventoryTransfer) {
     if (!currentUser) return;
-    if (!window.confirm(`¿Confirmás el envío de la transferencia TR-${t.numericId}?\n\nEsto va a descontar el stock del almacén y marcarlo como "En tránsito".`)) return;
+    const fromLabel = t.from === 'warehouse' ? 'almacén' : 'tienda';
+    if (!window.confirm(`¿Confirmás el envío de la transferencia TR-${t.numericId}?\n\nEsto va a descontar el stock de ${fromLabel} y marcarlo como "En tránsito".`)) return;
     setActioningId(t.id);
     try {
       await shipTransfer({ transferId: t.id, products, currentUser });
-      toast.success(`TR-${t.numericId} enviada — stock descontado del almacén.`);
+      toast.success(`TR-${t.numericId} enviada — stock descontado de ${fromLabel}.`);
       await refresh();
     } catch (e: any) {
       console.error(e);
@@ -198,9 +199,17 @@ export function TransfersPage() {
                     </td>
                     <td className="px-3 py-3 text-[12px] text-navy-600 dark:text-gray-400">
                       <span className="inline-flex items-center gap-1">
-                        <Warehouse size={11} className="text-blue-500" /> Almacén
+                        {t.from === 'warehouse' ? (
+                          <><Warehouse size={11} className="text-blue-500" /> Almacén</>
+                        ) : (
+                          <><Store size={11} className="text-emerald-500" /> Tienda</>
+                        )}
                         <ArrowRight size={11} className="mx-1 text-navy-300" />
-                        <Store size={11} className="text-emerald-500" /> Tienda
+                        {t.to === 'store' ? (
+                          <><Store size={11} className="text-emerald-500" /> Tienda</>
+                        ) : (
+                          <><Warehouse size={11} className="text-blue-500" /> Almacén</>
+                        )}
                       </span>
                     </td>
                     <td className="px-3 py-3 font-mono text-[12px] text-navy-700 dark:text-gray-300">{itemsCount}</td>
@@ -275,7 +284,7 @@ export function TransfersPage() {
                               onClick={() => handleCancel(t)}
                               disabled={isLoading}
                               className="btn-ghost p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                              title="Cancelar (stock vuelve al almacén)"
+                              title={`Cancelar (stock vuelve a ${t.from === 'warehouse' ? 'almacén' : 'tienda'})`}
                             >
                               <XCircle size={14} />
                             </button>
