@@ -17,7 +17,6 @@ export function VariantSelector({ product, onSelect, onClose }: {
   // y la validación se hacen contra esta sucursal, no contra el agregado.
   const branch = useAppStore((s) => s.currentSale.branch);
   const branchLabel = branch === 'store' ? 'Tienda' : 'Almacén';
-  const otherLabel = branch === 'store' ? 'Almacén' : 'Tienda';
 
   return (
     <Modal open={true} onClose={onClose} title={`Variante — ${product.name}`} size="sm">
@@ -38,9 +37,11 @@ export function VariantSelector({ product, onSelect, onClose }: {
           {product.variants?.map((v, idx) => {
             const stockHere = getAvailableStock(v, branch);
             const breakdown = getStockBreakdown(v);
-            // Stock en la sucursal contraria — útil mostrarlo para que
-            // el cajero sepa que existe pero hay que transferir.
-            const stockOther = branch === 'store' ? breakdown.warehouse : breakdown.store;
+            // Mostramos SIEMPRE ambos inventarios (Tienda y Almacén) para que
+            // el cajero tenga visibilidad completa del stock disponible aunque
+            // la venta solo descuente de la sucursal activa.
+            const stockStore = breakdown.store;
+            const stockWarehouse = breakdown.warehouse;
             const noStock = stockHere <= 0;
             const blocked = noStock && !allowNegative;
             return (
@@ -58,17 +59,36 @@ export function VariantSelector({ product, onSelect, onClose }: {
                     <span className="text-navy-500">{v.color || 'Sin color'}</span>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex flex-col items-end gap-1">
                   <span className="font-mono font-semibold text-navy-900 text-sm">{format(v.price)}</span>
-                  <p className={`text-[10px] ${noStock ? 'text-accent-red font-bold' : 'text-navy-400'}`}>
-                    {branchLabel}: {stockHere}
-                  </p>
-                  {/* Hint del stock en la otra sucursal */}
-                  {stockOther > 0 && (
-                    <p className="text-[9px] text-navy-300 italic">
-                      ({otherLabel}: {stockOther})
-                    </p>
-                  )}
+                  {/* Ambos inventarios visibles. La sucursal activa se resalta
+                      con borde para que el cajero sepa de cuál se descuenta. */}
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono
+                        ${branch === 'store'
+                          ? (stockStore <= 0
+                              ? 'bg-accent-red/10 text-accent-red font-bold ring-1 ring-accent-red/40'
+                              : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-900/20 dark:text-emerald-300')
+                          : 'bg-surface-100 text-navy-500'}`}
+                      title={branch === 'store' ? 'Sucursal activa de la venta' : 'Stock en Tienda (no se descuenta de aquí)'}
+                    >
+                      <Store size={10} />
+                      <span>Tienda: {stockStore}</span>
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono
+                        ${branch === 'warehouse'
+                          ? (stockWarehouse <= 0
+                              ? 'bg-accent-red/10 text-accent-red font-bold ring-1 ring-accent-red/40'
+                              : 'bg-blue-50 text-blue-700 ring-1 ring-blue-300 dark:bg-blue-900/20 dark:text-blue-300')
+                          : 'bg-surface-100 text-navy-500'}`}
+                      title={branch === 'warehouse' ? 'Sucursal activa de la venta' : 'Stock en Almacén (no se descuenta de aquí)'}
+                    >
+                      <Warehouse size={10} />
+                      <span>Almacén: {stockWarehouse}</span>
+                    </span>
+                  </div>
                 </div>
               </button>
             );
