@@ -65,7 +65,7 @@ export function VariantSelector({ product, onSelect, onClose }: {
                       con borde para que el cajero sepa de cuál se descuenta. */}
                   <div className="flex items-center gap-1.5">
                     <span
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono
+                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono
                         ${branch === 'store'
                           ? (stockStore <= 0
                               ? 'bg-accent-red/10 text-accent-red font-bold ring-1 ring-accent-red/40'
@@ -73,11 +73,11 @@ export function VariantSelector({ product, onSelect, onClose }: {
                           : 'bg-surface-100 text-navy-500 ring-1 ring-surface-200 dark:bg-dark-300 dark:text-gray-100 dark:ring-dark-400'}`}
                       title={branch === 'store' ? 'Sucursal activa de la venta' : 'Stock en Tienda (no se descuenta de aquí)'}
                     >
-                      <Store size={10} />
+                      <Store size={12} />
                       <span>Tienda: {stockStore}</span>
                     </span>
                     <span
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono
+                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono
                         ${branch === 'warehouse'
                           ? (stockWarehouse <= 0
                               ? 'bg-accent-red/10 text-accent-red font-bold ring-1 ring-accent-red/40'
@@ -85,7 +85,7 @@ export function VariantSelector({ product, onSelect, onClose }: {
                           : 'bg-surface-100 text-navy-500 ring-1 ring-surface-200 dark:bg-dark-300 dark:text-gray-100 dark:ring-dark-400'}`}
                       title={branch === 'warehouse' ? 'Sucursal activa de la venta' : 'Stock en Almacén (no se descuenta de aquí)'}
                     >
-                      <Warehouse size={10} />
+                      <Warehouse size={12} />
                       <span>Almacén: {stockWarehouse}</span>
                     </span>
                   </div>
