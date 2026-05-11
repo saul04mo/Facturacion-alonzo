@@ -155,10 +155,28 @@ export function InvoicesPage() {
   }, [invoices, serverInvoices]);
 
   const filtered = useMemo(() => {
-    let result = [...(serverInvoices || invoices)];
-    
-    // Solo filtramos localmente las fechas si no usamos el servidor
-    if (!serverInvoices && startDate && endDate) {
+    // Merge inteligente: store (realtime via onSnapshot) + serverInvoices
+    // (one-shot fetch). El store siempre tiene los últimos 500 invoices
+    // actualizados en tiempo real. serverInvoices puede traer un rango
+    // histórico más amplio. Priorizamos el store para IDs duplicados —
+    // así una venta nueva, anulación o devolución se refleja al instante
+    // sin necesidad de F5 / Aplicar.
+    let result: any[];
+    if (serverInvoices) {
+      const storeIds = new Set(invoices.map((i: any) => i.id));
+      result = [
+        ...invoices,
+        ...serverInvoices.filter((s: any) => !storeIds.has(s.id)),
+      ];
+    } else {
+      result = [...invoices];
+    }
+
+    // Aplicamos SIEMPRE el filtro de fecha (antes solo se aplicaba cuando
+    // no había serverInvoices). Ahora, como el merge incluye invoices del
+    // store que pueden estar fuera del rango filtrado, hay que filtrarlas
+    // aquí para no contaminar la vista.
+    if (startDate && endDate) {
       const s = new Date(startDate + 'T00:00:00'), e = new Date(endDate + 'T23:59:59');
       result = result.filter((inv: any) => { const d = toDate(inv.date); return d && d >= s && d <= e; });
     }

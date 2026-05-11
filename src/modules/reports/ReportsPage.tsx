@@ -95,7 +95,22 @@ export function ReportsPage() {
   const hasActive = sellerFilter !== 'all' || methodFilter !== 'all' || deliveryFilter !== 'all' || genderFilter !== 'all' || categoryFilter !== 'all';
 
   const filtered = useMemo(() => {
-    const source = serverInvoices || invoices;
+    // Merge inteligente: store (realtime via onSnapshot) + serverInvoices
+    // (one-shot fetch). El store siempre tiene los últimos 500 invoices
+    // actualizados en tiempo real. serverInvoices puede traer un rango
+    // histórico más amplio. Priorizamos el store para IDs duplicados —
+    // así una venta nueva, anulación o devolución se refleja al instante
+    // sin necesidad de F5 / Aplicar.
+    let source: any[];
+    if (serverInvoices) {
+      const storeIds = new Set(invoices.map((i: any) => i.id));
+      source = [
+        ...invoices,
+        ...serverInvoices.filter((s: any) => !storeIds.has(s.id)),
+      ];
+    } else {
+      source = invoices;
+    }
     const s = new Date(startDate + 'T00:00:00'), e = new Date(endDate + 'T23:59:59');
     return source.filter((inv: any) => {
       if (inv.status !== 'Finalizado') return false;
