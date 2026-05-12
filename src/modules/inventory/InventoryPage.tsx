@@ -1029,13 +1029,27 @@ export function InventoryPage() {
                             return (
                               <div
                                 key={`${v.size}-${v.color}-${idx}`}
-                                className="flex items-baseline justify-between text-xs font-mono leading-snug"
+                                className="flex items-baseline justify-between text-xs font-mono leading-snug gap-1.5"
                                 title={`Tienda: ${breakdown.store} · Almacén: ${breakdown.warehouse}${breakdown.inTransit > 0 ? ` · En tránsito: ${breakdown.inTransit}` : ''}`}
                               >
-                                <span className={`font-bold tabular-nums ${isOut ? 'text-navy-300' : 'text-navy-900'}`}>
-                                  {variantStock}
-                                </span>
-                                <span className={`text-[10px] uppercase font-display ${isOut ? 'text-navy-300 line-through' : isLow ? 'text-accent-red font-semibold' : 'text-navy-600'}`}>
+                                {stockView === 'total' ? (
+                                  // Vista por defecto: mostrar Tienda · Almacén lado a lado
+                                  // con colores propios de cada sucursal para lectura rápida.
+                                  <span className="tabular-nums font-bold flex items-baseline gap-0.5">
+                                    <span className={breakdown.store === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-emerald-600 dark:text-emerald-400'}>
+                                      {breakdown.store}
+                                    </span>
+                                    <span className="text-navy-300 dark:text-gray-600 font-normal">·</span>
+                                    <span className={breakdown.warehouse === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}>
+                                      {breakdown.warehouse}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className={`font-bold tabular-nums ${isOut ? 'text-navy-300' : 'text-navy-900 dark:text-gray-100'}`}>
+                                    {variantStock}
+                                  </span>
+                                )}
+                                <span className={`text-[10px] uppercase font-display ${isOut ? 'text-navy-300 line-through' : isLow ? 'text-accent-red font-semibold' : 'text-navy-600 dark:text-gray-400'}`}>
                                   {v.size}
                                   {!allSameColor && v.color && <span className="text-navy-300 ml-1 normal-case">· {v.color}</span>}
                                 </span>
@@ -1045,13 +1059,29 @@ export function InventoryPage() {
                         </div>
 
                         {/* Total */}
-                        <div className={`px-2.5 py-2 border-t border-surface-200 flex items-center justify-between rounded-b-xl ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}>
+                        <div
+                          className={`px-2.5 py-2 border-t border-surface-200 flex items-center justify-between rounded-b-xl ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}
+                          title={stockView === 'total' ? `Tienda: ${productBreakdown.store} · Almacén: ${productBreakdown.warehouse}${productBreakdown.inTransit > 0 ? ` · En tránsito: ${productBreakdown.inTransit}` : ''} · Total: ${productBreakdown.total}` : undefined}
+                        >
                           <span className="text-[9px] font-display font-semibold text-navy-400 uppercase tracking-wider">
-                            {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : stockView === 'transit' ? 'Tránsito' : 'Total'}
+                            {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : stockView === 'transit' ? 'Tránsito' : 'T · A'}
                           </span>
-                          <span className={`text-sm font-mono font-bold tabular-nums ${lowStock ? 'text-accent-red' : 'text-navy-900'}`}>
-                            {visibleStock} {lowStock && <AlertTriangle size={11} className="inline -mt-0.5" />}
-                          </span>
+                          {stockView === 'total' ? (
+                            <span className="text-sm font-mono font-bold tabular-nums flex items-baseline gap-0.5">
+                              <span className={productBreakdown.store === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-emerald-600 dark:text-emerald-400'}>
+                                {productBreakdown.store}
+                              </span>
+                              <span className="text-navy-300 dark:text-gray-600 font-normal">·</span>
+                              <span className={productBreakdown.warehouse === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}>
+                                {productBreakdown.warehouse}
+                              </span>
+                              {lowStock && <AlertTriangle size={11} className="inline -mt-0.5 ml-1 text-accent-red" />}
+                            </span>
+                          ) : (
+                            <span className={`text-sm font-mono font-bold tabular-nums ${lowStock ? 'text-accent-red' : 'text-navy-900 dark:text-gray-100'}`}>
+                              {visibleStock} {lowStock && <AlertTriangle size={11} className="inline -mt-0.5" />}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
