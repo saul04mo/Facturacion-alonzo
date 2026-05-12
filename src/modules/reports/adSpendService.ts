@@ -11,13 +11,13 @@
  * 2. Ventas por género (calculadas desde las facturas finalizadas)
  *    Se recorren los invoices del mes, se filtran por status 'Finalizado',
  *    y por cada item se busca el género del producto en el catálogo y
- *    se suma (priceAtSale × quantity - descuento de item) al género
- *    correspondiente.
+ *    se suma priceAtSale × quantity al género correspondiente.
  *
- *    NOTA: no se incluye totalDiscount (descuento global del invoice) ni
- *    deliveryCostUsd. Es el ingreso bruto por género antes de promos
- *    globales — coincide con la noción del usuario de "cuánto vendí de
- *    hombre y de mujer hoy".
+ *    NOTA IMPORTANTE: el monto que se suma es el BRUTO (precio × cantidad).
+ *    NO se aplican descuentos de item, descuentos globales de invoice
+ *    (totalDiscount), promociones, cupones, ni delivery. El reporte mide
+ *    volumen de venta a precio de lista — no utilidad neta. Si hace
+ *    falta una vista neta, hay que hacer otro reporte distinto.
  */
 
 import {
@@ -30,7 +30,6 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { calcDiscountAmount } from '@/utils/discountUtils';
 import { toDate } from '@/utils/dateUtils';
 import type { AppUser, Invoice, Product } from '@/types';
 
@@ -169,11 +168,12 @@ export function computeDailySalesByGender(
     for (const item of inv.items || []) {
       const gender = genderByProduct.get(item.productId);
       if (!gender) continue; // producto eliminado o sin género — se descarta
+      // Monto BRUTO: precio × cantidad. NO aplicamos descuentos a nivel
+      // item ni a nivel invoice porque el reporte de publicidad mide el
+      // volumen de venta a precio de lista, no la utilidad neta.
       const lineGross = (item.priceAtSale ?? 0) * (item.quantity ?? 0);
-      const itemDiscount = calcDiscountAmount(lineGross, item.discount);
-      const lineNet = lineGross - itemDiscount;
-      if (gender === 'Hombre') bucket.salesMen += lineNet;
-      else bucket.salesWomen += lineNet;
+      if (gender === 'Hombre') bucket.salesMen += lineGross;
+      else bucket.salesWomen += lineGross;
     }
   }
   return out;
