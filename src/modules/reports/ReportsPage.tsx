@@ -7,11 +7,12 @@ import { exportSalesData } from '@/services/excelService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import {
   BarChart3, TrendingUp, Download, Package, Filter, ChevronDown,
-  ShoppingBag, DollarSign, Hash, Check, X as XIcon, Loader2,
+  ShoppingBag, DollarSign, Hash, Check, X as XIcon, Loader2, Megaphone,
 } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
+import { AdSpendReport } from './AdSpendReport';
 
-type Tab = 'general' | 'products';
+type Tab = 'general' | 'products' | 'adSpend';
 
 export function ReportsPage() {
   const invoices = useAppStore((s) => s.invoices);
@@ -238,7 +239,8 @@ export function ReportsPage() {
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-lg bg-white border border-surface-200">
         {([{ id: 'general' as Tab, label: 'Ventas Generales', icon: <TrendingUp size={14} /> },
-           { id: 'products' as Tab, label: 'Productos Vendidos', icon: <Package size={14} /> }]).map((t) => (
+           { id: 'products' as Tab, label: 'Productos Vendidos', icon: <Package size={14} /> },
+           { id: 'adSpend' as Tab, label: 'Publicidad', icon: <Megaphone size={14} /> }]).map((t) => (
           <button key={t.id} onClick={() => { setTab(t.id); setCurrentPage(1); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-display font-semibold transition-all
               ${tab === t.id ? 'bg-navy-900 text-white shadow-sm' : 'text-navy-400 hover:text-navy-700'}`}>{t.icon} {t.label}</button>
@@ -378,6 +380,13 @@ export function ReportsPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* PUBLICIDAD */}
+      {tab === 'adSpend' && (
+        <div className="animate-fade-up">
+          <AdSpendReport />
         </div>
       )}
     </div>
