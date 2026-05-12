@@ -579,7 +579,7 @@ export function InventoryPage() {
     }
   }
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const [pageSize, setPageSize] = useState(25);
   // Vista de stock: total / por sucursal
   const [stockView, setStockView] = useState<StockView>('total');
 
