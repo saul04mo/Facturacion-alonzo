@@ -10,14 +10,19 @@
  *
  * 2. Ventas por género (calculadas desde las facturas finalizadas)
  *    Se recorren los invoices del mes, se filtran por status 'Finalizado',
- *    y por cada item se busca el género del producto en el catálogo y
- *    se suma priceAtSale × quantity al género correspondiente.
+ *    y por cada item se acumula priceAtSale × quantity al género del
+ *    producto. Después se aplican TODOS los descuentos para que el monto
+ *    coincida con el dashboard general (lo que efectivamente entró a caja):
  *
- *    NOTA IMPORTANTE: el monto que se suma es el BRUTO (precio × cantidad).
- *    NO se aplican descuentos de item, descuentos globales de invoice
- *    (totalDiscount), promociones, cupones, ni delivery. El reporte mide
- *    volumen de venta a precio de lista — no utilidad neta. Si hace
- *    falta una vista neta, hay que hacer otro reporte distinto.
+ *    - Descuentos a nivel item (item.discount): se restan del bucket
+ *      del género correspondiente.
+ *    - Descuento general del invoice (totalDiscount): se reparte
+ *      proporcionalmente entre los dos géneros según el peso de cada
+ *      lado en ese invoice (importante para invoices mixtos H+M).
+ *
+ *    NO se incluye delivery (deliveryCostUsd) — es ingreso por logística,
+ *    no por catálogo, y la suma del panel de Publicidad coincide con la
+ *    columna 'VENTAS' del dashboard (que excluye delivery).
  */
 
 import {
@@ -30,6 +35,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
+import { calcDiscountAmount } from '@/utils/discountUtils';
 import { toDate } from '@/utils/dateUtils';
 import type { AppUser, Invoice, Product } from '@/types';
 
@@ -165,16 +171,43 @@ export function computeDailySalesByGender(
       out.set(ymd, bucket);
     }
 
+    // Primera pasada: acumular por género el monto bruto (precio×cantidad)
+    // y los descuentos a nivel item de cada lado.
+    let menGross = 0, womenGross = 0;
+    let menItemDiscount = 0, womenItemDiscount = 0;
     for (const item of inv.items || []) {
       const gender = genderByProduct.get(item.productId);
       if (!gender) continue; // producto eliminado o sin género — se descarta
-      // Monto BRUTO: precio × cantidad. NO aplicamos descuentos a nivel
-      // item ni a nivel invoice porque el reporte de publicidad mide el
-      // volumen de venta a precio de lista, no la utilidad neta.
       const lineGross = (item.priceAtSale ?? 0) * (item.quantity ?? 0);
-      if (gender === 'Hombre') bucket.salesMen += lineGross;
-      else bucket.salesWomen += lineGross;
+      const itemDisc = calcDiscountAmount(lineGross, item.discount);
+      if (gender === 'Hombre') {
+        menGross += lineGross;
+        menItemDiscount += itemDisc;
+      } else {
+        womenGross += lineGross;
+        womenItemDiscount += itemDisc;
+      }
     }
+
+    // Después de descuentos de item — antes de aplicar el descuento general
+    // del invoice (totalDiscount, que es a nivel comprobante).
+    const menAfterItem = menGross - menItemDiscount;
+    const womenAfterItem = womenGross - womenItemDiscount;
+    const subtotalAfterItem = menAfterItem + womenAfterItem;
+
+    // El descuento general (totalDiscount) se reparte entre Hombre y Mujer
+    // proporcional al peso de cada lado dentro del subtotal post-descuentos
+    // de item. Para invoices que solo tienen un género, todo el descuento
+    // general cae sobre ese lado. Para invoices mixtos, se reparte por peso.
+    const generalDiscount = calcDiscountAmount(subtotalAfterItem, inv.totalDiscount);
+    let menGeneralDisc = 0, womenGeneralDisc = 0;
+    if (subtotalAfterItem > 0 && generalDiscount > 0) {
+      menGeneralDisc = generalDiscount * (menAfterItem / subtotalAfterItem);
+      womenGeneralDisc = generalDiscount * (womenAfterItem / subtotalAfterItem);
+    }
+
+    bucket.salesMen += menAfterItem - menGeneralDisc;
+    bucket.salesWomen += womenAfterItem - womenGeneralDisc;
   }
   return out;
 }
