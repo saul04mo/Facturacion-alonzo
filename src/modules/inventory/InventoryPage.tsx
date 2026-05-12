@@ -968,6 +968,34 @@ export function InventoryPage() {
                           {product.active === false && (
                             <span className="absolute top-1.5 left-1.5 badge text-[8px] px-1.5 py-0.5 bg-red-500/90 text-white">Oculto</span>
                           )}
+
+                          {/* Chips de stock total por sucursal — siempre visibles
+                              en la esquina inferior izquierda, mismo patrón visual
+                              que el grid de productos del POS para que el cajero
+                              ya esté entrenado a leer los colores. */}
+                          <div className="absolute bottom-1.5 left-1.5 flex gap-1">
+                            <span
+                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold backdrop-blur-sm shadow-sm ${
+                                productBreakdown.store > 0
+                                  ? 'bg-emerald-500/90 text-white ring-1 ring-emerald-300/50'
+                                  : 'bg-navy-700/70 dark:bg-navy-900/70 text-gray-300 ring-1 ring-navy-500/40'
+                              }`}
+                              title={`Tienda: ${productBreakdown.store}`}
+                            >
+                              <Store size={10} /> {productBreakdown.store}
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold backdrop-blur-sm shadow-sm ${
+                                productBreakdown.warehouse > 0
+                                  ? 'bg-blue-500/90 text-white ring-1 ring-blue-300/50'
+                                  : 'bg-navy-700/70 dark:bg-navy-900/70 text-gray-300 ring-1 ring-navy-500/40'
+                              }`}
+                              title={`Almacén: ${productBreakdown.warehouse}`}
+                            >
+                              <Warehouse size={10} /> {productBreakdown.warehouse}
+                            </span>
+                          </div>
+
                           {/* Hover actions */}
                           <div
                             className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity"
