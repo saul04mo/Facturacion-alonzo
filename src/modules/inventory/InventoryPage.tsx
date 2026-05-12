@@ -1063,7 +1063,7 @@ export function InventoryPage() {
                           className={`px-2.5 py-2 border-t border-surface-200 flex items-center justify-between rounded-b-xl ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}
                           title={stockView === 'total' ? `Tienda: ${productBreakdown.store} · Almacén: ${productBreakdown.warehouse}${productBreakdown.inTransit > 0 ? ` · En tránsito: ${productBreakdown.inTransit}` : ''} · Total: ${productBreakdown.total}` : undefined}
                         >
-                          <span className="text-[9px] font-display font-semibold text-navy-400 uppercase tracking-wider">
+                          <span className="text-[11px] font-display font-semibold text-navy-600 dark:text-gray-200 uppercase tracking-wider">
                             {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : stockView === 'transit' ? 'Tránsito' : 'T · A'}
                           </span>
                           {stockView === 'total' ? (
