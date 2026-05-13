@@ -10,6 +10,7 @@ import {
   ShoppingBag, DollarSign, Hash, Check, X as XIcon, Loader2, Megaphone,
 } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
+import { isCountableSale } from '@/utils/invoiceStatus';
 import { AdSpendReport } from './AdSpendReport';
 
 type Tab = 'general' | 'products' | 'adSpend';
@@ -114,7 +115,7 @@ export function ReportsPage() {
     }
     const s = new Date(startDate + 'T00:00:00'), e = new Date(endDate + 'T23:59:59');
     return source.filter((inv: any) => {
-      if (inv.status !== 'Finalizado') return false;
+      if (!isCountableSale(inv.status)) return false;
       const d = toDate(inv.date); if (d && (d < s || d > e)) return false;
       if (sellerFilter !== 'all' && inv.sellerUid !== sellerFilter) return false;
       if (methodFilter !== 'all' && !(inv.payments?.some((p: any) => p.method === methodFilter))) return false;

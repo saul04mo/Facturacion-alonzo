@@ -628,6 +628,8 @@ export function DashboardPage() {
               <tbody>
                 {recent.map((inv) => {
                   const sc: Record<string, { bg: string; text: string }> = {
+                    'Por Preparar': { bg: 'bg-red-50', text: 'text-red-700' },
+                    'Preparado': { bg: 'bg-amber-50', text: 'text-amber-700' },
                     'Finalizado': { bg: 'bg-emerald-50', text: 'text-emerald-700' },
                     'Pendiente de pago': { bg: 'bg-amber-50', text: 'text-amber-700' },
                     'Devolución': { bg: 'bg-gray-100', text: 'text-gray-600' },

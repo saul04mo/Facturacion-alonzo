@@ -595,6 +595,8 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
   const maxMonthly = Math.max(...client.monthlySpend.map((m) => m.amount), 1);
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const STATUS_COLORS: Record<string, string> = {
+    'Por Preparar': 'bg-red-100 text-red-700',
+    'Preparado': 'bg-amber-100 text-amber-700',
     'Finalizado': 'bg-emerald-100 text-emerald-700',
     'Pendiente de pago': 'bg-amber-100 text-amber-700',
     'Creada': 'bg-blue-100 text-blue-700',

@@ -236,7 +236,33 @@ export interface ClientSnapshot {
   address: string;
 }
 
-export type InvoiceStatus = 'Finalizado' | 'Pendiente de pago' | 'Devolución' | 'Cancelado' | 'Creada';
+/**
+ * Estados de una factura. Hay dos "ejes" semánticos mezclados:
+ *
+ * 1. Flujo de preparación (logística interna):
+ *    'Por Preparar' → 'Preparado' → 'Finalizado'
+ *    Una venta normal arranca en 'Por Preparar' al crearse y avanza
+ *    manualmente desde el panel de Facturas.
+ *
+ * 2. Estados de pago y excepciones:
+ *    'Pendiente de pago': la venta se hizo a crédito (con abonos).
+ *    'Devolución': el cliente devolvió toda o parte de la mercadería.
+ *    'Cancelado': se anuló la venta y se devolvió el stock.
+ *    'Creada': estado legacy/intermedio.
+ *
+ * Para cálculos de reportes, dashboard, comisiones y publicidad se
+ * considera "venta válida" cualquiera de los tres estados del flujo
+ * de preparación + 'Pendiente de pago'. Ver isCountableSale() en
+ * src/utils/invoiceStatus.ts.
+ */
+export type InvoiceStatus =
+  | 'Por Preparar'
+  | 'Preparado'
+  | 'Finalizado'
+  | 'Pendiente de pago'
+  | 'Devolución'
+  | 'Cancelado'
+  | 'Creada';
 
 export interface Invoice {
   id: string;

@@ -6,6 +6,7 @@ import { useToast } from '@/components/Toast';
 import { confirmDeliveryPayment } from '@/modules/invoices/invoiceService';
 import { Truck, CheckCircle, Clock, MapPin, Check, X as XIcon } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
+import { isCountableSale } from '@/utils/invoiceStatus';
 
 export function DeliveryPage() {
   const invoices = useAppStore((s) => s.invoices);
@@ -25,7 +26,7 @@ export function DeliveryPage() {
   function clearFilters() { setDStart(today); setDEnd(today); setStartDate(today); setEndDate(today); }
 
   const deliveryOrders = useMemo(() => {
-    let filtered = invoices.filter((inv: any) => inv.deliveryType === 'local' && (inv.status === 'Finalizado' || inv.status === 'Pendiente de pago'));
+    let filtered = invoices.filter((inv: any) => inv.deliveryType === 'local' && isCountableSale(inv.status));
     if (startDate && endDate) {
       const s = new Date(startDate + 'T00:00:00'), e = new Date(endDate + 'T23:59:59');
       filtered = filtered.filter((inv: any) => { const d = toDate(inv.date); return d && d >= s && d <= e; });

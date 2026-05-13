@@ -37,6 +37,7 @@ import {
 import { db } from '@/config/firebase';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { toDate } from '@/utils/dateUtils';
+import { isCountableSale } from '@/utils/invoiceStatus';
 import type { AppUser, Invoice, Product } from '@/types';
 
 // ════════════════════════════════════════════════
@@ -160,7 +161,7 @@ export function computeDailySalesByGender(
 
   const out = new Map<string, DaySales>();
   for (const inv of invoices) {
-    if (inv.status !== 'Finalizado') continue;
+    if (!isCountableSale(inv.status)) continue;
     const d = toDate(inv.date);
     if (!d) continue;
     const ymd = dateToYMD(d);

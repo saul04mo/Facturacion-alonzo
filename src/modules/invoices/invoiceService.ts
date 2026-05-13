@@ -150,7 +150,7 @@ export async function processSale(opts: {
       total: sale.total,
       exchangeRate,
       payments,
-      status: isCreditSale ? 'Pendiente de pago' : 'Finalizado',
+      status: isCreditSale ? 'Pendiente de pago' : 'Por Preparar',
       abonos: [],
       sellerName: `${currentUser.nombre} ${currentUser.apellido}`,
       sellerUid: currentUser.uid,
@@ -497,3 +497,21 @@ export async function fetchInvoiceByNumericId(numericId: number): Promise<any | 
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
+
+// ================================
+// UPDATE INVOICE STATUS (flujo de preparación)
+// ================================
+/**
+ * Cambia el estado de una factura sin tocar nada más. Se usa para el
+ * flujo manual 'Por Preparar' → 'Preparado' → 'Finalizado' que el
+ * vendedor avanza desde el panel de Facturas. No mueve stock ni pagos:
+ * solo actualiza el campo status del documento.
+ */
+export async function updateInvoiceStatus(
+  invoiceId: string,
+  newStatus: import('@/types').InvoiceStatus,
+): Promise<void> {
+  if (!invoiceId) throw new Error('Falta el id de la factura.');
+  await updateDoc(doc(db, 'invoices', invoiceId), { status: newStatus });
+}
+

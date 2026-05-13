@@ -9,6 +9,7 @@ import {
   UserMinus, Clock,
 } from 'lucide-react';
 import type { Employee, EmployeeIncident, PayrollPeriod, PayrollReceipt, IncidentType } from '@/types';
+import { isCountableSale } from '@/utils/invoiceStatus';
 import {
   addEmployee, updateEmployee, deactivateEmployee,
   addIncident, deleteIncident, getIncidentsForPeriod,
@@ -223,7 +224,7 @@ export function PayrollPage() {
         const salesSnap = await getDocs(salesQuery);
         salesSnap.forEach((doc) => {
           const inv = doc.data();
-          if (inv.status !== 'Finalizado' && inv.status !== 'Pendiente de pago') return;
+          if (!isCountableSale(inv.status)) return;
           const uid = inv.sellerUid;
           if (!uid || uid === 'WEB' || uid === 'APP') return;
           const deliveryCost = Number(inv.deliveryCostUsd) || 0;

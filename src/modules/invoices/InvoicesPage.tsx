@@ -5,23 +5,17 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { Modal } from '@/components/Modal';
-import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData, updatePaymentRef } from './invoiceService';
+import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData, updatePaymentRef, updateInvoiceStatus } from './invoiceService';
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
-import type { Product, Invoice } from '@/types';
+import { STATUS_CONFIG, isCountableSale, nextStatusInFlow, advanceLabel } from '@/utils/invoiceStatus';
+import type { Product, Invoice, InvoiceStatus } from '@/types';
 import {
   FileText, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2,
+  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2, ChevronRight,
 } from 'lucide-react';
 
-const STATUS_BADGES: Record<string, { class: string; label: string }> = {
-  'Finalizado': { class: 'badge-green', label: 'Finalizado' },
-  'Pendiente de pago': { class: 'badge-amber', label: 'Pendiente de Pago' },
-  'Devolución': { class: 'badge-red', label: 'Devolución' },
-  'Cancelado': { class: 'badge-gray', label: 'Cancelado' },
-  'Creada': { class: 'badge-blue', label: 'Creada' },
-};
 const RETURN_REASONS = ['Cambio de Producto', 'Producto Dañado (Merma)', 'Cambio de Talla/Color', 'Insatisfacción del Cliente', 'Error en la Venta', 'Otro'];
 
 export function InvoicesPage() {
@@ -76,6 +70,37 @@ export function InvoicesPage() {
   const [isSearchingServer, setIsSearchingServer] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
   const [isQuickSearching, setIsQuickSearching] = useState(false);
+  // Loading state del botón "avanzar estado" para evitar doble click
+  const [advancingId, setAdvancingId] = useState<string | null>(null);
+
+  // Avanzar al siguiente estado del flujo de preparación:
+  // Por Preparar → Preparado → Finalizado.
+  async function handleAdvanceStatus(inv: any) {
+    const next = nextStatusInFlow(inv.status as InvoiceStatus);
+    if (!next) return;
+    setAdvancingId(inv.id);
+    try {
+      await updateInvoiceStatus(inv.id, next);
+      toast.success(`Factura FACT-${inv.numericId} marcada como "${next}".`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al cambiar el estado.');
+    } finally {
+      setAdvancingId(null);
+    }
+  }
+
+  // Selector de estado manual desde el modal de detalle.
+  async function handleSetStatus(inv: any, newStatus: InvoiceStatus) {
+    if (inv.status === newStatus) return;
+    try {
+      await updateInvoiceStatus(inv.id, newStatus);
+      toast.success(`Factura FACT-${inv.numericId} → "${newStatus}".`);
+      // Refresh local del modal con el nuevo estado para feedback inmediato
+      setDetailInvoice({ ...inv, status: newStatus });
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al cambiar el estado.');
+    }
+  }
 
   async function handleQuickSearch() {
     const raw = quickSearch.trim().replace(/[^0-9]/g, '');
@@ -210,7 +235,7 @@ export function InvoicesPage() {
   const totals = useMemo(() => {
     let totalAll = 0, delivery = 0;
     filtered.forEach((inv: any) => {
-      if (inv.status === 'Finalizado' || inv.status === 'Pendiente de pago') {
+      if (isCountableSale(inv.status)) {
         totalAll += Number(inv.total) || 0;
         delivery += Number(inv.deliveryCostUsd) || 0;
       }
@@ -350,9 +375,14 @@ export function InvoicesPage() {
                 <input type="date" value={dEnd} onChange={(e) => setDEnd(e.target.value)} className="input-field text-sm" /></div>
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Estado</label>
                 <select value={dStatus} onChange={(e) => setDStatus(e.target.value)} className="input-field text-sm">
-                  <option value="all">Activas</option><option value="Finalizado">Finalizado</option>
-                  <option value="Pendiente de pago">Crédito</option><option value="Devolución">Devolución</option>
-                  <option value="Cancelado">Cancelado</option><option value="Creada">Web</option>
+                  <option value="all">Activas</option>
+                  <option value="Por Preparar">Por Preparar</option>
+                  <option value="Preparado">Preparado</option>
+                  <option value="Finalizado">Finalizado</option>
+                  <option value="Pendiente de pago">Crédito</option>
+                  <option value="Devolución">Devolución</option>
+                  <option value="Cancelado">Cancelado</option>
+                  <option value="Creada">Web</option>
                 </select></div>
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Vendedor</label>
                 <select value={dSeller} onChange={(e) => setDSeller(e.target.value)} className="input-field text-sm">
@@ -397,7 +427,7 @@ export function InvoicesPage() {
             <div className="md:hidden divide-y divide-surface-100">
               {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
                 const date = toDate(inv.date);
-                const st = STATUS_BADGES[inv.status] || { class: 'badge-gray', label: inv.status || 'N/A' };
+                const st = STATUS_CONFIG[inv.status as InvoiceStatus] || { class: 'badge-gray', label: inv.status || 'N/A' };
                 const paymentImgUrl = inv.proofUrl || inv.img || inv.paymentImg || (inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.proofUrl || inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.img) || null;
                 return (
                   <div key={inv.id} className="p-4 hover:bg-surface-50 transition-colors">
@@ -429,7 +459,17 @@ export function InvoicesPage() {
                           <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1.5 text-navy-400 hover:text-purple-600"><ImageIcon size={14} /></a>
                         )}
                         <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1.5 text-navy-400 hover:text-navy-800"><Printer size={14} /></button>
-                        {(inv.status === 'Finalizado' || inv.status === 'Pendiente de pago') && can('canEditInvoices') && (
+                        {nextStatusInFlow(inv.status as InvoiceStatus) && can('canEditInvoices') && (
+                          <button
+                            onClick={() => handleAdvanceStatus(inv)}
+                            className="btn-ghost p-1.5 text-navy-400 hover:text-emerald-600"
+                            title={advanceLabel(inv.status as InvoiceStatus) || 'Avanzar'}
+                            disabled={advancingId === inv.id}
+                          >
+                            <ChevronRight size={14} />
+                          </button>
+                        )}
+                        {(isCountableSale(inv.status)) && can('canEditInvoices') && (
                           <button onClick={() => openEditModal(inv)} className="btn-ghost p-1.5 text-navy-400 hover:text-blue-600" title="Editar datos"><Edit2 size={14} /></button>
                         )}
                       </div>
@@ -456,7 +496,7 @@ export function InvoicesPage() {
               <tbody className="divide-y divide-surface-100">
                 {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
                   const date = toDate(inv.date);
-                  const st = STATUS_BADGES[inv.status] || { class: 'badge-gray', label: inv.status || 'N/A' };
+                  const st = STATUS_CONFIG[inv.status as InvoiceStatus] || { class: 'badge-gray', label: inv.status || 'N/A' };
                   const dt = (DELIVERY_TYPES as any).find((t: any) => t.value === inv.deliveryType || (inv.deliveryType === 'local' && t.value === 'local'));
                   const paymentImgUrl = inv.proofUrl || inv.img || inv.paymentImg || (inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.proofUrl || inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.img) || null;
                   
@@ -484,11 +524,24 @@ export function InvoicesPage() {
                             </a>
                           )}
                           <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1 text-navy-400 hover:text-navy-800"><Printer size={12} /></button>
-                          {(inv.status === 'Finalizado' || inv.status === 'Pendiente de pago') && can('canEditInvoices') && (
+                          {/* ▶ Avanzar estado en el flujo (Por Preparar → Preparado → Finalizado).
+                              El botón aparece solo cuando hay un siguiente estado posible. */}
+                          {nextStatusInFlow(inv.status as InvoiceStatus) && can('canEditInvoices') && (
+                            <button
+                              onClick={() => handleAdvanceStatus(inv)}
+                              className="btn-ghost p-1 text-navy-400 hover:text-emerald-600"
+                              title={advanceLabel(inv.status as InvoiceStatus) || 'Avanzar'}
+                              disabled={advancingId === inv.id}
+                            >
+                              <ChevronRight size={12} />
+                            </button>
+                          )}
+                          {(isCountableSale(inv.status)) && can('canEditInvoices') && (
                             <button onClick={() => openEditModal(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600" title="Editar datos del cliente / observación"><Edit2 size={12} /></button>
                           )}
                           {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setReturnInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-amber-600"><RotateCcw size={12} /></button>}
-                          {inv.status === 'Finalizado' && can('canEditInvoices') && <button onClick={() => handleCancel(inv)} className="btn-ghost p-1 text-navy-400 hover:text-accent-red"><XCircle size={12} /></button>}
+                          {/* Cancelar disponible en cualquiera de los tres estados del flujo */}
+                          {(inv.status === 'Por Preparar' || inv.status === 'Preparado' || inv.status === 'Finalizado') && can('canEditInvoices') && <button onClick={() => handleCancel(inv)} className="btn-ghost p-1 text-navy-400 hover:text-accent-red" title="Cancelar venta"><XCircle size={12} /></button>}
                           {inv.status === 'Creada' && <button onClick={() => handleApproveWeb(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600"><CheckCircle size={12} /></button>}
                           {inv.status === 'Pendiente de pago' && <button onClick={() => handleMarkAsPaid(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600" title="Finalizar Pago"><CheckCircle size={12} /></button>}
                           {inv.status === 'Pendiente de pago' && can('canAddAbono') && <button onClick={() => { setAbonoInvoice(inv); setAbonoAmount(''); setAbonoRef(''); }} className="btn-ghost p-1 text-navy-400 hover:text-green-600"><DollarSign size={12} /></button>}
@@ -536,10 +589,29 @@ export function InvoicesPage() {
         <Modal open={true} onClose={() => setDetailInvoice(null)} title={label(detailInvoice)} size="lg">
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[{ l: 'Cliente', v: detailInvoice.clientSnapshot?.name || 'General' }, { l: 'Fecha', v: toDate(detailInvoice.date)?.toLocaleDateString('es-VE') }, { l: 'Vendedor', v: detailInvoice.sellerName }, { l: 'Estado', v: detailInvoice.status }].map((i) => (
+              {[{ l: 'Cliente', v: detailInvoice.clientSnapshot?.name || 'General' }, { l: 'Fecha', v: toDate(detailInvoice.date)?.toLocaleDateString('es-VE') }, { l: 'Vendedor', v: detailInvoice.sellerName }].map((i) => (
                 <div key={i.l} className="bg-surface-50 rounded-lg p-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">{i.l}</p>
                   <p className="text-sm font-display font-medium text-navy-900 mt-0.5">{i.v}</p></div>
               ))}
+              {/* Estado: selector inline si está en el flujo de preparación,
+                  texto plano si está en un estado de excepción (Crédito,
+                  Devolución, Cancelado, etc) que sigue otro flujo. */}
+              <div className="bg-surface-50 rounded-lg p-3 hover-lift">
+                <p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Estado</p>
+                {(['Por Preparar', 'Preparado', 'Finalizado'].includes(detailInvoice.status) && can('canEditInvoices')) ? (
+                  <select
+                    value={detailInvoice.status}
+                    onChange={(e) => handleSetStatus(detailInvoice, e.target.value as InvoiceStatus)}
+                    className="mt-0.5 w-full text-sm font-display font-medium bg-transparent border-0 p-0 focus:outline-none focus:ring-0 text-navy-900 cursor-pointer"
+                  >
+                    <option value="Por Preparar">🔴 Por Preparar</option>
+                    <option value="Preparado">🟡 Preparado</option>
+                    <option value="Finalizado">🟢 Finalizado</option>
+                  </select>
+                ) : (
+                  <p className="text-sm font-display font-medium text-navy-900 mt-0.5">{detailInvoice.status}</p>
+                )}
+              </div>
             </div>
             <div><p className="text-[10px] font-display font-semibold text-navy-400 uppercase mb-2">Productos</p>
               <div className="space-y-1.5">{detailInvoice.items?.map((item: any, i: number) => {
