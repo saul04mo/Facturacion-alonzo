@@ -9,11 +9,11 @@ import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, 
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
-import { STATUS_CONFIG, isCountableSale, nextStatusInFlow, advanceLabel } from '@/utils/invoiceStatus';
+import { STATUS_CONFIG, isCountableSale } from '@/utils/invoiceStatus';
 import type { Product, Invoice, InvoiceStatus } from '@/types';
 import {
   FileText, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2, ChevronRight,
+  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2,
 } from 'lucide-react';
 
 const RETURN_REASONS = ['Cambio de Producto', 'Producto Dañado (Merma)', 'Cambio de Talla/Color', 'Insatisfacción del Cliente', 'Error en la Venta', 'Otro'];
@@ -70,35 +70,28 @@ export function InvoicesPage() {
   const [isSearchingServer, setIsSearchingServer] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
   const [isQuickSearching, setIsQuickSearching] = useState(false);
-  // Loading state del botón "avanzar estado" para evitar doble click
+  // Loading state del cambio de estado para evitar doble click / race conditions
   const [advancingId, setAdvancingId] = useState<string | null>(null);
 
-  // Avanzar al siguiente estado del flujo de preparación:
-  // Por Preparar → Preparado → Finalizado.
-  async function handleAdvanceStatus(inv: any) {
-    const next = nextStatusInFlow(inv.status as InvoiceStatus);
-    if (!next) return;
+  // Cambiar el estado de una factura desde el selector inline (tabla, vista
+  // grid o modal de detalle). Único entry point — antes había handleAdvance
+  // (un escalón por vez) y handleSetStatus (cualquiera), pero como ya no
+  // existe el botón ▶ todo va por acá.
+  async function handleSetStatus(inv: any, newStatus: InvoiceStatus) {
+    if (inv.status === newStatus) return;
     setAdvancingId(inv.id);
     try {
-      await updateInvoiceStatus(inv.id, next);
-      toast.success(`Factura FACT-${inv.numericId} marcada como "${next}".`);
+      await updateInvoiceStatus(inv.id, newStatus);
+      toast.success(`Factura FACT-${inv.numericId} → "${newStatus}".`);
+      // Refresh local del modal con el nuevo estado si está abierto, para
+      // feedback inmediato. Si no está abierto, no pasa nada.
+      if (detailInvoice?.id === inv.id) {
+        setDetailInvoice({ ...inv, status: newStatus });
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Error al cambiar el estado.');
     } finally {
       setAdvancingId(null);
-    }
-  }
-
-  // Selector de estado manual desde el modal de detalle.
-  async function handleSetStatus(inv: any, newStatus: InvoiceStatus) {
-    if (inv.status === newStatus) return;
-    try {
-      await updateInvoiceStatus(inv.id, newStatus);
-      toast.success(`Factura FACT-${inv.numericId} → "${newStatus}".`);
-      // Refresh local del modal con el nuevo estado para feedback inmediato
-      setDetailInvoice({ ...inv, status: newStatus });
-    } catch (e: any) {
-      toast.error(e?.message || 'Error al cambiar el estado.');
     }
   }
 
@@ -434,7 +427,22 @@ export function InvoicesPage() {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <span className="font-mono font-bold text-sm text-navy-900">{label(inv)}</span>
-                        <span className={`badge text-[9px] px-1.5 py-0.5 ml-2 ${st.class}`}>{st.label}</span>
+                        {(['Por Preparar', 'Preparado', 'Finalizado'].includes(inv.status) && can('canEditInvoices')) ? (
+                          <select
+                            value={inv.status}
+                            onChange={(e) => handleSetStatus(inv, e.target.value as InvoiceStatus)}
+                            disabled={advancingId === inv.id}
+                            className={`badge text-[9px] px-1.5 py-0.5 pr-4 ml-2 ${st.class} cursor-pointer border-0 appearance-none focus:outline-none focus:ring-1 focus:ring-blue-400 bg-no-repeat`}
+                            style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'5\' viewBox=\'0 0 8 5\'%3E%3Cpath fill=\'currentColor\' d=\'M0 0l4 5 4-5z\'/%3E%3C/svg%3E")', backgroundPosition: 'right 5px center' }}
+                            title="Cambiar estado"
+                          >
+                            <option value="Por Preparar">🔴 Por Preparar</option>
+                            <option value="Preparado">🟡 Preparado</option>
+                            <option value="Finalizado">🟢 Finalizado</option>
+                          </select>
+                        ) : (
+                          <span className={`badge text-[9px] px-1.5 py-0.5 ml-2 ${st.class}`}>{st.label}</span>
+                        )}
                       </div>
                       <span className="font-mono font-bold text-sm text-navy-900">{format(inv.total || 0)}</span>
                     </div>
@@ -459,16 +467,6 @@ export function InvoicesPage() {
                           <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1.5 text-navy-400 hover:text-purple-600"><ImageIcon size={14} /></a>
                         )}
                         <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1.5 text-navy-400 hover:text-navy-800"><Printer size={14} /></button>
-                        {nextStatusInFlow(inv.status as InvoiceStatus) && can('canEditInvoices') && (
-                          <button
-                            onClick={() => handleAdvanceStatus(inv)}
-                            className="btn-ghost p-1.5 text-navy-400 hover:text-emerald-600"
-                            title={advanceLabel(inv.status as InvoiceStatus) || 'Avanzar'}
-                            disabled={advancingId === inv.id}
-                          >
-                            <ChevronRight size={14} />
-                          </button>
-                        )}
                         {(isCountableSale(inv.status)) && can('canEditInvoices') && (
                           <button onClick={() => openEditModal(inv)} className="btn-ghost p-1.5 text-navy-400 hover:text-blue-600" title="Editar datos"><Edit2 size={14} /></button>
                         )}
@@ -514,7 +512,27 @@ export function InvoicesPage() {
                       <td className="px-3 py-3 font-mono font-bold text-[12px] text-navy-900">{format(inv.total || 0)}</td>
                       <td className="px-3 py-3 font-mono text-[12px] text-navy-500 break-all leading-tight">{formatBoth(inv.total || 0).ves}</td>
                       <td className="px-3 py-3 text-[11px] text-navy-500 leading-tight">{date?.toLocaleString('es-VE')}</td>
-                      <td className="px-3 py-3"><span className={`badge text-[10px] px-2 py-0.5 ${st.class}`}>{st.label}</span></td>
+                      <td className="px-3 py-3">
+                        {/* Si la factura está en el flujo de preparación, mostrar
+                            un selector inline; sino, badge plano. Para no romper
+                            el ancho de la columna, el select tiene estilos badge. */}
+                        {(['Por Preparar', 'Preparado', 'Finalizado'].includes(inv.status) && can('canEditInvoices')) ? (
+                          <select
+                            value={inv.status}
+                            onChange={(e) => handleSetStatus(inv, e.target.value as InvoiceStatus)}
+                            disabled={advancingId === inv.id}
+                            className={`badge text-[10px] px-2 py-0.5 pr-5 ${st.class} cursor-pointer border-0 appearance-none focus:outline-none focus:ring-1 focus:ring-blue-400 bg-no-repeat`}
+                            style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'5\' viewBox=\'0 0 8 5\'%3E%3Cpath fill=\'currentColor\' d=\'M0 0l4 5 4-5z\'/%3E%3C/svg%3E")', backgroundPosition: 'right 6px center' }}
+                            title="Cambiar estado"
+                          >
+                            <option value="Por Preparar">🔴 Por Preparar</option>
+                            <option value="Preparado">🟡 Preparado</option>
+                            <option value="Finalizado">🟢 Finalizado</option>
+                          </select>
+                        ) : (
+                          <span className={`badge text-[10px] px-2 py-0.5 ${st.class}`}>{st.label}</span>
+                        )}
+                      </td>
                       <td className="px-3 py-3">
                         <div className="flex gap-1 flex-wrap">
                           <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600"><Eye size={14} /></button>
@@ -524,18 +542,6 @@ export function InvoicesPage() {
                             </a>
                           )}
                           <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1 text-navy-400 hover:text-navy-800"><Printer size={12} /></button>
-                          {/* ▶ Avanzar estado en el flujo (Por Preparar → Preparado → Finalizado).
-                              El botón aparece solo cuando hay un siguiente estado posible. */}
-                          {nextStatusInFlow(inv.status as InvoiceStatus) && can('canEditInvoices') && (
-                            <button
-                              onClick={() => handleAdvanceStatus(inv)}
-                              className="btn-ghost p-1 text-navy-400 hover:text-emerald-600"
-                              title={advanceLabel(inv.status as InvoiceStatus) || 'Avanzar'}
-                              disabled={advancingId === inv.id}
-                            >
-                              <ChevronRight size={12} />
-                            </button>
-                          )}
                           {(isCountableSale(inv.status)) && can('canEditInvoices') && (
                             <button onClick={() => openEditModal(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600" title="Editar datos del cliente / observación"><Edit2 size={12} /></button>
                           )}
