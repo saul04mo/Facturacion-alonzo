@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -13,8 +13,87 @@ import { STATUS_CONFIG, isCountableSale } from '@/utils/invoiceStatus';
 import type { Product, Invoice, InvoiceStatus } from '@/types';
 import {
   FileText, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2,
+  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2, ChevronDown,
 } from 'lucide-react';
+
+// ════════════════════════════════════════════════
+// DROPDOWN CUSTOM PARA ESTADO DEL FLUJO
+// ════════════════════════════════════════════════
+// Reemplaza al <select> nativo porque los <option> no se pueden estilizar
+// (los browsers usan colores del SO). En su lugar, cada opción se renderiza
+// como un badge pintado del color del estado, lo que da contraste claro
+// en cualquier modo (light/dark).
+const FLOW_STATES: InvoiceStatus[] = ['Por Preparar', 'Preparado', 'Finalizado'];
+
+function StatusFlowDropdown({
+  status,
+  onChange,
+  disabled,
+  size = 'sm',
+}: {
+  status: InvoiceStatus;
+  onChange: (next: InvoiceStatus) => void;
+  disabled?: boolean;
+  size?: 'sm' | 'md';
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Cerrar el menú al click afuera o ESC
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const st = STATUS_CONFIG[status] || { class: 'badge-gray', label: status };
+  const padding = size === 'sm' ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-1';
+  const iconSize = size === 'sm' ? 10 : 12;
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen(!open)}
+        disabled={disabled}
+        className={`badge ${padding} ${st.class} inline-flex items-center gap-1 cursor-pointer border-0 disabled:cursor-not-allowed disabled:opacity-60 hover:brightness-95 dark:hover:brightness-110 transition`}
+        title="Cambiar estado"
+      >
+        <span>{st.label}</span>
+        <ChevronDown size={iconSize} className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 min-w-[150px] py-1 bg-white dark:bg-dark-300 rounded-lg shadow-xl border border-surface-200 dark:border-dark-400 left-0">
+          {FLOW_STATES.map((s) => {
+            const c = STATUS_CONFIG[s];
+            const isCurrent = s === status;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => { onChange(s); setOpen(false); }}
+                className={`w-full px-2.5 py-1.5 text-left flex items-center gap-2 hover:bg-surface-50 dark:hover:bg-dark-400/60 transition-colors ${isCurrent ? 'bg-surface-100 dark:bg-dark-400/40' : ''}`}
+              >
+                <span className={`badge text-[10px] px-2 py-0.5 ${c.class} pointer-events-none`}>{c.label}</span>
+                {isCurrent && <Check size={12} className="ml-auto text-emerald-600 dark:text-emerald-400" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const RETURN_REASONS = ['Cambio de Producto', 'Producto Dañado (Merma)', 'Cambio de Talla/Color', 'Insatisfacción del Cliente', 'Error en la Venta', 'Otro'];
 
@@ -427,19 +506,15 @@ export function InvoicesPage() {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <span className="font-mono font-bold text-sm text-navy-900">{label(inv)}</span>
-                        {(['Por Preparar', 'Preparado', 'Finalizado'].includes(inv.status) && can('canEditInvoices')) ? (
-                          <select
-                            value={inv.status}
-                            onChange={(e) => handleSetStatus(inv, e.target.value as InvoiceStatus)}
-                            disabled={advancingId === inv.id}
-                            className={`badge text-[9px] px-1.5 py-0.5 pr-4 ml-2 ${st.class} cursor-pointer border-0 appearance-none focus:outline-none focus:ring-1 focus:ring-blue-400 bg-no-repeat`}
-                            style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'5\' viewBox=\'0 0 8 5\'%3E%3Cpath fill=\'currentColor\' d=\'M0 0l4 5 4-5z\'/%3E%3C/svg%3E")', backgroundPosition: 'right 5px center' }}
-                            title="Cambiar estado"
-                          >
-                            <option value="Por Preparar">🔴 Por Preparar</option>
-                            <option value="Preparado">🟡 Preparado</option>
-                            <option value="Finalizado">🟢 Finalizado</option>
-                          </select>
+                        {(FLOW_STATES.includes(inv.status as InvoiceStatus) && can('canEditInvoices')) ? (
+                          <span className="ml-2 inline-block">
+                            <StatusFlowDropdown
+                              status={inv.status as InvoiceStatus}
+                              onChange={(s) => handleSetStatus(inv, s)}
+                              disabled={advancingId === inv.id}
+                              size="sm"
+                            />
+                          </span>
                         ) : (
                           <span className={`badge text-[9px] px-1.5 py-0.5 ml-2 ${st.class}`}>{st.label}</span>
                         )}
@@ -514,21 +589,14 @@ export function InvoicesPage() {
                       <td className="px-3 py-3 text-[11px] text-navy-500 leading-tight">{date?.toLocaleString('es-VE')}</td>
                       <td className="px-3 py-3">
                         {/* Si la factura está en el flujo de preparación, mostrar
-                            un selector inline; sino, badge plano. Para no romper
-                            el ancho de la columna, el select tiene estilos badge. */}
-                        {(['Por Preparar', 'Preparado', 'Finalizado'].includes(inv.status) && can('canEditInvoices')) ? (
-                          <select
-                            value={inv.status}
-                            onChange={(e) => handleSetStatus(inv, e.target.value as InvoiceStatus)}
+                            dropdown custom; sino, badge plano. */}
+                        {(FLOW_STATES.includes(inv.status as InvoiceStatus) && can('canEditInvoices')) ? (
+                          <StatusFlowDropdown
+                            status={inv.status as InvoiceStatus}
+                            onChange={(s) => handleSetStatus(inv, s)}
                             disabled={advancingId === inv.id}
-                            className={`badge text-[10px] px-2 py-0.5 pr-5 ${st.class} cursor-pointer border-0 appearance-none focus:outline-none focus:ring-1 focus:ring-blue-400 bg-no-repeat`}
-                            style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'5\' viewBox=\'0 0 8 5\'%3E%3Cpath fill=\'currentColor\' d=\'M0 0l4 5 4-5z\'/%3E%3C/svg%3E")', backgroundPosition: 'right 6px center' }}
-                            title="Cambiar estado"
-                          >
-                            <option value="Por Preparar">🔴 Por Preparar</option>
-                            <option value="Preparado">🟡 Preparado</option>
-                            <option value="Finalizado">🟢 Finalizado</option>
-                          </select>
+                            size="sm"
+                          />
                         ) : (
                           <span className={`badge text-[10px] px-2 py-0.5 ${st.class}`}>{st.label}</span>
                         )}
@@ -599,21 +667,20 @@ export function InvoicesPage() {
                 <div key={i.l} className="bg-surface-50 rounded-lg p-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">{i.l}</p>
                   <p className="text-sm font-display font-medium text-navy-900 mt-0.5">{i.v}</p></div>
               ))}
-              {/* Estado: selector inline si está en el flujo de preparación,
+              {/* Estado: dropdown custom si está en el flujo de preparación,
                   texto plano si está en un estado de excepción (Crédito,
                   Devolución, Cancelado, etc) que sigue otro flujo. */}
               <div className="bg-surface-50 rounded-lg p-3 hover-lift">
                 <p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Estado</p>
-                {(['Por Preparar', 'Preparado', 'Finalizado'].includes(detailInvoice.status) && can('canEditInvoices')) ? (
-                  <select
-                    value={detailInvoice.status}
-                    onChange={(e) => handleSetStatus(detailInvoice, e.target.value as InvoiceStatus)}
-                    className="mt-0.5 w-full text-sm font-display font-medium bg-transparent border-0 p-0 focus:outline-none focus:ring-0 text-navy-900 cursor-pointer"
-                  >
-                    <option value="Por Preparar">🔴 Por Preparar</option>
-                    <option value="Preparado">🟡 Preparado</option>
-                    <option value="Finalizado">🟢 Finalizado</option>
-                  </select>
+                {(FLOW_STATES.includes(detailInvoice.status as InvoiceStatus) && can('canEditInvoices')) ? (
+                  <div className="mt-1">
+                    <StatusFlowDropdown
+                      status={detailInvoice.status as InvoiceStatus}
+                      onChange={(s) => handleSetStatus(detailInvoice, s)}
+                      disabled={advancingId === detailInvoice.id}
+                      size="md"
+                    />
+                  </div>
                 ) : (
                   <p className="text-sm font-display font-medium text-navy-900 mt-0.5">{detailInvoice.status}</p>
                 )}
