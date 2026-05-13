@@ -150,7 +150,17 @@ export async function processSale(opts: {
       total: sale.total,
       exchangeRate,
       payments,
-      status: isCreditSale ? 'Pendiente de pago' : 'Por Preparar',
+      // Status inicial según el tipo de venta:
+      // - Crédito (pago a plazo) → 'Pendiente de pago' (su propio flujo)
+      // - Showroom → 'Finalizado' (el cliente se la lleva al instante,
+      //   no hay nada que preparar)
+      // - Resto (pickup, local, national, web) → 'Por Preparar' (entra
+      //   al flujo logístico Por Preparar → Preparado → Finalizado)
+      status: isCreditSale
+        ? 'Pendiente de pago'
+        : sale.deliveryType === 'showroom'
+          ? 'Finalizado'
+          : 'Por Preparar',
       abonos: [],
       sellerName: `${currentUser.nombre} ${currentUser.apellido}`,
       sellerUid: currentUser.uid,
