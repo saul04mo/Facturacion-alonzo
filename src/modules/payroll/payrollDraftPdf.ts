@@ -302,18 +302,69 @@ export function generatePayrollDraftHTML(
 </html>`;
 }
 
-/** Abre una ventana con el HTML y dispara el diálogo de impresión (PDF). */
+/**
+ * Abre el diálogo de impresión del browser con el HTML del cierre.
+ *
+ * Implementación: iframe oculto. Lo intentamos antes con window.open()
+ * pero los browsers modernos lo bloquean por defecto como popup, incluso
+ * cuando viene de un click de usuario (Chrome/Edge con popup blocker
+ * activo, Brave, Safari en algunas configuraciones). El iframe oculto
+ * NO requiere permisos de popup y funciona en todos los browsers.
+ *
+ * Flujo:
+ *   1. Crear iframe invisible en la página actual.
+ *   2. Escribir el HTML adentro.
+ *   3. Esperar a que cargue.
+ *   4. focus() + print() del iframe → dispara el diálogo de impresión.
+ *   5. Quitar el iframe después de un delay (no antes, sino el diálogo
+ *      se corta).
+ */
 export function printPayrollDraft(period: PayrollDraftPeriod, business?: Partial<BusinessInfo>): void {
   const html = generatePayrollDraftHTML(period, business);
-  const win = window.open('', '_blank', 'noopener,noreferrer');
-  if (!win) {
-    alert('No se pudo abrir la ventana de impresión. Verificá que el navegador no esté bloqueando popups.');
+
+  // Si ya hay un iframe de impresión previo (porque el usuario hizo click
+  // dos veces rápido), lo limpiamos antes de crear uno nuevo.
+  const existing = document.getElementById('payroll-draft-print-frame');
+  if (existing) existing.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'payroll-draft-print-frame';
+  // Posicionado fuera de viewport pero sin display:none — algunos browsers
+  // no renderizan ni imprimen contenido de iframes con display:none.
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    alert('No se pudo generar el PDF. Intentá recargar la página.');
     return;
   }
-  win.document.write(html);
-  win.document.close();
-  // Esperar a que cargue el CSS antes de imprimir
-  win.onload = () => {
-    setTimeout(() => win.print(), 100);
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  // Esperar al load para que el CSS y el layout estén listos antes de
+  // disparar el print, sino sale el diálogo con el HTML sin estilos.
+  iframe.onload = () => {
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        console.error('Error al imprimir:', e);
+      }
+      // Quitar el iframe después del print (con margen para que el
+      // diálogo de impresión termine de pintarse).
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      }, 2000);
+    }, 250);
   };
 }
