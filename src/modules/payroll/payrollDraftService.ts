@@ -73,7 +73,7 @@ interface CreatePeriodOptions {
   name: string;
   startDate: string;
   endDate: string;
-  initialEmployees?: Array<{ employeeId: string; employeeName: string }>;
+  initialEmployees?: Array<{ employeeId: string; employeeName: string; employeeCedula?: string }>;
   currentUser: AppUser | null;
 }
 
@@ -96,6 +96,7 @@ export async function createPeriod(opts: CreatePeriodOptions): Promise<string> {
   const employees: PayrollDraftEmployee[] = initialEmployees.map((e) => ({
     employeeId: e.employeeId,
     employeeName: e.employeeName,
+    ...(e.employeeCedula ? { employeeCedula: e.employeeCedula } : {}),
     items: [],
     total: 0,
   }));
@@ -135,6 +136,7 @@ export async function savePeriod(period: PayrollDraftPeriod, currentUser: AppUse
     employeeId: emp.employeeId,
     employeeName: emp.employeeName,
     total: emp.total,
+    ...(emp.employeeCedula ? { employeeCedula: emp.employeeCedula } : {}),
     ...(emp.note ? { note: emp.note } : {}),
     items: emp.items.map((item) => sanitizeItem(item)),
   }));

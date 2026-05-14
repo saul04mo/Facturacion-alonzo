@@ -48,12 +48,17 @@ function escapeHtml(s: string): string {
 export function generatePayrollDraftHTML(
   period: PayrollDraftPeriod,
   business?: Partial<BusinessInfo>,
+  /** Tasa EUR→VES (lo que el sistema llama exchangeRate). Si es 0 o
+   *  undefined, las columnas/totales en Bs no se muestran. */
+  exchangeRate?: number,
 ): string {
   const biz = { ...DEFAULT_BUSINESS, ...business };
   const emittedAt = new Date().toLocaleString('es-VE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
+  const showBs = !!exchangeRate && exchangeRate > 0;
+  const rate = exchangeRate || 0;
 
   const employeeBlocks = period.employees.map((emp) => {
     const rows = emp.items.map((item) => {
@@ -62,17 +67,32 @@ export function generatePayrollDraftHTML(
         : (item.quantity !== undefined ? fmtNum(item.quantity) : '—');
       const signClass = item.isDeduction ? 'amt-deduction' : 'amt-credit';
       const sign = item.isDeduction ? '−' : '';
+      const bsAmount = item.amount * rate;
       return `
         <tr>
           <td class="lbl">${escapeHtml(item.label) || '<em>(sin nombre)</em>'}</td>
           <td class="cant">${cantUnit}</td>
           <td class="amt ${signClass}">${sign}$${fmtNum(item.amount)}</td>
+          ${showBs ? `<td class="amt ${signClass}">${sign}Bs. ${fmtNum(bsAmount)}</td>` : ''}
         </tr>`;
     }).join('');
 
     const noteHtml = emp.note
       ? `<div class="note">Observación: ${escapeHtml(emp.note)}</div>`
       : '';
+
+    const totalBs = emp.total * rate;
+
+    // Bloque de firma con línea, nombre y cédula del empleado.
+    const signatureBlock = `
+      <div class="signature-block">
+        <div class="sig-line"></div>
+        <div class="sig-info">
+          <div class="sig-label">Firma del empleado</div>
+          <div class="sig-name">${escapeHtml(emp.employeeName)}</div>
+          <div class="sig-ci">C.I.: ${emp.employeeCedula ? escapeHtml(emp.employeeCedula) : '________________'}</div>
+        </div>
+      </div>`;
 
     return `
       <section class="employee">
@@ -81,19 +101,28 @@ export function generatePayrollDraftHTML(
           ? '<p class="empty">Sin conceptos en este período.</p>'
           : `<table class="items">
               <thead>
-                <tr><th>Concepto</th><th class="cant">Detalle</th><th class="amt">Monto</th></tr>
+                <tr>
+                  <th>Concepto</th>
+                  <th class="cant">Detalle</th>
+                  <th class="amt">Monto $</th>
+                  ${showBs ? '<th class="amt">Monto Bs</th>' : ''}
+                </tr>
               </thead>
               <tbody>${rows}</tbody>
               <tfoot>
                 <tr>
                   <td colspan="2" class="total-lbl">TOTAL</td>
                   <td class="amt total-val">$${fmtNum(emp.total)}</td>
+                  ${showBs ? `<td class="amt total-val">Bs. ${fmtNum(totalBs)}</td>` : ''}
                 </tr>
               </tfoot>
             </table>`}
         ${noteHtml}
+        ${signatureBlock}
       </section>`;
   }).join('');
+
+  const grandTotalBs = period.grandTotal * rate;
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -234,26 +263,81 @@ export function generatePayrollDraftHTML(
     padding: 2mm 3mm;
     margin: 0;
   }
+  /* Bloque de firma al final de cada empleado.
+     page-break-inside avoid para que no se corte entre páginas. */
+  .signature-block {
+    margin-top: 10mm;
+    margin-bottom: 4mm;
+    padding-left: 3mm;
+    page-break-inside: avoid;
+  }
+  .signature-block .sig-line {
+    border-bottom: 1px solid #333;
+    width: 70mm;
+    margin-bottom: 1.5mm;
+  }
+  .signature-block .sig-info {
+    font-size: 9pt;
+    line-height: 1.4;
+  }
+  .signature-block .sig-label {
+    color: #888;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .signature-block .sig-name {
+    font-weight: 600;
+    color: #222;
+    margin-top: 0.5mm;
+  }
+  .signature-block .sig-ci {
+    color: #555;
+    font-family: 'Courier New', monospace;
+    font-size: 9pt;
+  }
   .grand-total {
     margin-top: 8mm;
     padding: 4mm;
     background: #111;
     color: #fff;
+    border-radius: 1mm;
+  }
+  .grand-total .row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-radius: 1mm;
+  }
+  .grand-total .row + .row {
+    margin-top: 2mm;
+    padding-top: 2mm;
+    border-top: 1px solid rgba(255,255,255,0.2);
   }
   .grand-total .lbl {
+    font-size: 10pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .grand-total .lbl.main {
     font-size: 11pt;
     font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 1px;
   }
   .grand-total .val {
-    font-size: 16pt;
+    font-size: 14pt;
     font-weight: 700;
     font-family: 'Courier New', monospace;
+  }
+  .grand-total .val.main {
+    font-size: 16pt;
+  }
+  .rate-info {
+    text-align: center;
+    font-size: 8pt;
+    color: #888;
+    font-style: italic;
+    margin-top: 2mm;
   }
   .footer {
     margin-top: 10mm;
@@ -291,9 +375,17 @@ export function generatePayrollDraftHTML(
   ${employeeBlocks || '<p style="text-align:center;color:#999;font-style:italic;">Sin empleados en este período.</p>'}
 
   <div class="grand-total">
-    <span class="lbl">Total general del período</span>
-    <span class="val">$${fmtNum(period.grandTotal)}</span>
+    <div class="row">
+      <span class="lbl main">Total general del período</span>
+      <span class="val main">$${fmtNum(period.grandTotal)}</span>
+    </div>
+    ${showBs ? `
+    <div class="row">
+      <span class="lbl">Equivalente en bolívares</span>
+      <span class="val">Bs. ${fmtNum(grandTotalBs)}</span>
+    </div>` : ''}
   </div>
+  ${showBs ? `<div class="rate-info">Tasa aplicada: 1 € = ${fmtNum(rate)} Bs</div>` : ''}
 
   <div class="footer">
     Documento informativo · ${biz.razonSocial} · ${emittedAt}
@@ -319,8 +411,12 @@ export function generatePayrollDraftHTML(
  *   5. Quitar el iframe después de un delay (no antes, sino el diálogo
  *      se corta).
  */
-export function printPayrollDraft(period: PayrollDraftPeriod, business?: Partial<BusinessInfo>): void {
-  const html = generatePayrollDraftHTML(period, business);
+export function printPayrollDraft(
+  period: PayrollDraftPeriod,
+  exchangeRate?: number,
+  business?: Partial<BusinessInfo>,
+): void {
+  const html = generatePayrollDraftHTML(period, business, exchangeRate);
 
   // Si ya hay un iframe de impresión previo (porque el usuario hizo click
   // dos veces rápido), lo limpiamos antes de crear uno nuevo.

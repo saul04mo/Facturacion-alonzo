@@ -536,6 +536,9 @@ export interface PayrollDraftItem {
 export interface PayrollDraftEmployee {
   employeeId: string;
   employeeName: string;
+  /** Cédula del empleado, snapshot al crear el período. Opcional porque
+   *  empleados viejos del sistema pueden no tener cédula registrada. */
+  employeeCedula?: string;
   items: PayrollDraftItem[];
   /** Total calculado: suma de items no-deducción menos items deducción. */
   total: number;

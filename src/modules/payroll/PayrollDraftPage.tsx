@@ -142,13 +142,15 @@ export function PayrollDraftPage() {
     });
   }
 
-  function addEmployeeToPeriod(employeeId: string, employeeName: string) {
+  function addEmployeeToPeriod(employeeId: string, employeeName: string, employeeCedula?: string) {
     if (!draft) return;
     if (draft.employees.some((e) => e.employeeId === employeeId)) {
       toast.warning('Ese empleado ya está en el período.');
       return;
     }
-    const nextEmps = [...draft.employees, { employeeId, employeeName, items: [], total: 0 }];
+    const newEmp: PayrollDraftEmployee = { employeeId, employeeName, items: [], total: 0 };
+    if (employeeCedula) newEmp.employeeCedula = employeeCedula;
+    const nextEmps = [...draft.employees, newEmp];
     setDraft(recalcPeriod({ ...draft, employees: nextEmps }));
     // Auto-expandir el recién agregado
     setExpandedEmps((prev) => new Set(prev).add(employeeId));
@@ -217,7 +219,7 @@ export function PayrollDraftPage() {
 
   function handlePrint() {
     if (!draft) return;
-    printPayrollDraft(draft);
+    printPayrollDraft(draft, exchangeRate);
   }
 
   // Empleados activos del sistema que NO están aún en el período
@@ -226,8 +228,15 @@ export function PayrollDraftPage() {
     const usedIds = new Set(draft.employees.map((e) => e.employeeId));
     return (employees || [])
       .filter((e: any) => !usedIds.has(e.id) && e.activo !== false)
-      .map((e: any) => ({ id: e.id, name: `${e.nombre} ${e.apellido || ''}`.trim() }));
+      .map((e: any) => ({
+        id: e.id,
+        name: `${e.nombre} ${e.apellido || ''}`.trim(),
+        cedula: e.cedula || '',
+      }));
   }, [draft, employees]);
+
+  // exchangeRate del store (es la tasa EUR→VES en este sistema).
+  const exchangeRate = useAppStore((s) => s.exchangeRate);
 
   const readOnly = draft?.status === 'closed';
 
@@ -359,7 +368,7 @@ export function PayrollDraftPage() {
                     {availableEmployees.map((e) => (
                       <button
                         key={e.id}
-                        onClick={() => addEmployeeToPeriod(e.id, e.name)}
+                        onClick={() => addEmployeeToPeriod(e.id, e.name, e.cedula)}
                         className="text-[11px] px-2 py-0.5 rounded-md bg-white dark:bg-dark-300 border border-surface-200 dark:border-dark-400 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                       >
                         <Plus size={10} className="inline -mt-0.5 mr-0.5" />
@@ -606,7 +615,11 @@ function CreatePeriodModal({ onClose, onCreated }: { onClose: () => void; onCrea
     try {
       const initialEmployees = (employees || [])
         .filter((e: any) => selectedEmpIds.has(e.id))
-        .map((e: any) => ({ employeeId: e.id, employeeName: `${e.nombre} ${e.apellido || ''}`.trim() }));
+        .map((e: any) => ({
+          employeeId: e.id,
+          employeeName: `${e.nombre} ${e.apellido || ''}`.trim(),
+          ...(e.cedula ? { employeeCedula: e.cedula } : {}),
+        }));
       const newId = await createPeriod({ name, startDate, endDate, initialEmployees, currentUser });
       toast.success(`Período "${name}" creado.`);
       onCreated(newId);
