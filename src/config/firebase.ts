@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
@@ -16,19 +16,31 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 
 /**
- * Firestore WITH persistent cache enabled.
- * 
- * This makes a HUGE difference in perceived load time:
- * - First visit: data loads from server (same as before)
- * - Every subsequent visit: data loads INSTANTLY from IndexedDB,
- *   then syncs with server in the background
- * - Works offline too
- * - Multi-tab support enabled
+ * Firestore con cache EN MEMORIA (no persistente).
+ *
+ * Decisión deliberada: no usamos persistentLocalCache + IndexedDB porque
+ * generaba problemas conocidos del SDK cuando había múltiples pestañas
+ * del POS abiertas:
+ *
+ *   - 'Failed to obtain primary lease' (pelea de tabs por el lease)
+ *   - IndexedDB que se corrompía con sesiones largas → forzaba a limpiar
+ *     site data del navegador para volver a entrar
+ *   - 400 Bad Request en /Listen/channel + QUIC_PROTOCOL_ERROR cuando
+ *     la red se inestabilizaba y la cache local quedaba en estado raro
+ *
+ * Con memoryLocalCache:
+ *   ✓ Multi-tab funciona sin pelea (cada tab tiene su propio cache RAM)
+ *   ✓ onSnapshot sigue funcionando igual: realtime intacto
+ *   ✓ Cero corrupción posible (no hay IndexedDB)
+ *
+ * Trade-off: no hay funcionalidad offline. Si se cae internet, la app
+ * no puede leer/escribir. Para un POS de tienda con buena WiFi este
+ * trade-off vale la pena. Si se necesita offline en el futuro, se
+ * puede volver a persistentLocalCache (con su single-tab manager para
+ * evitar la pelea de leases).
  */
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
+  localCache: memoryLocalCache(),
 });
 
 export const auth = getAuth(app);
