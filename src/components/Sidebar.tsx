@@ -32,6 +32,7 @@ const NAV_GROUPS = [
     items: [
       { path: ROUTES.USERS, label: 'Usuarios', icon: <Shield size={18} />, permission: 'canManageUsers' },
       { path: ROUTES.PAYROLL, label: 'Nómina', icon: <Wallet size={18} />, permission: 'canAccessNomina' },
+      { path: ROUTES.PAYROLL_DRAFT, label: 'Cierre de Nómina', icon: <FileText size={18} />, permission: 'canAccessNomina' },
       { path: ROUTES.SETTINGS, label: 'Configuración General', icon: <Settings size={18} />, permission: 'canAccessSettings' },
     ]
   }

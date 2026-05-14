@@ -13,6 +13,7 @@ export const ROUTES = {
   SETTINGS: '/configuracion',
   OFFERS: '/ofertas',
   PAYROLL: '/nomina',
+  PAYROLL_DRAFT: '/cierre-nomina',
   CRM: '/crm',
 } as const;
 

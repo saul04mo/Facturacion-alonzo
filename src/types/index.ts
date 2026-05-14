@@ -502,3 +502,66 @@ export interface EmployeeIncident {
   creadoPor: string;
   fechaCreacion: Timestamp;
 }
+
+// ════════════════════════════════════════════════════════════════════
+// CIERRE DE NÓMINA (flujo libre, sin campos legales venezolanos)
+// ════════════════════════════════════════════════════════════════════
+// Sistema simple paralelo al PayrollReceipt formal: en lugar de los
+// campos rígidos (IVSS, FAOV, RPE, etc.) acá cada empleado tiene una
+// lista LIBRE de items (concepto + monto) que se ingresan a mano cada
+// quincena. Pensado para el cierre informal que se manda por chat,
+// no para cumplimiento legal/SENIAT.
+
+/** Un concepto individual dentro del recibo de un empleado. */
+export interface PayrollDraftItem {
+  /** ID local del item (no se guarda en DB; sirve para los keys de React). */
+  id: string;
+  /** Etiqueta del concepto. Ej: "Días laborados", "Apoyo de silla". */
+  label: string;
+  /**
+   * Monto del concepto. Siempre se guarda en POSITIVO; si es un descuento,
+   * se usa el flag isDeduction para restarlo del total. Así el usuario nunca
+   * tiene que tipear signo negativo.
+   */
+  amount: number;
+  /** Cantidad opcional. Ej: "4 días". Para visualización; no afecta el total. */
+  quantity?: number;
+  /** Precio unitario opcional. Ej: "8.57 por día". Para visualización. */
+  unitPrice?: number;
+  /** Si es true, el amount se RESTA del total del empleado. */
+  isDeduction: boolean;
+}
+
+/** Bloque de un empleado dentro de un período de cierre. */
+export interface PayrollDraftEmployee {
+  employeeId: string;
+  employeeName: string;
+  items: PayrollDraftItem[];
+  /** Total calculado: suma de items no-deducción menos items deducción. */
+  total: number;
+  /** Observación libre del empleado para la quincena (opcional). */
+  note?: string;
+}
+
+/** Un período/quincena completo de cierre de nómina. */
+export interface PayrollDraftPeriod {
+  id: string;
+  /** ID numérico legible (PD-1, PD-2, ...). */
+  numericId: number;
+  /** Nombre del período. Ej: "Quincena 1 - Mayo 2026". */
+  name: string;
+  /** Fecha inicio del período (YYYY-MM-DD). */
+  startDate: string;
+  /** Fecha fin del período (YYYY-MM-DD). */
+  endDate: string;
+  /** Lista de empleados con sus items y totales. */
+  employees: PayrollDraftEmployee[];
+  /** Total general del período = suma de totals de cada empleado. */
+  grandTotal: number;
+  /** Abierto = editable. Cerrado = read-only (generó PDF y se cierra). */
+  status: 'open' | 'closed';
+  createdAt: Timestamp;
+  createdByName: string;
+  updatedAt?: Timestamp;
+  updatedByName?: string;
+}
