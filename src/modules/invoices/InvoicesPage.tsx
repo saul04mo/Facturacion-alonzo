@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '@/store/appStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -37,34 +38,73 @@ function StatusFlowDropdown({
   size?: 'sm' | 'md';
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // Posición calculada del menú flotante (en coordenadas de viewport).
+  // Se setea cada vez que se abre el dropdown a partir del rect del botón.
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar el menú al click afuera o ESC
+  // Cierra al click afuera (del botón Y del menú), ESC, y al scrollear
+  // (porque las coordenadas del menú quedarían desactualizadas).
   useEffect(() => {
     if (!open) return;
     function onMouseDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
     }
+    function onScroll() {
+      setOpen(false);
+    }
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('keydown', onKey);
+    // capture: true para detectar scroll en CUALQUIER contenedor scrolleable,
+    // no solo en window. Si la tabla tiene overflow-y:auto y se scrollea
+    // adentro, también queremos cerrar.
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
     return () => {
       document.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
     };
   }, [open]);
+
+  function handleToggle() {
+    if (disabled) return;
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      // Si no entra abajo, abrir hacia arriba. ~120px es alto estimado del
+      // menú con las 3 opciones.
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const menuHeight = 120;
+      const top = spaceBelow < menuHeight
+        ? rect.top - menuHeight - 4
+        : rect.bottom + 4;
+      setMenuPos({
+        top,
+        left: rect.left,
+        minWidth: Math.max(rect.width, 150),
+      });
+    }
+    setOpen(!open);
+  }
 
   const st = STATUS_CONFIG[status] || { class: 'badge-gray', label: status };
   const padding = size === 'sm' ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-1';
   const iconSize = size === 'sm' ? 10 : 12;
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => !disabled && setOpen(!open)}
+        onClick={handleToggle}
         disabled={disabled}
         className={`badge ${padding} ${st.class} inline-flex items-center gap-1 cursor-pointer border-0 disabled:cursor-not-allowed disabled:opacity-60 hover:brightness-95 dark:hover:brightness-110 transition`}
         title="Cambiar estado"
@@ -72,8 +112,15 @@ function StatusFlowDropdown({
         <span>{st.label}</span>
         <ChevronDown size={iconSize} className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
       </button>
-      {open && (
-        <div className="absolute z-50 mt-1 min-w-[150px] py-1 bg-white dark:bg-dark-300 rounded-lg shadow-xl border border-surface-200 dark:border-dark-400 left-0">
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          // position:fixed + portal a document.body para escapar de
+          // cualquier overflow:hidden del contenedor padre (tabla, modal,
+          // etc.). El dropdown ya no se recorta.
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, minWidth: menuPos.minWidth }}
+          className="z-[1000] py-1 bg-white dark:bg-dark-300 rounded-lg shadow-xl border border-surface-200 dark:border-dark-400"
+        >
           {FLOW_STATES.map((s) => {
             const c = STATUS_CONFIG[s];
             const isCurrent = s === status;
@@ -89,9 +136,10 @@ function StatusFlowDropdown({
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   );
 }
 
