@@ -23,6 +23,12 @@
     </style>
     <meta name="theme-color" content="#102a43" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- Versión estándar del tag anterior. Mantenemos ambos: el de
+         apple-* sigue siendo válido para Safari iOS antiguo, y este
+         es el que prefieren los browsers modernos (Chrome, Edge,
+         Firefox móvil). Sin el segundo, sale un warning de deprecación
+         en la consola. -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="POS Alonzo" />
     <meta name="description" content="Sistema de gestión operativa - Punto de Venta, Inventario, Reportes y más" />
