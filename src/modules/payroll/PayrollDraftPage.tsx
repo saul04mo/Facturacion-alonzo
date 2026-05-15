@@ -219,7 +219,30 @@ export function PayrollDraftPage() {
 
   function handlePrint() {
     if (!draft) return;
-    printPayrollDraft(draft, exchangeRate);
+    printPayrollDraft(draft);
+  }
+
+  // Editar la tasa de cambio guardada en el período. Solo permitido mientras
+  // está abierto. Una vez cerrado, queda congelada para que las reimpresiones
+  // sean consistentes con lo que el empleado firmó.
+  function handleEditRate() {
+    if (!draft || readOnly) return;
+    const current = draft.exchangeRateUsed;
+    const input = prompt(
+      `Tasa de cambio EUR → VES del período "${draft.name}":\n\n` +
+      `Esta tasa se aplica a todos los montos para mostrar el equivalente en Bs en el PDF.\n` +
+      `Tasa actual del sistema: ${exchangeRate.toFixed(2)} Bs por €.\n\n` +
+      `Ingresá la nueva tasa (debe ser mayor a 0):`,
+      String(current),
+    );
+    if (input === null) return; // canceló
+    const parsed = parseFloat(input);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toast.warning('Tasa inválida. Debe ser un número mayor a 0.');
+      return;
+    }
+    setDraft(recalcPeriod({ ...draft, exchangeRateUsed: parsed }));
+    toast.info(`Tasa actualizada a ${parsed.toFixed(2)} Bs/€. Acordate de guardar.`);
   }
 
   // Empleados activos del sistema que NO están aún en el período
@@ -332,8 +355,23 @@ export function PayrollDraftPage() {
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-navy-500 dark:text-gray-400 mt-0.5">
-                      Del {draft.startDate.split('-').reverse().join('/')} al {draft.endDate.split('-').reverse().join('/')}
+                    <div className="text-[11px] text-navy-500 dark:text-gray-400 mt-0.5 flex items-center gap-3 flex-wrap">
+                      <span>Del {draft.startDate.split('-').reverse().join('/')} al {draft.endDate.split('-').reverse().join('/')}</span>
+                      <span className="text-navy-300">·</span>
+                      <button
+                        onClick={handleEditRate}
+                        disabled={readOnly}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono ring-1 transition-colors ${
+                          readOnly
+                            ? 'bg-surface-100 dark:bg-dark-300 text-navy-500 dark:text-gray-400 ring-surface-200 dark:ring-dark-400 cursor-not-allowed'
+                            : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-500/30 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer'
+                        }`}
+                        title={readOnly
+                          ? 'Tasa congelada (período cerrado). Reabrir para editar.'
+                          : 'Click para editar la tasa aplicada en este período'}
+                      >
+                        💱 1€ = {draft.exchangeRateUsed.toFixed(2)} Bs {!readOnly && <span className="text-[9px] opacity-60">✎</span>}
+                      </button>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -591,9 +629,15 @@ function CreatePeriodModal({ onClose, onCreated }: { onClose: () => void; onCrea
   const toast = useToast();
 
   const defaults = useMemo(() => defaultPeriodDates(), []);
+  const liveRate = useAppStore((s) => s.exchangeRate);
   const [name, setName] = useState(defaults.name);
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
+  // La tasa se pre-carga con la actual del sistema (BCV EUR→VES) pero el
+  // usuario puede ajustarla antes de crear el período si necesita un valor
+  // específico. Una vez creado el período, la tasa queda guardada como
+  // snapshot dentro del documento y NO cambia aunque la del sistema sí.
+  const [rate, setRate] = useState<string>(String(liveRate || ''));
   const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(() => new Set((employees || []).filter((e: any) => e.activo !== false).map((e: any) => e.id)));
   const [creating, setCreating] = useState(false);
 
@@ -610,6 +654,11 @@ function CreatePeriodModal({ onClose, onCreated }: { onClose: () => void; onCrea
     if (!name.trim()) { toast.warning('El nombre es obligatorio.'); return; }
     if (!startDate || !endDate) { toast.warning('Las fechas son obligatorias.'); return; }
     if (startDate > endDate) { toast.warning('La fecha de inicio debe ser anterior a la de fin.'); return; }
+    const rateNum = parseFloat(rate);
+    if (!Number.isFinite(rateNum) || rateNum <= 0) {
+      toast.warning('La tasa de cambio debe ser un número mayor que 0.');
+      return;
+    }
 
     setCreating(true);
     try {
@@ -620,8 +669,12 @@ function CreatePeriodModal({ onClose, onCreated }: { onClose: () => void; onCrea
           employeeName: `${e.nombre} ${e.apellido || ''}`.trim(),
           ...(e.cedula ? { employeeCedula: e.cedula } : {}),
         }));
-      const newId = await createPeriod({ name, startDate, endDate, initialEmployees, currentUser });
-      toast.success(`Período "${name}" creado.`);
+      const newId = await createPeriod({
+        name, startDate, endDate,
+        exchangeRate: rateNum,
+        initialEmployees, currentUser,
+      });
+      toast.success(`Período "${name}" creado con tasa 1€ = ${rateNum} Bs.`);
       onCreated(newId);
     } catch (e: any) {
       toast.error(e?.message || 'Error al crear el período.');
@@ -652,6 +705,36 @@ function CreatePeriodModal({ onClose, onCreated }: { onClose: () => void; onCrea
             <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Hasta</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-field text-sm" />
           </div>
+        </div>
+        {/* Tasa de cambio: snapshot que se guarda con el período.
+            Pre-cargado con la tasa actual del sistema. */}
+        <div>
+          <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">
+            Tasa de cambio (1 € = X Bs)
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              className="input-field text-sm font-mono w-40"
+              placeholder="0.00"
+            />
+            <button
+              type="button"
+              onClick={() => setRate(String(liveRate || ''))}
+              className="text-[11px] text-blue-600 hover:text-blue-700 font-display font-medium"
+              title={`Tasa actual del sistema: ${liveRate}`}
+            >
+              Usar actual ({liveRate})
+            </button>
+          </div>
+          <p className="text-[10px] text-navy-400 mt-1">
+            Esta tasa queda guardada con el período. Si la tasa BCV cambia
+            mañana, los Bs del PDF NO se recalculan — el documento queda fijo.
+          </p>
         </div>
         <div>
           <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">

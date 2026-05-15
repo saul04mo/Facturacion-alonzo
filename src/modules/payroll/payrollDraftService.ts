@@ -73,14 +73,21 @@ interface CreatePeriodOptions {
   name: string;
   startDate: string;
   endDate: string;
+  /** Tasa EUR→VES actual del sistema en el momento de crear. Se guarda
+   *  como snapshot dentro del período para que las conversiones a Bs
+   *  no cambien cuando la tasa BCV se actualice después. */
+  exchangeRate: number;
   initialEmployees?: Array<{ employeeId: string; employeeName: string; employeeCedula?: string }>;
   currentUser: AppUser | null;
 }
 
 export async function createPeriod(opts: CreatePeriodOptions): Promise<string> {
-  const { name, startDate, endDate, initialEmployees = [], currentUser } = opts;
+  const { name, startDate, endDate, exchangeRate, initialEmployees = [], currentUser } = opts;
   if (!name.trim()) throw new Error('El nombre del período es obligatorio.');
   if (!startDate || !endDate) throw new Error('Las fechas de inicio y fin son obligatorias.');
+  if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
+    throw new Error('La tasa de cambio es inválida.');
+  }
 
   // Contador atómico para el numericId. Usamos la misma estrategia que
   // transfers / invoices: doc /config/payrollDraftCounter.
@@ -106,6 +113,7 @@ export async function createPeriod(opts: CreatePeriodOptions): Promise<string> {
     name: name.trim(),
     startDate,
     endDate,
+    exchangeRateUsed: exchangeRate,
     employees,
     grandTotal: 0,
     status: 'open',
@@ -145,6 +153,7 @@ export async function savePeriod(period: PayrollDraftPeriod, currentUser: AppUse
     name: fresh.name,
     startDate: fresh.startDate,
     endDate: fresh.endDate,
+    exchangeRateUsed: fresh.exchangeRateUsed,
     employees: cleanEmployees,
     grandTotal: fresh.grandTotal,
     updatedAt: Timestamp.now(),

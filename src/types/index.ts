@@ -557,6 +557,16 @@ export interface PayrollDraftPeriod {
   startDate: string;
   /** Fecha fin del período (YYYY-MM-DD). */
   endDate: string;
+  /**
+   * Tasa de cambio EUR→VES aplicada para calcular los Bs del PDF.
+   * Se toma como snapshot al crear el período (de exchangeRate del sistema)
+   * y se puede editar manualmente desde el panel mientras el período esté
+   * abierto. Una vez cerrado el período, esta tasa queda congelada y
+   * cualquier reimpresión del PDF usa este valor — NO la tasa del sistema
+   * en vivo. Esto evita que documentos ya firmados muestren montos Bs
+   * distintos en reimpresiones después de un cambio de tasa.
+   */
+  exchangeRateUsed: number;
   /** Lista de empleados con sus items y totales. */
   employees: PayrollDraftEmployee[];
   /** Total general del período = suma de totals de cada empleado. */

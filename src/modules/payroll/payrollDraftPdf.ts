@@ -48,17 +48,17 @@ function escapeHtml(s: string): string {
 export function generatePayrollDraftHTML(
   period: PayrollDraftPeriod,
   business?: Partial<BusinessInfo>,
-  /** Tasa EUR→VES (lo que el sistema llama exchangeRate). Si es 0 o
-   *  undefined, las columnas/totales en Bs no se muestran. */
-  exchangeRate?: number,
 ): string {
   const biz = { ...DEFAULT_BUSINESS, ...business };
   const emittedAt = new Date().toLocaleString('es-VE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
-  const showBs = !!exchangeRate && exchangeRate > 0;
-  const rate = exchangeRate || 0;
+  // La tasa SIEMPRE sale del período (snapshot al crear/editar). Esto
+  // garantiza que una reimpresión del mismo PDF después de un cambio de
+  // tasa BCV siga mostrando los mismos Bs que cuando se firmó.
+  const rate = period.exchangeRateUsed || 0;
+  const showBs = rate > 0;
 
   const employeeBlocks = period.employees.map((emp) => {
     const rows = emp.items.map((item) => {
@@ -413,10 +413,9 @@ export function generatePayrollDraftHTML(
  */
 export function printPayrollDraft(
   period: PayrollDraftPeriod,
-  exchangeRate?: number,
   business?: Partial<BusinessInfo>,
 ): void {
-  const html = generatePayrollDraftHTML(period, business, exchangeRate);
+  const html = generatePayrollDraftHTML(period, business);
 
   // Si ya hay un iframe de impresión previo (porque el usuario hizo click
   // dos veces rápido), lo limpiamos antes de crear uno nuevo.
