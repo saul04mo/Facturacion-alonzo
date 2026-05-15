@@ -408,62 +408,97 @@ export function generatePayrollDraftHTML(
  *      se corta).
  */
 /**
- * Descarga el cierre de nómina directamente como archivo PDF
- * usando html2pdf.js (sin abrir el diálogo de impresión).
- * El archivo se guarda con el nombre del período.
+ * Descarga el cierre de nómina como archivo PDF usando html2pdf.js.
+ *
+ * Approach: inyectar el contenido directamente en document.body (no
+ * en iframe). El intento anterior con iframe fallaba porque html2canvas
+ * no aplicaba los estilos del <style> embebido dentro del iframe al
+ * momento de la captura — el resultado salía como texto plano sin
+ * formato (fondo oscuro, sin tablas, sin colores).
+ *
+ * Ahora:
+ *   1. Parseamos el HTML generado y extraemos el <style> + el contenido
+ *      visible (#pdf-root).
+ *   2. Inyectamos el <style> al <head> del document principal con un
+ *      atributo data-payroll-pdf para identificarlo y limpiarlo después.
+ *   3. Inyectamos el contenido como un div oculto fuera de viewport.
+ *   4. html2pdf captura ese div con los estilos aplicados correctamente.
+ *   5. Limpieza: se quita el <style> y el div del DOM al terminar.
+ *
+ * Si el usuario tiene activo dark mode en el sistema, no afecta: nuestros
+ * estilos de impresión usan colores explícitos (#fff, #222, etc).
  */
 export async function downloadPayrollDraft(
   period: PayrollDraftPeriod,
   business?: Partial<BusinessInfo>,
 ): Promise<void> {
   const html2pdf = (await import('html2pdf.js')).default;
-  const html = generatePayrollDraftHTML(period, business);
+  const fullHtml = generatePayrollDraftHTML(period, business);
 
-  // Usamos un iframe para renderizar el HTML completo de forma segura
-  // (incluyendo <style> y estructura completa) antes de pasarlo a html2pdf.
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.left = '-9999px';
-  iframe.style.visibility = 'hidden';
-  document.body.appendChild(iframe);
+  // Parsear el HTML completo para extraer styles y contenido por separado
+  const parser = new DOMParser();
+  const parsed = parser.parseFromString(fullHtml, 'text/html');
+  const styleEl = parsed.querySelector('style');
+  const pdfRoot = parsed.getElementById('pdf-root');
 
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!doc) {
-    document.body.removeChild(iframe);
-    throw new Error('No se pudo inicializar el generador de PDF.');
+  if (!pdfRoot) {
+    throw new Error('El HTML generado no tiene el contenedor #pdf-root.');
   }
 
-  doc.open();
-  doc.write(html);
-  doc.close();
+  // Inyectar los estilos en el <head> global. data-payroll-pdf nos permite
+  // identificar este <style> después para limpiarlo, sin tocar otros.
+  const injectedStyle = document.createElement('style');
+  injectedStyle.setAttribute('data-payroll-pdf', 'true');
+  if (styleEl) injectedStyle.textContent = styleEl.textContent || '';
+  document.head.appendChild(injectedStyle);
+
+  // Wrapper oculto fuera de viewport con el ancho de página A4 para que
+  // el layout se calcule correctamente antes de la captura.
+  const wrapper = document.createElement('div');
+  wrapper.setAttribute('data-payroll-pdf', 'true');
+  wrapper.style.position = 'fixed';
+  wrapper.style.left = '-99999px';
+  wrapper.style.top = '0';
+  wrapper.style.width = '210mm'; // A4 portrait
+  wrapper.style.background = '#ffffff';
+  wrapper.style.color = '#222'; // por si el body principal está en dark
+  // Importamos el HTML del contenido (sin <html><body>, solo el #pdf-root)
+  wrapper.innerHTML = pdfRoot.outerHTML;
+  document.body.appendChild(wrapper);
 
   const periodNum = String(period.numericId).padStart(4, '0');
   const safeName = period.name.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
   const filename = `Cierre_Nomina_PD-${periodNum}_${safeName}.pdf`;
 
   try {
-    // Esperamos un poco a que el CSS se aplique dentro del iframe
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Pequeña espera para que el browser aplique el CSS recién inyectado
+    // antes de que html2canvas tome la captura.
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     await html2pdf()
       .set({
-        margin: [0, 0, 0, 0], // El margen lo maneja el CSS interno
+        margin: [10, 10, 10, 10], // mm — pequeño margen de seguridad
         filename,
-        image: { type: 'jpeg', quality: 1.0 },
-        html2canvas: { 
-          scale: 3, 
-          useCORS: true, 
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
           logging: false,
           backgroundColor: '#ffffff',
-          windowWidth: 1024,
+          // Width explícito para que html2canvas no use el viewport
+          // (que sería más ancho y comprimiría el contenido).
+          width: wrapper.offsetWidth,
+          windowWidth: wrapper.offsetWidth,
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css'] },
+        pagebreak: { mode: ['css', 'legacy'] },
       })
-      .from(doc.getElementById('pdf-root'))
+      .from(wrapper.firstElementChild as HTMLElement) // el #pdf-root
       .save();
   } finally {
-    if (document.body.contains(iframe)) document.body.removeChild(iframe);
+    // Limpiar siempre, aún si falla la generación.
+    if (document.body.contains(wrapper)) document.body.removeChild(wrapper);
+    if (document.head.contains(injectedStyle)) document.head.removeChild(injectedStyle);
   }
 }
 
