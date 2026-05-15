@@ -175,8 +175,10 @@ export function InvoicesPage() {
   const [methodFilter, setMethodFilter] = useState('all');
   const [deliveryFilter, setDeliveryFilter] = useState('all');
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 15;
+  // Paginación removida: ahora se muestran todas las facturas filtradas
+  // en una sola lista con scroll. El array `filtered` ya está acotado por
+  // los filtros activos (fechas, vendedor, estado, etc.) así que el
+  // tamaño es manejable para uso típico de POS.
   const [detailInvoice, setDetailInvoice] = useState<any>(null);
   const [returnInvoice, setReturnInvoice] = useState<any>(null);
   const [returnReason, setReturnReason] = useState(RETURN_REASONS[0]);
@@ -260,7 +262,6 @@ export function InvoicesPage() {
     setSellerFilter(dSeller);
     setMethodFilter(dMethod);
     setDeliveryFilter(dDelivery);
-    setCurrentPage(1); 
     
     if (dStart || dEnd) {
       setIsSearchingServer(true);
@@ -283,7 +284,6 @@ export function InvoicesPage() {
     setDSeller('all'); setDMethod('all'); setDDelivery('all');
     setSearch(''); setStartDate(today); setEndDate(today); setStatusFilter('all'); 
     setSellerFilter('all'); setMethodFilter('all'); setDeliveryFilter('all');
-    setCurrentPage(1); 
     setServerInvoices(null);
   }
   const hasActive = search || startDate !== today || endDate !== today
@@ -545,7 +545,7 @@ export function InvoicesPage() {
           <div>
             {/* ═══ MOBILE: Card layout ═══ */}
             <div className="md:hidden divide-y divide-surface-100">
-              {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
+              {filtered.map((inv: any) => {
                 const date = toDate(inv.date);
                 const st = STATUS_CONFIG[inv.status as InvoiceStatus] || { class: 'badge-gray', label: inv.status || 'N/A' };
                 const paymentImgUrl = inv.proofUrl || inv.img || inv.paymentImg || (inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.proofUrl || inv.payments?.find?.((p: any) => p.proofUrl || p.img)?.img) || null;
@@ -615,7 +615,7 @@ export function InvoicesPage() {
                   <th key={c.h || 'actions'} className={`text-left text-[11px] font-display font-semibold text-navy-400 uppercase tracking-wide px-3 py-3 ${c.w}`}>{c.h}</th>
                 ))}</tr></thead>
               <tbody className="divide-y divide-surface-100">
-                {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((inv: any) => {
+                {filtered.map((inv: any) => {
                   const date = toDate(inv.date);
                   const st = STATUS_CONFIG[inv.status as InvoiceStatus] || { class: 'badge-gray', label: inv.status || 'N/A' };
                   const dt = (DELIVERY_TYPES as any).find((t: any) => t.value === inv.deliveryType || (inv.deliveryType === 'local' && t.value === 'local'));
@@ -677,31 +677,13 @@ export function InvoicesPage() {
           </div>
         )}
 
-        {/* Pagination Controls */}
-        {filtered.length > itemsPerPage && (
-          <div className="px-4 py-3 bg-surface-50 border-t border-surface-200 flex items-center justify-between">
-            <p className="text-xs text-navy-400 font-display">
-              Mostrando <span className="font-semibold text-navy-700">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="font-semibold text-navy-700">{Math.min(currentPage * itemsPerPage, filtered.length)}</span> de <span className="font-semibold text-navy-700">{filtered.length}</span> facturas
+        {/* Contador simple al pie — reemplaza la paginación. Útil para
+            ver cuántas facturas matchean los filtros actuales. */}
+        {filtered.length > 0 && (
+          <div className="px-4 py-2 bg-surface-50 dark:bg-dark-200/40 border-t border-surface-200 dark:border-dark-300">
+            <p className="text-xs text-navy-400 dark:text-gray-500 font-display text-center">
+              Mostrando <span className="font-semibold text-navy-700 dark:text-gray-300">{filtered.length}</span> {filtered.length === 1 ? 'factura' : 'facturas'}
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
-              >
-                Anterior
-              </button>
-              <div className="flex items-center px-2 text-xs font-mono font-bold text-navy-900">
-                {currentPage} / {Math.ceil(filtered.length / itemsPerPage)}
-              </div>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filtered.length / itemsPerPage)))}
-                disabled={currentPage >= Math.ceil(filtered.length / itemsPerPage)}
-                className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
-              >
-                Siguiente
-              </button>
-            </div>
           </div>
         )}
       </div>
