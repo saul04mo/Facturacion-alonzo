@@ -31,6 +31,18 @@ function fmtNum(n: number): string {
   return n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/**
+ * Formatea cantidades (no montos monetarios) sin decimales innecesarios:
+ * - Enteros → sin coma decimal: 15 → "15", 4 → "4"
+ * - Con decimales → muestra los necesarios, hasta 2: 1.5 → "1,5", 1.75 → "1,75"
+ *
+ * Para montos en dinero seguimos usando fmtNum que siempre fuerza 2 decimales,
+ * porque en contabilidad los céntimos importan aunque sean cero ($120,00 no $120).
+ */
+function fmtQty(n: number): string {
+  return n.toLocaleString('es-VE', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
 function fmtDate(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);
   return `${d}/${m}/${y}`;
@@ -63,8 +75,8 @@ export function generatePayrollDraftHTML(
   const employeeBlocks = period.employees.map((emp) => {
     const rows = emp.items.map((item) => {
       const cantUnit = (item.quantity !== undefined && item.unitPrice !== undefined)
-        ? `${fmtNum(item.quantity)} × ${fmtNum(item.unitPrice)}`
-        : (item.quantity !== undefined ? fmtNum(item.quantity) : '—');
+        ? `${fmtQty(item.quantity)} × ${fmtNum(item.unitPrice)}`
+        : (item.quantity !== undefined ? fmtQty(item.quantity) : '—');
       const signClass = item.isDeduction ? 'amt-deduction' : 'amt-credit';
       const sign = item.isDeduction ? '−' : '';
       const bsAmount = item.amount * rate;
