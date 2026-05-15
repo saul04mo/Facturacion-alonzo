@@ -807,6 +807,54 @@ export function InvoicesPage() {
               <div className="text-right"><p className="font-mono font-bold text-lg">{formatBoth(detailInvoice.total || 0).usd}</p>
                 <p className="font-mono text-sm text-white/60">{formatBoth(detailInvoice.total || 0).ves}</p></div></div></div>
 
+            {/* Desglose de métodos de pago. Cuando la factura tiene un
+                solo método, esta sección es redundante con el badge de la
+                tabla, pero cuando hay múltiples (ej: Pago Móvil + Efectivo)
+                acá se ven todos con su monto y referencia individual. */}
+            {Array.isArray(detailInvoice.payments) && detailInvoice.payments.length > 0 && (() => {
+              const rate = detailInvoice.exchangeRate || exchangeRate || 1;
+              return (
+                <div className="bg-surface-50 dark:bg-dark-200/40 border border-surface-200 dark:border-dark-300 rounded-lg p-3">
+                  <p className="text-[10px] font-display font-semibold text-navy-400 dark:text-gray-500 uppercase tracking-wider mb-2">
+                    {detailInvoice.payments.length === 1 ? 'Método de pago' : `Métodos de pago (${detailInvoice.payments.length})`}
+                  </p>
+                  <div className="divide-y divide-surface-200 dark:divide-dark-300/40">
+                    {detailInvoice.payments.map((p: any, i: number) => {
+                      // Monto efectivo en USD del pago: el amountUsd si vino
+                      // expresado en USD, o el amountVes convertido a USD si
+                      // vino en bolívares.
+                      const usdEquiv = (Number(p.amountUsd) || 0) + (Number(p.amountVes) || 0) / rate;
+                      const hasVes = Number(p.amountVes) > 0;
+                      return (
+                        <div key={i} className="flex justify-between items-start py-1.5 first:pt-0 last:pb-0">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                            <span className="text-sm font-display font-medium text-navy-800 dark:text-gray-200">
+                              {p.method || 'N/A'}
+                            </span>
+                            {p.ref && (
+                              <span className="font-mono text-[10px] text-navy-500 dark:text-gray-400 bg-surface-100 dark:bg-dark-300/60 px-1.5 py-0.5 rounded">
+                                Ref: {p.ref}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-mono font-semibold text-sm text-navy-800 dark:text-gray-200">
+                              {format(usdEquiv)}
+                            </p>
+                            {hasVes && (
+                              <p className="font-mono text-[10px] text-navy-400 dark:text-gray-500">
+                                Bs. {Number(p.amountVes).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Vuelto (cambio en efectivo) — SIEMPRE visible.
                 Para facturas nuevas: lee changeGiven (USD) directo.
                 Para facturas viejas sin el campo: lo calcula al vuelo
