@@ -405,6 +405,50 @@ export function generatePayrollDraftHTML(
  *   5. Quitar el iframe después de un delay (no antes, sino el diálogo
  *      se corta).
  */
+/**
+ * Descarga el cierre de nómina directamente como archivo PDF
+ * usando html2pdf.js (sin abrir el diálogo de impresión).
+ * El archivo se guarda con el nombre del período.
+ */
+export async function downloadPayrollDraft(
+  period: PayrollDraftPeriod,
+  business?: Partial<BusinessInfo>,
+): Promise<void> {
+  // Import dinámico para no bloquear el bundle principal
+  const html2pdf = (await import('html2pdf.js')).default;
+
+  const html = generatePayrollDraftHTML(period, business);
+
+  // Contenedor temporal invisible para html2pdf
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = '210mm'; // A4
+  container.innerHTML = html;
+  document.body.appendChild(container);
+
+  const periodNum = String(period.numericId).padStart(4, '0');
+  const safeName = period.name.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+  const filename = `Cierre_Nomina_PD-${periodNum}_${safeName}.pdf`;
+
+  try {
+    await html2pdf()
+      .set({
+        margin: [10, 10, 10, 10], // mm: top, right, bottom, left
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css'] },
+      })
+      .from(container)
+      .save();
+  } finally {
+    if (document.body.contains(container)) document.body.removeChild(container);
+  }
+}
+
 export function printPayrollDraft(
   period: PayrollDraftPeriod,
   business?: Partial<BusinessInfo>,

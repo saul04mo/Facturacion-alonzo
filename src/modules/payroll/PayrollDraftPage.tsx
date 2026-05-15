@@ -6,11 +6,11 @@ import {
   listPeriods, createPeriod, savePeriod, closePeriod, reopenPeriod, deletePeriod,
   recalcPeriod, calcEmployeeTotal,
 } from './payrollDraftService';
-import { printPayrollDraft } from './payrollDraftPdf';
+import { printPayrollDraft, downloadPayrollDraft } from './payrollDraftPdf';
 import type { PayrollDraftPeriod, PayrollDraftEmployee, PayrollDraftItem } from '@/types';
 import {
   Plus, Trash2, ChevronDown, ChevronRight, FileText, Printer, Save, Loader2,
-  Lock, Unlock, Calendar, Wallet, X as XIcon, Calculator, AlertCircle,
+  Lock, Unlock, Calendar, Wallet, X as XIcon, Calculator, AlertCircle, Download,
 } from 'lucide-react';
 
 // Helper para generar IDs locales de items (no se persisten — Firestore guarda
@@ -56,6 +56,7 @@ export function PayrollDraftPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   // Período actualmente seleccionado (estado local editable).
@@ -239,6 +240,18 @@ export function PayrollDraftPage() {
     printPayrollDraft(draft);
   }
 
+  async function handleDownload() {
+    if (!draft) return;
+    setDownloading(true);
+    try {
+      await downloadPayrollDraft(draft);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al generar el PDF.');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   // Editar la tasa de cambio guardada en el período. Solo permitido mientras
   // está abierto. Una vez cerrado, queda congelada para que las reimpresiones
   // sean consistentes con lo que el empleado firmó.
@@ -400,6 +413,17 @@ export function PayrollDraftPage() {
                     )}
                     <button onClick={handlePrint} className="btn-secondary text-xs">
                       <Printer size={13} /> PDF
+                    </button>
+                    <button
+                      onClick={handleDownload}
+                      disabled={downloading}
+                      className="btn-secondary text-xs"
+                      title="Descargar como archivo PDF"
+                    >
+                      {downloading
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : <Download size={13} />}
+                      Descargar
                     </button>
                     {readOnly ? (
                       <button onClick={handleReopen} className="btn-secondary text-xs">
