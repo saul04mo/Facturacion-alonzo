@@ -62,6 +62,8 @@ export function PayrollDraftPage() {
   const [draft, setDraft] = useState<PayrollDraftPeriod | null>(null);
   // Cuáles empleados están expandidos en el accordion.
   const [expandedEmps, setExpandedEmps] = useState<Set<string>>(new Set());
+  // Modal de confirmación genérico (reemplaza confirm() nativo que puede fallar).
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
   // Cargar lista al montar
   async function reload() {
@@ -130,15 +132,20 @@ export function PayrollDraftPage() {
 
   function removeEmployee(employeeId: string) {
     if (!draft) return;
-    if (!confirm('¿Quitar este empleado del período? Sus conceptos se perderán.')) return;
-    setDraft(recalcPeriod({
-      ...draft,
-      employees: draft.employees.filter((e) => e.employeeId !== employeeId),
-    }));
-    setExpandedEmps((prev) => {
-      const next = new Set(prev);
-      next.delete(employeeId);
-      return next;
+    setConfirmAction({
+      title: 'Quitar empleado',
+      message: '¿Quitar este empleado del período? Sus conceptos se perderán.',
+      onConfirm: () => {
+        setDraft(recalcPeriod({
+          ...draft,
+          employees: draft.employees.filter((e) => e.employeeId !== employeeId),
+        }));
+        setExpandedEmps((prev) => {
+          const next = new Set(prev);
+          next.delete(employeeId);
+          return next;
+        });
+      },
     });
   }
 
@@ -180,17 +187,22 @@ export function PayrollDraftPage() {
     }
   }
 
-  async function handleClose() {
+  function handleClose() {
     if (!draft) return;
-    if (!confirm(`Cerrar el período "${draft.name}"? No vas a poder editarlo hasta reabrirlo.`)) return;
-    try {
-      await savePeriod(draft, currentUser); // Guardar cambios pendientes primero
-      await closePeriod(draft.id, currentUser);
-      toast.success('Período cerrado.');
-      await reload();
-    } catch (e: any) {
-      toast.error(e?.message || 'Error al cerrar el período.');
-    }
+    setConfirmAction({
+      title: 'Cerrar período',
+      message: `Cerrar el período "${draft.name}"? No vas a poder editarlo hasta reabrirlo.`,
+      onConfirm: async () => {
+        try {
+          await savePeriod(draft, currentUser);
+          await closePeriod(draft.id, currentUser);
+          toast.success('Período cerrado.');
+          await reload();
+        } catch (e: any) {
+          toast.error(e?.message || 'Error al cerrar el período.');
+        }
+      },
+    });
   }
 
   async function handleReopen() {
@@ -204,17 +216,22 @@ export function PayrollDraftPage() {
     }
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!draft) return;
-    if (!confirm(`¿Borrar definitivamente "${draft.name}"? Esta acción no se puede deshacer.`)) return;
-    try {
-      await deletePeriod(draft.id);
-      toast.success('Período eliminado.');
-      setSelectedId(null);
-      await reload();
-    } catch (e: any) {
-      toast.error(e?.message || 'Error al borrar.');
-    }
+    setConfirmAction({
+      title: 'Borrar período',
+      message: `¿Borrar definitivamente "${draft.name}"? Esta acción no se puede deshacer.`,
+      onConfirm: async () => {
+        try {
+          await deletePeriod(draft.id);
+          toast.success('Período eliminado.');
+          setSelectedId(null);
+          await reload();
+        } catch (e: any) {
+          toast.error(e?.message || 'Error al borrar.');
+        }
+      },
+    });
   }
 
   function handlePrint() {
@@ -227,7 +244,7 @@ export function PayrollDraftPage() {
   // sean consistentes con lo que el empleado firmó.
   function handleEditRate() {
     if (!draft || readOnly) return;
-    const current = draft.exchangeRateUsed;
+    const current = draft.exchangeRateUsed ?? 0;
     const input = prompt(
       `Tasa de cambio EUR → VES del período "${draft.name}":\n\n` +
       `Esta tasa se aplica a todos los montos para mostrar el equivalente en Bs en el PDF.\n` +
@@ -370,7 +387,7 @@ export function PayrollDraftPage() {
                           ? 'Tasa congelada (período cerrado). Reabrir para editar.'
                           : 'Click para editar la tasa aplicada en este período'}
                       >
-                        💱 1€ = {draft.exchangeRateUsed.toFixed(2)} Bs {!readOnly && <span className="text-[9px] opacity-60">✎</span>}
+                        💱 1€ = {(draft.exchangeRateUsed ?? 0).toFixed(2)} Bs {!readOnly && <span className="text-[9px] opacity-60">✎</span>}
                       </button>
                     </div>
                   </div>
@@ -615,6 +632,25 @@ export function PayrollDraftPage() {
             setSelectedId(newId);
           }}
         />
+      )}
+
+      {/* Modal de confirmación genérico */}
+      {confirmAction && (
+        <Modal open onClose={() => setConfirmAction(null)} title={confirmAction.title} size="sm">
+          <p className="text-sm text-navy-700 dark:text-gray-300 mb-4">{confirmAction.message}</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setConfirmAction(null)} className="btn-secondary text-sm">Cancelar</button>
+            <button
+              onClick={() => {
+                confirmAction.onConfirm();
+                setConfirmAction(null);
+              }}
+              className="btn-primary text-sm bg-red-600 hover:bg-red-700"
+            >
+              Confirmar
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

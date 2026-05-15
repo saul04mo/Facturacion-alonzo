@@ -379,13 +379,7 @@ export function generatePayrollDraftHTML(
       <span class="lbl main">Total general del período</span>
       <span class="val main">$${fmtNum(period.grandTotal)}</span>
     </div>
-    ${showBs ? `
-    <div class="row">
-      <span class="lbl">Equivalente en bolívares</span>
-      <span class="val">Bs. ${fmtNum(grandTotalBs)}</span>
-    </div>` : ''}
   </div>
-  ${showBs ? `<div class="rate-info">Tasa aplicada: 1 € = ${fmtNum(rate)} Bs</div>` : ''}
 
   <div class="footer">
     Documento informativo · ${biz.razonSocial} · ${emittedAt}

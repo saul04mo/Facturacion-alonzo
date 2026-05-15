@@ -62,7 +62,22 @@ export function recalcPeriod(period: PayrollDraftPeriod): PayrollDraftPeriod {
 
 export async function listPeriods(): Promise<PayrollDraftPeriod[]> {
   const snap = await getDocs(query(collection(db, COL), orderBy('createdAt', 'desc')));
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PayrollDraftPeriod, 'id'>) }));
+  return snap.docs.map((d) => {
+    const data = d.data() as Omit<PayrollDraftPeriod, 'id'>;
+    return {
+      id: d.id,
+      ...data,
+      // Normalize fields that may be missing in older documents
+      exchangeRateUsed: data.exchangeRateUsed ?? 0,
+      employees: (data.employees ?? []).map((emp) => ({
+        ...emp,
+        items: emp.items ?? [],
+        total: emp.total ?? 0,
+      })),
+      grandTotal: data.grandTotal ?? 0,
+      status: data.status ?? 'open',
+    };
+  });
 }
 
 // ════════════════════════════════════════════════
