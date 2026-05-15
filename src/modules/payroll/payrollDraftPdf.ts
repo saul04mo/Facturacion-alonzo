@@ -129,16 +129,25 @@ export function generatePayrollDraftHTML(
 <head>
 <meta charset="UTF-8" />
 <title>Cierre de Nómina · ${escapeHtml(period.name)} · ${biz.razonSocial}</title>
+</head>
+<body>
 <style>
   @page { margin: 18mm 15mm; }
   * { box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 11pt;
-    color: #222;
+    color: #222 !important;
     margin: 0;
     padding: 0;
-    background: #fff;
+    background: #fff !important;
+  }
+  .pdf-content {
+    background: #fff !important;
+    color: #222 !important;
+    width: 210mm;
+    margin: 0 auto;
+    padding: 10mm;
   }
   .header {
     display: flex;
@@ -263,8 +272,6 @@ export function generatePayrollDraftHTML(
     padding: 2mm 3mm;
     margin: 0;
   }
-  /* Bloque de firma al final de cada empleado.
-     page-break-inside avoid para que no se corte entre páginas. */
   .signature-block {
     margin-top: 10mm;
     margin-bottom: 4mm;
@@ -332,13 +339,6 @@ export function generatePayrollDraftHTML(
   .grand-total .val.main {
     font-size: 16pt;
   }
-  .rate-info {
-    text-align: center;
-    font-size: 8pt;
-    color: #888;
-    font-style: italic;
-    margin-top: 2mm;
-  }
   .footer {
     margin-top: 10mm;
     padding-top: 4mm;
@@ -351,8 +351,9 @@ export function generatePayrollDraftHTML(
     body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   }
 </style>
-</head>
-<body>
+<div class="pdf-content" id="pdf-root">
+
+
   <div class="header">
     <div class="biz">
       <div class="name">${biz.razonSocial}</div>
@@ -384,6 +385,7 @@ export function generatePayrollDraftHTML(
   <div class="footer">
     Documento informativo · ${biz.razonSocial} · ${emittedAt}
   </div>
+</div>
 </body>
 </html>`;
 }
@@ -445,19 +447,20 @@ export async function downloadPayrollDraft(
 
     await html2pdf()
       .set({
-        margin: [10, 10, 10, 10],
+        margin: [0, 0, 0, 0], // El margen lo maneja el CSS interno
         filename,
-        image: { type: 'jpeg', quality: 0.98 },
+        image: { type: 'jpeg', quality: 1.0 },
         html2canvas: { 
-          scale: 2, 
+          scale: 3, 
           useCORS: true, 
           logging: false,
-          windowWidth: 800 // Forzamos un ancho para que el layout sea consistente
+          backgroundColor: '#ffffff',
+          windowWidth: 1024,
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css'] },
       })
-      .from(doc.body)
+      .from(doc.getElementById('pdf-root'))
       .save();
   } finally {
     if (document.body.contains(iframe)) document.body.removeChild(iframe);
