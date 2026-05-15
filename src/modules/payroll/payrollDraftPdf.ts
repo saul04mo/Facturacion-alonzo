@@ -392,6 +392,10 @@ export function generatePayrollDraftHTML(
       <span class="lbl main">Total general del período</span>
       <span class="val main">$${fmtNum(period.grandTotal)}</span>
     </div>
+    <div class="row">
+      <span class="lbl">Equivalente en bolívares</span>
+      <span class="val">Bs ${fmtNum(grandTotalBs)}</span>
+    </div>
   </div>
 
   <div class="footer">
@@ -488,6 +492,10 @@ export async function downloadPayrollDraft(
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     await html2pdf()
+      // El tipo Html2PdfOptions del paquete está incompleto y no incluye
+      // 'pagebreak' (que sí es una opción válida en runtime — ver docs:
+      // https://github.com/eKoopmans/html2pdf.js#options). Casteamos a any
+      // para que TS no se queje al pasarlo.
       .set({
         margin: [10, 10, 10, 10], // mm — pequeño margen de seguridad
         filename,
@@ -504,7 +512,7 @@ export async function downloadPayrollDraft(
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] },
-      })
+      } as any)
       .from(wrapper.firstElementChild as HTMLElement) // el #pdf-root
       .save();
   } finally {
