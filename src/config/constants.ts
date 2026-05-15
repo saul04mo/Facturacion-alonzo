@@ -42,6 +42,7 @@ export const ALL_PERMISSIONS = {
   canAccessInformes: 'Acceder a Informes',
   canManageOffers: 'Gestionar Ofertas',
   canAccessNomina: 'Acceder a Nómina',
+  canAccessCierreNomina: 'Acceder a Cierre de Nómina',
   canAccessSettings: 'Acceder a Configuración',
 } as const;
 
@@ -57,7 +58,8 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<PermissionKey, boolean>>
     canCreateClients: true, canEditClients: true, canDeleteClients: false,
     canProcessReturns: false, canEditInvoices: false, canApplyDiscounts: true,
     canUpdateExchangeRate: false, canConfirmDeliveryPayment: false, canAddAbono: false,
-    canAccessInformes: false, canManageOffers: false, canAccessNomina: false, canAccessSettings: false,
+    canAccessInformes: false, canManageOffers: false, canAccessNomina: false,
+    canAccessCierreNomina: false, canAccessSettings: false,
   },
   administrador: Object.keys(ALL_PERMISSIONS).reduce(
     (acc, key) => ({ ...acc, [key]: true }), {} as Record<PermissionKey, boolean>,
