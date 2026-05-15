@@ -414,38 +414,53 @@ export async function downloadPayrollDraft(
   period: PayrollDraftPeriod,
   business?: Partial<BusinessInfo>,
 ): Promise<void> {
-  // Import dinámico para no bloquear el bundle principal
   const html2pdf = (await import('html2pdf.js')).default;
-
   const html = generatePayrollDraftHTML(period, business);
 
-  // Contenedor temporal invisible para html2pdf
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
-  container.style.top = '0';
-  container.style.width = '210mm'; // A4
-  container.innerHTML = html;
-  document.body.appendChild(container);
+  // Usamos un iframe para renderizar el HTML completo de forma segura
+  // (incluyendo <style> y estructura completa) antes de pasarlo a html2pdf.
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.left = '-9999px';
+  iframe.style.visibility = 'hidden';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    throw new Error('No se pudo inicializar el generador de PDF.');
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
 
   const periodNum = String(period.numericId).padStart(4, '0');
   const safeName = period.name.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
   const filename = `Cierre_Nomina_PD-${periodNum}_${safeName}.pdf`;
 
   try {
+    // Esperamos un poco a que el CSS se aplique dentro del iframe
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     await html2pdf()
       .set({
-        margin: [10, 10, 10, 10], // mm: top, right, bottom, left
+        margin: [10, 10, 10, 10],
         filename,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        html2canvas: { 
+          scale: 2, 
+          useCORS: true, 
+          logging: false,
+          windowWidth: 800 // Forzamos un ancho para que el layout sea consistente
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css'] },
       })
-      .from(container)
+      .from(doc.body)
       .save();
   } finally {
-    if (document.body.contains(container)) document.body.removeChild(container);
+    if (document.body.contains(iframe)) document.body.removeChild(iframe);
   }
 }
 
