@@ -79,6 +79,12 @@ export const STATUS_CONFIG: Record<
     tailwindBg: 'bg-amber-100 dark:bg-amber-900/30',
     tailwindText: 'text-amber-700 dark:text-amber-300',
   },
+  Pendiente: {
+    class: 'badge-purple',
+    label: 'Pendiente',
+    tailwindBg: 'bg-purple-100 dark:bg-purple-900/30',
+    tailwindText: 'text-purple-700 dark:text-purple-300',
+  },
   Finalizado: {
     class: 'badge-green',
     label: 'Finalizado',

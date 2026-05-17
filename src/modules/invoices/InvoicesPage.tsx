@@ -24,7 +24,7 @@ import {
 // (los browsers usan colores del SO). En su lugar, cada opción se renderiza
 // como un badge pintado del color del estado, lo que da contraste claro
 // en cualquier modo (light/dark).
-const FLOW_STATES: InvoiceStatus[] = ['Por Preparar', 'Preparado', 'Finalizado'];
+const FLOW_STATES: InvoiceStatus[] = ['Por Preparar', 'Preparado', 'Pendiente', 'Finalizado'];
 
 function StatusFlowDropdown({
   status,
@@ -498,6 +498,7 @@ export function InvoicesPage() {
                   <option value="all">Activas</option>
                   <option value="Por Preparar">Por Preparar</option>
                   <option value="Preparado">Preparado</option>
+                  <option value="Pendiente">Pendiente</option>
                   <option value="Finalizado">Finalizado</option>
                   <option value="Pendiente de pago">Crédito</option>
                   <option value="Devolución">Devolución</option>

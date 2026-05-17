@@ -258,6 +258,7 @@ export interface ClientSnapshot {
 export type InvoiceStatus =
   | 'Por Preparar'
   | 'Preparado'
+  | 'Pendiente'
   | 'Finalizado'
   | 'Pendiente de pago'
   | 'Devolución'
