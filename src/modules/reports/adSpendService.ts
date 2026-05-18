@@ -165,11 +165,38 @@ export function computeDailySalesByGender(
   const genderByProduct = new Map<string, 'Hombre' | 'Mujer'>();
   // Lookup productId → variants para el fallback de precio
   const productById = new Map<string, Product>();
+  // ── DIAGNÓSTICO: trackear productos con gender raro ─────────────────
+  // Cuando un producto tiene gender vacío, mal escrito o con casing raro
+  // queda fuera del split y se va a la columna 'sin clasificar'. Esto
+  // explica por qué a veces HOMBRE + MUJER < JUNTOS sin razón aparente.
+  const oddGenderSamples: Array<{ id: string; name: string; gender: any }> = [];
+
   for (const p of products) {
     productById.set(p.id, p);
-    if (p.gender === 'Hombre' || p.gender === 'Mujer') {
-      genderByProduct.set(p.id, p.gender);
+    // Aceptar 'Hombre', 'hombre', 'HOMBRE', 'Mujer', 'mujer', etc.
+    // — normalizamos a string lowercase trim para que sobreviva
+    // pequeñas inconsistencias de data entry.
+    const raw = (p as any).gender;
+    if (typeof raw === 'string') {
+      const normalized = raw.trim().toLowerCase();
+      if (normalized === 'hombre') {
+        genderByProduct.set(p.id, 'Hombre');
+      } else if (normalized === 'mujer') {
+        genderByProduct.set(p.id, 'Mujer');
+      } else if (normalized !== '' && oddGenderSamples.length < 20) {
+        // Valor presente pero no matchea — typo o variante rara.
+        // Coleccionamos hasta 20 ejemplos para logging.
+        oddGenderSamples.push({ id: p.id, name: p.name || '(sin nombre)', gender: raw });
+      }
     }
+  }
+
+  if (oddGenderSamples.length > 0) {
+    console.warn(
+      `[adSpend] ${oddGenderSamples.length} productos con gender no reconocido (valores válidos: 'Hombre' o 'Mujer'). ` +
+      `Estos productos no se atribuyen al split por género — sus ventas suman a JUNTOS pero no a HOMBRE ni MUJER.`,
+      oddGenderSamples,
+    );
   }
 
   /**
