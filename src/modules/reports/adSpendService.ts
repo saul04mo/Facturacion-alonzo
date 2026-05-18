@@ -208,13 +208,28 @@ export function computeDailySalesByGender(
       out.set(ymd, bucket);
     }
 
-    // ── Primera pasada: clasificar items por género ─────────────────
-    // Para cada item se calcula su monto neto (priceAtSale × qty menos
-    // descuentos de item). Si el producto tiene gender 'Hombre' o 'Mujer'
-    // se acumula en menGross/womenGross. Si no tiene gender (producto
-    // viejo sin migración, o categoría especial), se acumula en
-    // otherGross — la venta del día sigue contando para 'JUNTOS' pero no
-    // se atribuye al split por género.
+    // ── salesTotal: viene directamente del campo total de la factura ─
+    // Este es el número FIDEDIGNO de lo que se cobró por productos ese
+    // día — coincide exactamente con la columna VENTAS del panel de
+    // Facturas. Le restamos deliveryCostUsd porque el reporte de
+    // Publicidad mide venta de productos, no servicios de envío.
+    //
+    // Antes calculábamos salesTotal sumando los items × priceAtSale, lo
+    // cual daba números menores cuando había items con producto
+    // eliminado del catálogo (priceAtSale = 0 tras migración) o sin
+    // priceAtSale snapshoteado. Esto generaba diferencias inexplicables
+    // con el panel principal.
+    const invTotal = Number(inv.total) || 0;
+    const invDelivery = Number(inv.deliveryCostUsd) || 0;
+    const invSales = Math.max(0, invTotal - invDelivery);
+    bucket.salesTotal += invSales;
+
+    // ── Split por género: cálculo item-por-item ──────────────────────
+    // Esto es una APROXIMACIÓN del split entre Hombre y Mujer. Si un
+    // item no tiene priceAtSale recuperable o su producto fue eliminado
+    // del catálogo, no se puede atribuir al género correcto. Por eso
+    // salesMen + salesWomen puede ser MENOR que salesTotal — la
+    // diferencia son items sin clasificar (delivery aparte, ya excluido).
     let menGross = 0, womenGross = 0, otherGross = 0;
     let menItemDiscount = 0, womenItemDiscount = 0, otherItemDiscount = 0;
     for (const item of inv.items || []) {
@@ -242,20 +257,15 @@ export function computeDailySalesByGender(
 
     // El descuento general (totalDiscount) se reparte proporcional al
     // peso de cada lado dentro del subtotal post-descuentos de item.
-    // Ahora también se distribuye a 'other' para que JUNTOS sea correcto.
     const generalDiscount = calcDiscountAmount(subtotalAfterItem, inv.totalDiscount);
-    let menGeneralDisc = 0, womenGeneralDisc = 0, otherGeneralDisc = 0;
+    let menGeneralDisc = 0, womenGeneralDisc = 0;
     if (subtotalAfterItem > 0 && generalDiscount > 0) {
       menGeneralDisc = generalDiscount * (menAfterItem / subtotalAfterItem);
       womenGeneralDisc = generalDiscount * (womenAfterItem / subtotalAfterItem);
-      otherGeneralDisc = generalDiscount * (otherAfterItem / subtotalAfterItem);
     }
 
-    bucket.salesMen += menAfterItem - menGeneralDisc;
-    bucket.salesWomen += womenAfterItem - womenGeneralDisc;
-    bucket.salesTotal += (menAfterItem - menGeneralDisc)
-      + (womenAfterItem - womenGeneralDisc)
-      + (otherAfterItem - otherGeneralDisc);
+    bucket.salesMen += Math.max(0, menAfterItem - menGeneralDisc);
+    bucket.salesWomen += Math.max(0, womenAfterItem - womenGeneralDisc);
   }
   return out;
 }
