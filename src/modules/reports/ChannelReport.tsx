@@ -77,6 +77,16 @@ function computeStats(invoices: any[]) {
   // string vacío, o valor legacy que ya no se usa (ej. 'envio' viejo).
   const unclassified = emptyStats();
   const unclassifiedTypes = new Map<string, number>(); // valor → cantidad
+  // Lista de facturas problemáticas con datos mínimos para mostrarlas
+  // en el banner: número, fecha, cliente, deliveryType, monto.
+  const unclassifiedInvoices: Array<{
+    id: string;
+    numericId: number;
+    deliveryType: string;
+    date: Date | null;
+    clientName: string;
+    total: number;
+  }> = [];
 
   for (const inv of invoices) {
     if (!isCountableSale(inv.status)) continue;
@@ -89,6 +99,14 @@ function computeStats(invoices: any[]) {
       addToStats(unclassified, inv);
       const key = dt && dt.trim() !== '' ? dt : '(sin deliveryType)';
       unclassifiedTypes.set(key, (unclassifiedTypes.get(key) || 0) + 1);
+      unclassifiedInvoices.push({
+        id: inv.id,
+        numericId: Number(inv.numericId) || 0,
+        deliveryType: key,
+        date: toDate(inv.date),
+        clientName: inv.clientSnapshot?.name || inv.clientSnapshot?.nombre || 'Cliente general',
+        total: Number(inv.total) || 0,
+      });
       continue;
     }
 
@@ -124,7 +142,15 @@ function computeStats(invoices: any[]) {
     return { orders: acc.orders + s.orders, sales: acc.sales + s.sales, delivery: acc.delivery + s.delivery, total: acc.total + s.total };
   }, emptyStats());
 
-  return { byType, storeAgg, deliveryAgg, daily, unclassified, unclassifiedTypes };
+  // Ordenar la lista por fecha desc (más recientes primero) para que la
+  // más relevante aparezca arriba en el banner.
+  unclassifiedInvoices.sort((a, b) => {
+    const ta = a.date?.getTime() || 0;
+    const tb = b.date?.getTime() || 0;
+    return tb - ta;
+  });
+
+  return { byType, storeAgg, deliveryAgg, daily, unclassified, unclassifiedTypes, unclassifiedInvoices };
 }
 
 // ─── Subcomponente: tarjeta resumen ───────────────────────────────────────────
@@ -250,6 +276,9 @@ export function ChannelReport() {
 
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // Toggle del banner de facturas sin clasificar: empieza colapsado
+  // (solo cuenta y suma), expande la lista al hacer click.
+  const [showUnclassifiedList, setShowUnclassifiedList] = useState(false);
 
   async function loadMonth(y: number, m: number) {
     setLoading(true);
@@ -333,26 +362,80 @@ export function ChannelReport() {
           {/* ── Aviso de facturas con deliveryType desconocido ── */}
           {stats.unclassified.orders > 0 && (
             <div className="rounded-lg border border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
-              <p className="text-sm font-display font-semibold text-amber-800 dark:text-amber-300">
-                ⚠️ Hay {stats.unclassified.orders}{' '}
-                {stats.unclassified.orders === 1 ? 'factura' : 'facturas'} sin canal de venta
-                clasificado (${stats.unclassified.total.toFixed(2)})
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-1">
-                Estas facturas tienen valores de <code>deliveryType</code> que el panel no
-                reconoce, así que no aparecen en ninguna de las dos secciones de abajo.
-                Esto explica la diferencia con el total del panel de Facturas.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {[...stats.unclassifiedTypes.entries()].map(([type, count]) => (
-                  <span
-                    key={type}
-                    className="font-mono text-[11px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-800/40 text-amber-800 dark:text-amber-200"
-                  >
-                    {type}: {count}
-                  </span>
-                ))}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <p className="text-sm font-display font-semibold text-amber-800 dark:text-amber-300">
+                    ⚠️ Hay {stats.unclassified.orders}{' '}
+                    {stats.unclassified.orders === 1 ? 'factura' : 'facturas'} sin canal de venta
+                    clasificado (${stats.unclassified.total.toFixed(2)})
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-1">
+                    Tienen valores de <code>deliveryType</code> que el panel no reconoce, así que
+                    no aparecen en ninguna de las dos secciones de abajo. Eso explica la
+                    diferencia con el total del panel de Facturas.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[...stats.unclassifiedTypes.entries()].map(([type, count]) => (
+                      <span
+                        key={type}
+                        className="font-mono text-[11px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-800/40 text-amber-800 dark:text-amber-200"
+                      >
+                        {type}: {count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowUnclassifiedList((v) => !v)}
+                  className="shrink-0 text-xs font-display font-semibold px-3 py-1.5 rounded-md bg-amber-200 dark:bg-amber-800/40 text-amber-900 dark:text-amber-200 hover:bg-amber-300 dark:hover:bg-amber-700/50 transition-colors"
+                >
+                  {showUnclassifiedList ? 'Ocultar' : 'Ver facturas'}
+                </button>
               </div>
+
+              {/* Lista expandible de facturas problemáticas */}
+              {showUnclassifiedList && (
+                <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700/40">
+                  <p className="text-[10px] font-display font-semibold text-amber-700 dark:text-amber-400/80 uppercase tracking-wider mb-2">
+                    Lista completa ({stats.unclassifiedInvoices.length})
+                  </p>
+                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                    {stats.unclassifiedInvoices.map((inv) => (
+                      <div
+                        key={inv.id}
+                        className="flex items-center justify-between gap-3 text-xs px-2 py-1.5 rounded bg-white/60 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-700/30"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="font-mono font-bold text-amber-900 dark:text-amber-200 shrink-0">
+                            FACT-{inv.numericId}
+                          </span>
+                          <span className="text-navy-600 dark:text-gray-400 truncate">
+                            {inv.clientName}
+                          </span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-200/60 dark:bg-amber-800/40 text-amber-800 dark:text-amber-300 shrink-0">
+                            {inv.deliveryType}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-navy-400 font-mono">
+                            {inv.date ? inv.date.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit' }) : '—'}
+                          </span>
+                          <span className="font-mono font-bold text-amber-900 dark:text-amber-200">
+                            ${inv.total.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400/60 mt-2 italic">
+                    💡 Andá al panel de Facturas, buscá por el número FACT-XXXX, abrí su detalle
+                    y editala. O directo en Firestore → colección <code>invoices</code> → buscá el doc
+                    y ajustá el campo <code>deliveryType</code> a uno válido: <code>showroom</code>,
+                    {' '}<code>pickup</code>, <code>pick-up</code>, <code>local</code>,
+                    {' '}<code>national</code> o <code>web</code>.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
