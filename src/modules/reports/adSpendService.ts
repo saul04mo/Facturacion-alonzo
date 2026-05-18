@@ -56,7 +56,17 @@ export interface DayAdSpend {
 export interface DaySales {
   /** Ingreso bruto por items de género 'Hombre' (con descuentos de item aplicados). */
   salesMen: number;
+  /** Ingreso bruto por items de género 'Mujer' (con descuentos de item aplicados). */
   salesWomen: number;
+  /**
+   * Total REAL del día: suma de TODOS los items vendidos, incluyendo los
+   * que tienen un producto sin género asignado o un producto eliminado
+   * del catálogo. Se usa para la columna 'JUNTOS' del reporte de
+   * publicidad para que refleje las ventas reales del día, no solo las
+   * etiquetadas. Si salesMen + salesWomen < salesTotal, la diferencia
+   * son items sin género que no se pueden atribuir a un lado u otro.
+   */
+  salesTotal: number;
 }
 
 // ════════════════════════════════════════════════
@@ -168,25 +178,32 @@ export function computeDailySalesByGender(
 
     let bucket = out.get(ymd);
     if (!bucket) {
-      bucket = { salesMen: 0, salesWomen: 0 };
+      bucket = { salesMen: 0, salesWomen: 0, salesTotal: 0 };
       out.set(ymd, bucket);
     }
 
-    // Primera pasada: acumular por género el monto bruto (precio×cantidad)
-    // y los descuentos a nivel item de cada lado.
-    let menGross = 0, womenGross = 0;
-    let menItemDiscount = 0, womenItemDiscount = 0;
+    // ── Primera pasada: clasificar items por género ─────────────────
+    // Para cada item se calcula su monto neto (priceAtSale × qty menos
+    // descuentos de item). Si el producto tiene gender 'Hombre' o 'Mujer'
+    // se acumula en menGross/womenGross. Si no tiene gender (producto
+    // viejo sin migración, o categoría especial), se acumula en
+    // otherGross — la venta del día sigue contando para 'JUNTOS' pero no
+    // se atribuye al split por género.
+    let menGross = 0, womenGross = 0, otherGross = 0;
+    let menItemDiscount = 0, womenItemDiscount = 0, otherItemDiscount = 0;
     for (const item of inv.items || []) {
       const gender = genderByProduct.get(item.productId);
-      if (!gender) continue; // producto eliminado o sin género — se descarta
       const lineGross = (item.priceAtSale ?? 0) * (item.quantity ?? 0);
       const itemDisc = calcDiscountAmount(lineGross, item.discount);
       if (gender === 'Hombre') {
         menGross += lineGross;
         menItemDiscount += itemDisc;
-      } else {
+      } else if (gender === 'Mujer') {
         womenGross += lineGross;
         womenItemDiscount += itemDisc;
+      } else {
+        otherGross += lineGross;
+        otherItemDiscount += itemDisc;
       }
     }
 
@@ -194,21 +211,25 @@ export function computeDailySalesByGender(
     // del invoice (totalDiscount, que es a nivel comprobante).
     const menAfterItem = menGross - menItemDiscount;
     const womenAfterItem = womenGross - womenItemDiscount;
-    const subtotalAfterItem = menAfterItem + womenAfterItem;
+    const otherAfterItem = otherGross - otherItemDiscount;
+    const subtotalAfterItem = menAfterItem + womenAfterItem + otherAfterItem;
 
-    // El descuento general (totalDiscount) se reparte entre Hombre y Mujer
-    // proporcional al peso de cada lado dentro del subtotal post-descuentos
-    // de item. Para invoices que solo tienen un género, todo el descuento
-    // general cae sobre ese lado. Para invoices mixtos, se reparte por peso.
+    // El descuento general (totalDiscount) se reparte proporcional al
+    // peso de cada lado dentro del subtotal post-descuentos de item.
+    // Ahora también se distribuye a 'other' para que JUNTOS sea correcto.
     const generalDiscount = calcDiscountAmount(subtotalAfterItem, inv.totalDiscount);
-    let menGeneralDisc = 0, womenGeneralDisc = 0;
+    let menGeneralDisc = 0, womenGeneralDisc = 0, otherGeneralDisc = 0;
     if (subtotalAfterItem > 0 && generalDiscount > 0) {
       menGeneralDisc = generalDiscount * (menAfterItem / subtotalAfterItem);
       womenGeneralDisc = generalDiscount * (womenAfterItem / subtotalAfterItem);
+      otherGeneralDisc = generalDiscount * (otherAfterItem / subtotalAfterItem);
     }
 
     bucket.salesMen += menAfterItem - menGeneralDisc;
     bucket.salesWomen += womenAfterItem - womenGeneralDisc;
+    bucket.salesTotal += (menAfterItem - menGeneralDisc)
+      + (womenAfterItem - womenGeneralDisc)
+      + (otherAfterItem - otherGeneralDisc);
   }
   return out;
 }

@@ -137,7 +137,7 @@ export function AdSpendReport() {
 
   const rows = useMemo(() => {
     return days.map((ymd) => {
-      const sales = salesMap.get(ymd) || { salesMen: 0, salesWomen: 0 };
+      const sales = salesMap.get(ymd) || { salesMen: 0, salesWomen: 0, salesTotal: 0 };
       const draft = drafts.get(ymd) || { men: '', women: '' };
       const spendMen = parseFloat(draft.men) || 0;
       const spendWomen = parseFloat(draft.women) || 0;
@@ -147,7 +147,14 @@ export function AdSpendReport() {
       const pctMen = sales.salesMen > 0 ? (spendMen / sales.salesMen) * 100 : null;
       const pctWomen = sales.salesWomen > 0 ? (spendWomen / sales.salesWomen) * 100 : null;
 
-      const salesTotal = sales.salesMen + sales.salesWomen;
+      // ⚠️ Antes: salesTotal = salesMen + salesWomen → ignoraba productos
+      // sin género asignado en el catálogo, así que días con ventas reales
+      // aparecían vacíos en la columna JUNTOS.
+      // Ahora: usamos sales.salesTotal del service que incluye TODAS las
+      // ventas del día (Hombre + Mujer + sin clasificar). Si tenés
+      // productos sin gender en Firestore, Hombre + Mujer puede ser MENOR
+      // que JUNTOS — la diferencia son items sin clasificar.
+      const salesTotal = sales.salesTotal;
       const spendTotal = spendMen + spendWomen;
       const netTotal = salesTotal - spendTotal;
       const pctTotal = salesTotal > 0 ? (spendTotal / salesTotal) * 100 : null;
