@@ -161,6 +161,41 @@ export function computeDailySalesByGender(
   invoices: Invoice[],
   products: Product[],
 ): Map<string, DaySales> {
+  // ── DIAGNÓSTICO TEMPORAL ────────────────────────────────────────────
+  // Borrar este bloque cuando se resuelva el problema reportado (días
+  // con ventas reales aparecen vacíos en el panel de Publicidad).
+  console.group('🔍 [adSpend] computeDailySalesByGender');
+  console.log(`Total invoices recibidas: ${invoices.length}`);
+  console.log(`Total productos en catálogo: ${products.length}`);
+  // Distribución por fecha de las invoices recibidas
+  const byDate = new Map<string, number>();
+  let withoutDate = 0;
+  let nonCountable = 0;
+  const statusCounts: Record<string, number> = {};
+  for (const inv of invoices) {
+    statusCounts[inv.status] = (statusCounts[inv.status] || 0) + 1;
+    if (!isCountableSale(inv.status)) { nonCountable++; continue; }
+    const d = toDate(inv.date);
+    if (!d) { withoutDate++; continue; }
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const ymd = `${y}-${m}-${day}`;
+    byDate.set(ymd, (byDate.get(ymd) || 0) + 1);
+  }
+  console.log('Invoices por día (countable):', Object.fromEntries([...byDate.entries()].sort()));
+  console.log('Status counts:', statusCounts);
+  if (nonCountable > 0) console.warn(`${nonCountable} invoices descartadas por estado no-countable`);
+  if (withoutDate > 0) console.warn(`${withoutDate} invoices descartadas por fecha inválida`);
+  // Cuántos productos tienen gender
+  let productsWithGender = 0;
+  for (const p of products) {
+    if (p.gender === 'Hombre' || p.gender === 'Mujer') productsWithGender++;
+  }
+  console.log(`Productos con gender asignado: ${productsWithGender} de ${products.length}`);
+  console.groupEnd();
+  // ── FIN DIAGNÓSTICO ─────────────────────────────────────────────────
+
   // Lookup rápido productId → gender
   const genderByProduct = new Map<string, 'Hombre' | 'Mujer'>();
   for (const p of products) {
