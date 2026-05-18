@@ -912,6 +912,9 @@ export function SettingsPage() {
 
               {/* Backfill del campo changeGiven en facturas viejas */}
               <ChangeGivenMigrationCard />
+
+              {/* Backfill del campo priceAtSale en items de facturas viejas */}
+              <PriceAtSaleMigrationCard />
             </div>
           </div>
         )}
@@ -1290,6 +1293,128 @@ function ChangeGivenMigrationCard() {
           {result.totalChangeUsd > 0 && (
             <p className="pt-1 border-t border-surface-200 dark:border-dark-300 text-emerald-700 dark:text-emerald-400">
               💰 Total de vuelto identificado: ${result.totalChangeUsd.toFixed(2)}
+            </p>
+          )}
+          <button onClick={() => setResult(null)} className="btn-ghost text-[10px] mt-2">
+            Cerrar resumen
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MIGRACIÓN: priceAtSale + productName + variantLabel en items viejos
+// ════════════════════════════════════════════════════════════════════
+// Las facturas creadas antes del fix que agregó snapshot de precio en
+// cada item no tienen ese campo. Eso hace que los reportes que
+// calculan ventas por item (panel de Publicidad principalmente) las
+// cuenten como cero. Esta card permite ejecutar el backfill con un
+// click; lee productos del store (en memoria, sin extra reads) y
+// actualiza todas las invoices que lo necesiten.
+
+function PriceAtSaleMigrationCard() {
+  const toast = useToast();
+  const products = useAppStore((s) => s.products);
+  const [running, setRunning] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [progress, setProgress] = useState<any>(null);
+  const [result, setResult] = useState<any>(null);
+
+  async function handleRun() {
+    setRunning(true);
+    setProgress(null);
+    setResult(null);
+    try {
+      const { migratePriceAtSale } = await import('@/utils/migrations/migratePriceAtSale');
+      const r = await migratePriceAtSale(products, (p) => setProgress(p));
+      setResult(r);
+      if (r.itemsBackfilled > 0) {
+        toast.success(`${r.invoicesUpdated} facturas actualizadas, ${r.itemsBackfilled} items con precio recuperado.`);
+      } else {
+        toast.info('No había facturas para migrar.');
+      }
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || 'Error en la migración.');
+    } finally {
+      setRunning(false);
+      setConfirm(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 bg-blue-50/40 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800/30 p-4">
+      <div className="flex items-start gap-3 mb-3">
+        <Database size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="font-display font-semibold text-sm text-navy-900 dark:text-gray-100">
+            Recuperar precio (priceAtSale) en facturas viejas
+          </p>
+          <p className="text-[11px] text-navy-500 dark:text-gray-400 mt-1 leading-relaxed">
+            Algunas facturas viejas tienen items sin el campo <code>priceAtSale</code>
+            (snapshot del precio al momento de la venta). Por eso los reportes
+            que calculan ventas por producto, especialmente el panel de
+            <b> Publicidad</b>, las cuentan como cero. Esta migración recorre
+            todas las facturas, encuentra los items sin precio, y los enriquece
+            con el precio actual del producto en el catálogo (más el nombre y la
+            variante si faltan). <b>Es idempotente</b>: si la corrés dos veces,
+            la segunda no toca nada porque la primera ya dejó todo completo.
+            <br /><br />
+            <b>Aviso:</b> el precio que se recupera es el ACTUAL del catálogo. Si
+            cambiaste el precio de un producto desde la venta original, el
+            reporte mostrará el precio nuevo para esa factura. Para facturas
+            nuevas (creadas después del fix) no hay problema — esas tienen el
+            precio snapshot real.
+          </p>
+        </div>
+      </div>
+
+      {!confirm && !running && !result && (
+        <button onClick={() => setConfirm(true)} className="btn-secondary text-xs">
+          Recuperar precios faltantes…
+        </button>
+      )}
+
+      {confirm && !running && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] text-blue-700 dark:text-blue-300 font-display font-semibold">
+            ¿Ejecutar? Recorre TODAS las facturas (puede tardar varios minutos):
+          </span>
+          <button onClick={handleRun} className="btn-primary text-xs">Sí, ejecutar</button>
+          <button onClick={() => setConfirm(false)} className="btn-ghost text-xs">Cancelar</button>
+        </div>
+      )}
+
+      {running && (
+        <div className="text-[11px] text-navy-600 dark:text-gray-400 font-mono space-y-0.5">
+          <p>⚙️ Procesando facturas…</p>
+          {progress && (
+            <>
+              <p>· Escaneadas: {progress.processed} / {progress.total}</p>
+              <p>· Modificadas hasta ahora: {progress.invoicesUpdated}</p>
+            </>
+          )}
+          <p className="text-amber-600 dark:text-amber-400">No cierres la pestaña hasta que termine.</p>
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-3 p-3 bg-white dark:bg-dark-200/40 rounded-lg border border-surface-200 dark:border-dark-300 text-[11px] font-mono space-y-1">
+          <p>📊 <b>Resumen:</b></p>
+          <p>· Facturas escaneadas: {result.total}</p>
+          <p className="text-emerald-700 dark:text-emerald-400">· Facturas actualizadas: {result.invoicesUpdated}</p>
+          <p className="text-emerald-700 dark:text-emerald-400">· Items con precio recuperado: {result.itemsBackfilled}</p>
+          <p className="text-gray-500">· Items que ya estaban OK: {result.itemsAlreadyOk}</p>
+          {result.itemsMissingProduct > 0 && (
+            <p className="text-amber-600 dark:text-amber-400">
+              ⚠️ Items con producto eliminado del catálogo (no recuperables): {result.itemsMissingProduct}
+            </p>
+          )}
+          {result.itemsMissingVariant > 0 && (
+            <p className="text-amber-600 dark:text-amber-400">
+              ⚠️ Items con variante eliminada del producto: {result.itemsMissingVariant}
             </p>
           )}
           <button onClick={() => setResult(null)} className="btn-ghost text-[10px] mt-2">
