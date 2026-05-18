@@ -161,47 +161,38 @@ export function computeDailySalesByGender(
   invoices: Invoice[],
   products: Product[],
 ): Map<string, DaySales> {
-  // ── DIAGNÓSTICO TEMPORAL ────────────────────────────────────────────
-  // Borrar este bloque cuando se resuelva el problema reportado (días
-  // con ventas reales aparecen vacíos en el panel de Publicidad).
-  console.group('🔍 [adSpend] computeDailySalesByGender');
-  console.log(`Total invoices recibidas: ${invoices.length}`);
-  console.log(`Total productos en catálogo: ${products.length}`);
-  // Distribución por fecha de las invoices recibidas
-  const byDate = new Map<string, number>();
-  let withoutDate = 0;
-  let nonCountable = 0;
-  const statusCounts: Record<string, number> = {};
-  for (const inv of invoices) {
-    statusCounts[inv.status] = (statusCounts[inv.status] || 0) + 1;
-    if (!isCountableSale(inv.status)) { nonCountable++; continue; }
-    const d = toDate(inv.date);
-    if (!d) { withoutDate++; continue; }
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const ymd = `${y}-${m}-${day}`;
-    byDate.set(ymd, (byDate.get(ymd) || 0) + 1);
-  }
-  console.log('Invoices por día (countable):', Object.fromEntries([...byDate.entries()].sort()));
-  console.log('Status counts:', statusCounts);
-  if (nonCountable > 0) console.warn(`${nonCountable} invoices descartadas por estado no-countable`);
-  if (withoutDate > 0) console.warn(`${withoutDate} invoices descartadas por fecha inválida`);
-  // Cuántos productos tienen gender
-  let productsWithGender = 0;
-  for (const p of products) {
-    if (p.gender === 'Hombre' || p.gender === 'Mujer') productsWithGender++;
-  }
-  console.log(`Productos con gender asignado: ${productsWithGender} de ${products.length}`);
-  console.groupEnd();
-  // ── FIN DIAGNÓSTICO ─────────────────────────────────────────────────
-
   // Lookup rápido productId → gender
   const genderByProduct = new Map<string, 'Hombre' | 'Mujer'>();
+  // Lookup productId → variants para el fallback de precio
+  const productById = new Map<string, Product>();
   for (const p of products) {
+    productById.set(p.id, p);
     if (p.gender === 'Hombre' || p.gender === 'Mujer') {
       genderByProduct.set(p.id, p.gender);
     }
+  }
+
+  /**
+   * Obtiene el precio efectivo de un item.
+   *
+   * Las facturas creadas con código nuevo guardan `priceAtSale` como snapshot
+   * en cada item — esto es lo correcto, sobrevive a cambios futuros de precio.
+   *
+   * Pero las facturas viejas (creadas antes de que se agregara ese fix) NO
+   * tienen el campo. Si las descartamos, días enteros aparecen en cero en el
+   * panel de Publicidad. Solución: fallback al precio ACTUAL del producto
+   * en el catálogo. No es perfecto si el producto cambió de precio desde la
+   * venta, pero es la única forma de no perder esa data en el reporte.
+   */
+  function getItemPrice(item: any): number {
+    if (typeof item.priceAtSale === 'number' && Number.isFinite(item.priceAtSale)) {
+      return item.priceAtSale;
+    }
+    const product = productById.get(item.productId);
+    if (!product) return 0;
+    const variant = (product.variants || [])[item.variantIndex];
+    if (!variant) return 0;
+    return Number(variant.price) || 0;
   }
 
   const out = new Map<string, DaySales>();
@@ -228,7 +219,7 @@ export function computeDailySalesByGender(
     let menItemDiscount = 0, womenItemDiscount = 0, otherItemDiscount = 0;
     for (const item of inv.items || []) {
       const gender = genderByProduct.get(item.productId);
-      const lineGross = (item.priceAtSale ?? 0) * (item.quantity ?? 0);
+      const lineGross = getItemPrice(item) * (item.quantity ?? 0);
       const itemDisc = calcDiscountAmount(lineGross, item.discount);
       if (gender === 'Hombre') {
         menGross += lineGross;
