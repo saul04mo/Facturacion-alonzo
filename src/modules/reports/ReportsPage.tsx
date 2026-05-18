@@ -7,13 +7,14 @@ import { exportSalesData } from '@/services/excelService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import {
   BarChart3, TrendingUp, Download, Package, Filter, ChevronDown,
-  ShoppingBag, DollarSign, Hash, Check, X as XIcon, Loader2, Megaphone,
+  ShoppingBag, DollarSign, Hash, Check, X as XIcon, Loader2, Megaphone, Layers,
 } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import { isCountableSale } from '@/utils/invoiceStatus';
 import { AdSpendReport } from './AdSpendReport';
+import { ChannelReport } from './ChannelReport';
 
-type Tab = 'general' | 'products' | 'adSpend';
+type Tab = 'general' | 'products' | 'adSpend' | 'channels';
 
 export function ReportsPage() {
   const invoices = useAppStore((s) => s.invoices);
@@ -241,6 +242,7 @@ export function ReportsPage() {
       <div className="flex gap-1 p-1 rounded-lg bg-white border border-surface-200">
         {([{ id: 'general' as Tab, label: 'Ventas Generales', icon: <TrendingUp size={14} /> },
            { id: 'products' as Tab, label: 'Productos Vendidos', icon: <Package size={14} /> },
+           { id: 'channels' as Tab, label: 'Canal de Ventas', icon: <Layers size={14} /> },
            { id: 'adSpend' as Tab, label: 'Publicidad', icon: <Megaphone size={14} /> }]).map((t) => (
           <button key={t.id} onClick={() => { setTab(t.id); setCurrentPage(1); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-display font-semibold transition-all
@@ -382,6 +384,11 @@ export function ReportsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* CANAL DE VENTAS */}
+      {tab === 'channels' && (
+        <ChannelReport />
       )}
 
       {/* PUBLICIDAD */}

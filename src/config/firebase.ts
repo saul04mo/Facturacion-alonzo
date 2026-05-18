@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, browserLocalPersistence } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -43,5 +43,10 @@ export const db = initializeFirestore(app, {
   localCache: memoryLocalCache(),
 });
 
-export const auth = getAuth(app);
+// Use browserLocalPersistence (localStorage) instead of the default IndexedDB
+// to avoid "database connection is closing" errors that were dropping sessions
+// on page refresh/navigation in multi-tab POS environments.
+export const auth = initializeAuth(app, {
+  persistence: browserLocalPersistence,
+});
 export const storage = getStorage(app);
