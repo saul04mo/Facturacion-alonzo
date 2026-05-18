@@ -70,12 +70,27 @@ function computeStats(invoices: any[]) {
 
   const daily = new Map<string, DayChannelEntry>();
 
+  // ── Bucket de facturas que no caen en ninguna categoría conocida ───
+  // Antes esas facturas se descartaban con `continue` silenciosamente,
+  // lo cual generaba diferencias entre este panel y el total del mes
+  // del panel de Facturas. Causas típicas: deliveryType undefined,
+  // string vacío, o valor legacy que ya no se usa (ej. 'envio' viejo).
+  const unclassified = emptyStats();
+  const unclassifiedTypes = new Map<string, number>(); // valor → cantidad
+
   for (const inv of invoices) {
     if (!isCountableSale(inv.status)) continue;
     const dt = inv.deliveryType as string;
     const isStore = STORE_TYPES.has(dt);
     const isDelivery = DELIVERY_TYPES_SET.has(dt);
-    if (!isStore && !isDelivery) continue;
+
+    if (!isStore && !isDelivery) {
+      // Sumar al bucket "Sin clasificar" en vez de descartar
+      addToStats(unclassified, inv);
+      const key = dt && dt.trim() !== '' ? dt : '(sin deliveryType)';
+      unclassifiedTypes.set(key, (unclassifiedTypes.get(key) || 0) + 1);
+      continue;
+    }
 
     if (byType[dt]) addToStats(byType[dt], inv);
 
@@ -89,6 +104,16 @@ function computeStats(invoices: any[]) {
     }
   }
 
+  // Logueamos a consola para que sea fácil identificar el problema
+  // si el banner del panel queda visible.
+  if (unclassified.orders > 0) {
+    console.warn(
+      `[ChannelReport] ${unclassified.orders} facturas con deliveryType sin clasificar` +
+      ` ($${unclassified.total.toFixed(2)}):`,
+      Object.fromEntries(unclassifiedTypes),
+    );
+  }
+
   const storeAgg = STORE_CHANNEL.reduce((acc, { value }) => {
     const s = byType[value];
     return { orders: acc.orders + s.orders, sales: acc.sales + s.sales, delivery: acc.delivery + s.delivery, total: acc.total + s.total };
@@ -99,7 +124,7 @@ function computeStats(invoices: any[]) {
     return { orders: acc.orders + s.orders, sales: acc.sales + s.sales, delivery: acc.delivery + s.delivery, total: acc.total + s.total };
   }, emptyStats());
 
-  return { byType, storeAgg, deliveryAgg, daily };
+  return { byType, storeAgg, deliveryAgg, daily, unclassified, unclassifiedTypes };
 }
 
 // ─── Subcomponente: tarjeta resumen ───────────────────────────────────────────
@@ -305,6 +330,32 @@ export function ChannelReport() {
         </div>
       ) : (
         <>
+          {/* ── Aviso de facturas con deliveryType desconocido ── */}
+          {stats.unclassified.orders > 0 && (
+            <div className="rounded-lg border border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+              <p className="text-sm font-display font-semibold text-amber-800 dark:text-amber-300">
+                ⚠️ Hay {stats.unclassified.orders}{' '}
+                {stats.unclassified.orders === 1 ? 'factura' : 'facturas'} sin canal de venta
+                clasificado (${stats.unclassified.total.toFixed(2)})
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-1">
+                Estas facturas tienen valores de <code>deliveryType</code> que el panel no
+                reconoce, así que no aparecen en ninguna de las dos secciones de abajo.
+                Esto explica la diferencia con el total del panel de Facturas.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {[...stats.unclassifiedTypes.entries()].map(([type, count]) => (
+                  <span
+                    key={type}
+                    className="font-mono text-[11px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-800/40 text-amber-800 dark:text-amber-200"
+                  >
+                    {type}: {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Cards resumen ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <SummaryCard
