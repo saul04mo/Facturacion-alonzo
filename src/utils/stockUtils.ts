@@ -55,6 +55,36 @@ export function batchRestoreStock(
 }
 
 /**
+ * Batch-deduct stock for exchange new items. Mirror of batchRestoreStock with negative delta.
+ * Mutations are added to the provided batch (not committed here).
+ */
+export function batchDeductStock(
+  batch: WriteBatch,
+  items: Array<{ productId: string; variantIndex: number; quantity: number; branch?: Branch }>,
+  products: Product[],
+  defaultBranch: Branch = 'store',
+): void {
+  const productUpdates: Record<string, Product['variants']> = {};
+
+  items.forEach((item) => {
+    const product = products.find((p) => p.id === item.productId);
+    if (!product) return;
+    if (!productUpdates[item.productId]) {
+      productUpdates[item.productId] = JSON.parse(JSON.stringify(product.variants));
+    }
+    const variant = productUpdates[item.productId][item.variantIndex];
+    if (variant) {
+      const branch = item.branch || defaultBranch;
+      applyStockDelta(variant, branch, -item.quantity);
+    }
+  });
+
+  for (const productId in productUpdates) {
+    batch.update(doc(db, 'products', productId), { variants: productUpdates[productId] });
+  }
+}
+
+/**
  * Validate that all items have sufficient stock before processing a sale.
  * Returns null if valid, or an error message string if not.
  * If allowNegative is true, skips stock validation (allows negative stock).

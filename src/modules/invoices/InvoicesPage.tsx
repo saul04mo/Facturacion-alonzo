@@ -6,7 +6,9 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { Modal } from '@/components/Modal';
-import { processReturn, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData, updatePaymentRef, updateInvoiceStatus } from './invoiceService';
+import { processReturn, processExchange, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData, updatePaymentRef, updateInvoiceStatus } from './invoiceService';
+import { ExchangeModal } from './ExchangeModal';
+import type { ExchangeConfirmData } from './ExchangeModal';
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
@@ -14,7 +16,7 @@ import { STATUS_CONFIG, isCountableSale } from '@/utils/invoiceStatus';
 import type { Product, Invoice, InvoiceStatus } from '@/types';
 import {
   FileText, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2, ChevronDown,
+  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2, ChevronDown, ArrowLeftRight,
 } from 'lucide-react';
 
 // ════════════════════════════════════════════════
@@ -183,6 +185,8 @@ export function InvoicesPage() {
   const [returnInvoice, setReturnInvoice] = useState<any>(null);
   const [returnReason, setReturnReason] = useState(RETURN_REASONS[0]);
   const [returnDetails, setReturnDetails] = useState('');
+  const [exchangeInvoice, setExchangeInvoice] = useState<any>(null);
+  const [exchangeLoading, setExchangeLoading] = useState(false);
   const [abonoInvoice, setAbonoInvoice] = useState<any>(null);
   const [abonoAmount, setAbonoAmount] = useState('');
   const [abonoMethod, setAbonoMethod] = useState<string>(PAYMENT_METHODS[0].name);
@@ -369,6 +373,27 @@ export function InvoicesPage() {
         const results = await fetchInvoicesByDateRange(startDate, endDate);
         setServerInvoices(results);
       } catch (err) {}
+    }
+  }
+
+  async function handleExchange(data: ExchangeConfirmData) {
+    if (!exchangeInvoice || !currentUser) return;
+    setExchangeLoading(true);
+    try {
+      await processExchange({
+        invoiceId: exchangeInvoice.id,
+        invoice: exchangeInvoice,
+        ...data,
+        currentUser,
+        products,
+      });
+      setExchangeInvoice(null);
+      toast.success('Cambio procesado correctamente.');
+      await refetchIfServer();
+    } catch (err: any) {
+      toast.error(`Error al procesar cambio: ${err?.message || err}`);
+    } finally {
+      setExchangeLoading(false);
     }
   }
 
@@ -662,7 +687,8 @@ export function InvoicesPage() {
                           {(isCountableSale(inv.status)) && can('canEditInvoices') && (
                             <button onClick={() => openEditModal(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600" title="Editar datos del cliente / observación"><Edit2 size={12} /></button>
                           )}
-                          {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setReturnInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-amber-600"><RotateCcw size={12} /></button>}
+                          {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setReturnInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-amber-600" title="Devolución"><RotateCcw size={12} /></button>}
+                          {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setExchangeInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-teal-600" title="Cambio de prenda"><ArrowLeftRight size={12} /></button>}
                           {/* Cancelar disponible en cualquiera de los tres estados del flujo */}
                           {(inv.status === 'Por Preparar' || inv.status === 'Preparado' || inv.status === 'Finalizado') && can('canEditInvoices') && <button onClick={() => handleCancel(inv)} className="btn-ghost p-1 text-navy-400 hover:text-accent-red" title="Cancelar venta"><XCircle size={12} /></button>}
                           {inv.status === 'Creada' && <button onClick={() => handleApproveWeb(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600"><CheckCircle size={12} /></button>}
@@ -936,6 +962,74 @@ export function InvoicesPage() {
               );
             })()}
 
+            {/* Detalles del cambio */}
+            {detailInvoice.status === 'Cambio' && detailInvoice.exchangeDetails && (() => {
+              const ex = detailInvoice.exchangeDetails;
+              const exDate = ex.date?.toDate?.()?.toLocaleDateString('es-VE') ?? '—';
+              const totalAdj = (ex.priceDiff || 0) + (ex.newDeliveryCostUsd || 0) - (detailInvoice.deliveryCostUsd || 0);
+              return (
+                <div className="border border-teal-200 bg-teal-50/30 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-display font-semibold text-teal-700 uppercase tracking-wide">
+                      Registro de Cambio
+                    </p>
+                    <span className="text-xs text-navy-400">{exDate} · {ex.processedBy}</span>
+                  </div>
+                  <p className="text-xs text-navy-500"><span className="font-semibold">Motivo:</span> {ex.reason}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[10px] font-display font-semibold text-navy-400 uppercase mb-1.5">Devuelto por el cliente</p>
+                      <div className="space-y-1">
+                        {(ex.returnedItems || []).map((it: any, i: number) => (
+                          <div key={i} className="flex justify-between text-xs">
+                            <span className="text-navy-600 truncate">{it.productName} <span className="text-navy-400">({it.variantLabel})</span></span>
+                            <span className="font-mono text-navy-700 ml-2 flex-shrink-0">{it.quantity}x {format(it.priceAtSale)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-display font-semibold text-navy-400 uppercase mb-1.5">Llevado por el cliente</p>
+                      <div className="space-y-1">
+                        {(ex.newItems || []).map((it: any, i: number) => (
+                          <div key={i} className="flex justify-between text-xs">
+                            <span className="text-navy-600 truncate">{it.productName} <span className="text-navy-400">({it.variantLabel})</span></span>
+                            <span className="font-mono text-navy-700 ml-2 flex-shrink-0">{it.quantity}x {format(it.priceAtSale)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-teal-200 flex flex-wrap gap-3 text-xs">
+                    {ex.priceDiff !== 0 && (
+                      <span>
+                        Diferencia precio:{' '}
+                        <span className={`font-mono font-bold ${ex.priceDiff > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {ex.priceDiff > 0 ? '+' : ''}{format(ex.priceDiff)}
+                        </span>
+                        {ex.priceDiffMethod && <span className="text-navy-400"> vía {ex.priceDiffMethod}</span>}
+                      </span>
+                    )}
+                    {ex.newDeliveryCostUsd > 0 && (
+                      <span>
+                        Envío cambio:{' '}
+                        <span className="font-mono font-bold text-blue-600">{format(ex.newDeliveryCostUsd)}</span>
+                        {ex.deliveryMethod && <span className="text-navy-400"> vía {ex.deliveryMethod}</span>}
+                      </span>
+                    )}
+                    {Math.abs(totalAdj) > 0.005 && (
+                      <span className="ml-auto font-semibold">
+                        Total ajuste:{' '}
+                        <span className={`font-mono ${totalAdj > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {totalAdj > 0 ? '+' : ''}{format(totalAdj)}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Print / Download actions */}
             <div className="flex gap-2 pt-2">
               <button onClick={() => printReceipt({ invoice: detailInvoice, products, clients, currentExchangeRate: exchangeRate })}
@@ -949,6 +1043,17 @@ export function InvoicesPage() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* EXCHANGE MODAL */}
+      {exchangeInvoice && (
+        <ExchangeModal
+          invoice={exchangeInvoice}
+          products={products}
+          loading={exchangeLoading}
+          onClose={() => setExchangeInvoice(null)}
+          onConfirm={handleExchange}
+        />
       )}
 
       {/* RETURN MODAL */}

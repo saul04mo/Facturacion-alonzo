@@ -273,6 +273,7 @@
   .badge-red    { @apply bg-red-50 text-red-700; }
   .badge-purple { @apply bg-purple-50 text-purple-700; }
   .badge-gray   { @apply bg-surface-100 text-navy-600; }
+  .badge-teal   { @apply bg-teal-50 text-teal-700; }
 }
 
 /* Animations */

@@ -2,7 +2,7 @@ import {
   collection, doc, getDoc, runTransaction, updateDoc, Timestamp, writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { batchRestoreStock, validateStock } from '@/utils/stockUtils';
+import { batchRestoreStock, batchDeductStock, validateStock } from '@/utils/stockUtils';
 import { recordCouponUsage } from '@/services/promotionService';
 import type { CurrentSale, AppUser, Product, Invoice, ClientSnapshot } from '@/types';
 
@@ -248,6 +248,49 @@ export async function processReturn(opts: {
     status: isPartial ? invoice.status : 'Devolución',
     returnDetails: returnDetailsData,
   });
+  await batch.commit();
+}
+
+// ================================
+// PROCESS EXCHANGE (CAMBIO DE TALLA / PRODUCTO)
+// ================================
+export async function processExchange(opts: {
+  invoiceId: string;
+  invoice: Invoice;
+  returnedItems: Array<{ productId: string; variantIndex: number; quantity: number; priceAtSale: number; productName: string; variantLabel: string; branch?: any }>;
+  newItems: Array<{ productId: string; variantIndex: number; quantity: number; priceAtSale: number; productName: string; variantLabel: string; branch?: any }>;
+  reason: string;
+  priceDiff: number;
+  priceDiffMethod: string | null;
+  newDeliveryCostUsd: number;
+  deliveryMethod: string | null;
+  currentUser: AppUser;
+  products: Product[];
+}): Promise<void> {
+  const { invoiceId, invoice, returnedItems, newItems, reason, priceDiff, priceDiffMethod, newDeliveryCostUsd, deliveryMethod, currentUser, products } = opts;
+  const batch = writeBatch(db);
+
+  // Restore stock for items the client is returning
+  batchRestoreStock(batch, returnedItems, products, invoice.branch || 'store');
+
+  // Deduct stock for the new items the client takes
+  batchDeductStock(batch, newItems, products, invoice.branch || 'store');
+
+  batch.update(doc(db, 'invoices', invoiceId), {
+    status: 'Cambio',
+    exchangeDetails: {
+      date: Timestamp.now(),
+      processedBy: `${currentUser.nombre} ${currentUser.apellido}`,
+      reason,
+      returnedItems,
+      newItems,
+      priceDiff,
+      priceDiffMethod: priceDiff !== 0 ? priceDiffMethod : null,
+      newDeliveryCostUsd,
+      deliveryMethod: (newDeliveryCostUsd > 0 || deliveryMethod) ? deliveryMethod : null,
+    },
+  });
+
   await batch.commit();
 }
 

@@ -26,7 +26,8 @@ export function isCountableSale(status: InvoiceStatus): boolean {
     status === 'Por Preparar' ||
     status === 'Preparado' ||
     status === 'Finalizado' ||
-    status === 'Pendiente de pago'
+    status === 'Pendiente de pago' ||
+    status === 'Cambio'
   );
 }
 
@@ -102,6 +103,12 @@ export const STATUS_CONFIG: Record<
     label: 'Devolución',
     tailwindBg: 'bg-blue-100 dark:bg-blue-900/30',
     tailwindText: 'text-blue-700 dark:text-blue-300',
+  },
+  Cambio: {
+    class: 'badge-teal',
+    label: 'Cambio',
+    tailwindBg: 'bg-teal-100 dark:bg-teal-900/30',
+    tailwindText: 'text-teal-700 dark:text-teal-300',
   },
   Cancelado: {
     class: 'badge-gray',

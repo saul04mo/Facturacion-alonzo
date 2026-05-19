@@ -262,8 +262,31 @@ export type InvoiceStatus =
   | 'Finalizado'
   | 'Pendiente de pago'
   | 'Devolución'
+  | 'Cambio'
   | 'Cancelado'
   | 'Creada';
+
+export interface ExchangeItem {
+  productId: string;
+  variantIndex: number;
+  quantity: number;
+  priceAtSale: number;
+  productName: string;
+  variantLabel: string;
+  branch?: Branch;
+}
+
+export interface ExchangeDetails {
+  date: Timestamp;
+  processedBy: string;
+  reason: string;
+  returnedItems: ExchangeItem[];
+  newItems: ExchangeItem[];
+  priceDiff: number;
+  priceDiffMethod: string | null;
+  newDeliveryCostUsd: number;
+  deliveryMethod: string | null;
+}
 
 export interface Invoice {
   id: string;
@@ -302,6 +325,7 @@ export interface Invoice {
     date: Timestamp;
     processedBy: string;
   };
+  exchangeDetails?: ExchangeDetails;
 }
 
 export interface Abono {
