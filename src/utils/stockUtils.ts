@@ -55,18 +55,21 @@ export function batchRestoreStock(
 }
 
 /**
- * Batch-deduct stock for exchange new items. Mirror of batchRestoreStock with negative delta.
- * Mutations are added to the provided batch (not committed here).
+ * Aplica múltiples deltas de stock en un solo batch.update por producto.
+ * Usar cuando la misma factura tiene ítems devueltos Y nuevos del mismo
+ * producto (ej: cambio de talla) — llamar batchRestoreStock + batchDeductStock
+ * por separado generaría dos batch.update sobre el mismo doc y el segundo
+ * sobreescribiría al primero, perdiendo uno de los ajustes.
  */
-export function batchDeductStock(
+export function batchApplyStockDeltas(
   batch: WriteBatch,
-  items: Array<{ productId: string; variantIndex: number; quantity: number; branch?: Branch }>,
+  deltas: Array<{ productId: string; variantIndex: number; delta: number; branch?: Branch }>,
   products: Product[],
   defaultBranch: Branch = 'store',
 ): void {
   const productUpdates: Record<string, Product['variants']> = {};
 
-  items.forEach((item) => {
+  deltas.forEach((item) => {
     const product = products.find((p) => p.id === item.productId);
     if (!product) return;
     if (!productUpdates[item.productId]) {
@@ -75,7 +78,7 @@ export function batchDeductStock(
     const variant = productUpdates[item.productId][item.variantIndex];
     if (variant) {
       const branch = item.branch || defaultBranch;
-      applyStockDelta(variant, branch, -item.quantity);
+      applyStockDelta(variant, branch, item.delta);
     }
   });
 

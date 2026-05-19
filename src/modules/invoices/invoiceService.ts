@@ -2,7 +2,7 @@ import {
   collection, doc, getDoc, runTransaction, updateDoc, Timestamp, writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { batchRestoreStock, batchDeductStock, validateStock } from '@/utils/stockUtils';
+import { batchRestoreStock, batchApplyStockDeltas, validateStock } from '@/utils/stockUtils';
 import { recordCouponUsage } from '@/services/promotionService';
 import type { CurrentSale, AppUser, Product, Invoice, ClientSnapshot } from '@/types';
 
@@ -270,11 +270,13 @@ export async function processExchange(opts: {
   const { invoiceId, invoice, returnedItems, newItems, reason, priceDiff, priceDiffMethod, newDeliveryCostUsd, deliveryMethod, currentUser, products } = opts;
   const batch = writeBatch(db);
 
-  // Restore stock for items the client is returning
-  batchRestoreStock(batch, returnedItems, products, invoice.branch || 'store');
-
-  // Deduct stock for the new items the client takes
-  batchDeductStock(batch, newItems, products, invoice.branch || 'store');
+  // Combinar devueltos (+) y nuevos (-) en un solo pase para evitar que
+  // dos batch.update sobre el mismo producto se sobreescriban entre sí
+  // (bug que ocurre cuando devuelven y llevan variantes del mismo producto).
+  batchApplyStockDeltas(batch, [
+    ...returnedItems.map((i) => ({ ...i, delta: +i.quantity })),
+    ...newItems.map((i) => ({ ...i, delta: -i.quantity })),
+  ], products, invoice.branch || 'store');
 
   batch.update(doc(db, 'invoices', invoiceId), {
     status: 'Cambio',
