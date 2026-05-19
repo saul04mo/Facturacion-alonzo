@@ -215,16 +215,27 @@ export async function processReturn(opts: {
   const { invoiceId, invoice, reason, details, currentUser, products, returnItems } = opts;
   const batch = writeBatch(db);
 
-  // itemsToRestore preserves item.branch from the original invoice items
-  // so each item is restored to the correct branch (store or warehouse).
-  // Si el item no trae branch (facturas viejas pre-migración), el
-  // defaultBranch=invoice.branch ('store' para facturas migradas) lo cubre.
-  const itemsToRestore = returnItems || invoice.items.map((i) => ({
-    productId: i.productId,
-    variantIndex: i.variantIndex,
-    quantity: i.quantity,
-    branch: i.branch,
-  }));
+  // Para facturas con estado 'Cambio', el cliente tiene los ítems del
+  // exchange (exchangeDetails.newItems), NO los ítems originales de la
+  // factura — esos ya volvieron al stock cuando se procesó el cambio.
+  // Usar invoice.items en este caso double-restauraría la variante original
+  // y nunca restauraría la variante que el cliente devuelve ahora.
+  const effectiveItems =
+    !returnItems && invoice.status === 'Cambio' && invoice.exchangeDetails?.newItems?.length
+      ? invoice.exchangeDetails.newItems.map((i) => ({
+          productId: i.productId,
+          variantIndex: i.variantIndex,
+          quantity: i.quantity,
+          branch: i.branch ?? invoice.branch,
+        }))
+      : invoice.items.map((i) => ({
+          productId: i.productId,
+          variantIndex: i.variantIndex,
+          quantity: i.quantity,
+          branch: i.branch,
+        }));
+
+  const itemsToRestore = returnItems || effectiveItems;
 
   // Restore stock (unless product is damaged)
   if (reason !== 'Producto Dañado (Merma)') {
