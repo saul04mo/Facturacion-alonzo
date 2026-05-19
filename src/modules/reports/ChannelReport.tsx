@@ -8,19 +8,19 @@ import { Store, Truck, ChevronLeft, ChevronRight, Layers, Loader2 } from 'lucide
 
 // ─── Constantes de canal ──────────────────────────────────────────────────────
 
-const STORE_TYPES = new Set(['showroom', 'pickup', 'pick-up']);
-const DELIVERY_TYPES_SET = new Set(['local', 'national', 'web']);
+const STORE_TYPES = new Set(['showroom', 'pickup']);
+const DELIVERY_TYPES_SET = new Set(['local', 'national', 'web', 'pick-up']);
 
 const STORE_CHANNEL = [
   { value: 'showroom', label: 'Showroom' },
   { value: 'pickup', label: 'Retiro en Tienda' },
-  { value: 'pick-up', label: 'Pick-Up' },
 ] as const;
 
 const DELIVERY_CHANNEL = [
   { value: 'local', label: 'Delivery' },
   { value: 'national', label: 'Envío Nacional' },
   { value: 'web', label: 'Página Web' },
+  { value: 'pick-up', label: 'Pick-Up' },
 ] as const;
 
 const MONTH_NAMES_ES = [
@@ -443,7 +443,7 @@ export function ChannelReport() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <SummaryCard
               title="Tienda"
-              subtitle="Showroom · Retiro en Tienda · Pick-Up"
+              subtitle="Showroom · Retiro en Tienda"
               icon={<Store size={20} />}
               stats={stats.storeAgg}
               pct={storePct}
@@ -455,7 +455,7 @@ export function ChannelReport() {
             />
             <SummaryCard
               title="Delivery"
-              subtitle="Delivery · Envío Nacional · Página Web"
+              subtitle="Delivery · Envío Nacional · Página Web · Pick-Up"
               icon={<Truck size={20} />}
               stats={stats.deliveryAgg}
               pct={delivPct}
