@@ -743,16 +743,34 @@ export function InvoicesPage() {
                 )}
               </div>
             </div>
+            {(detailInvoice.observation || detailInvoice.notes) && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2.5">
+                <p className="text-[10px] font-display font-semibold text-amber-600 dark:text-amber-400 uppercase mb-1">Observación</p>
+                <p className="text-sm text-navy-800 dark:text-gray-200 leading-snug">{detailInvoice.observation || detailInvoice.notes}</p>
+              </div>
+            )}
             <div><p className="text-[10px] font-display font-semibold text-navy-400 uppercase mb-2">Productos</p>
               <div className="space-y-1.5">{detailInvoice.items?.map((item: any, i: number) => {
                 const p = products.find((pr: Product) => pr.id === item.productId); const v = p?.variants?.[item.variantIndex];
                 const price = item.priceAtSale ?? v?.price ?? 0;
                 const itemName = item.productName || p?.name || 'Eliminado';
                 const itemLabel = item.variantLabel || (v ? `${v.size}, ${v.color}` : '');
-                return (<div key={i} className="flex justify-between items-center text-sm p-2 bg-surface-50 rounded-lg hover-lift">
-                  <div><span className="font-display font-medium text-navy-900">{itemName}</span>
-                    {itemLabel && <span className="text-navy-400 ml-2 text-xs">({itemLabel})</span>}</div>
-                  <div className="text-right font-mono"><span className="text-navy-500">{item.quantity}x</span>
+                const imgSrc = p?.imageUrl || p?.imageUrls?.[0];
+                return (<div key={i} className="flex justify-between items-center text-sm p-2 bg-surface-50 rounded-lg hover-lift gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {imgSrc ? (
+                      <img src={imgSrc} alt={itemName} className="w-10 h-10 rounded-md object-cover flex-shrink-0 border border-surface-200" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-md bg-surface-200 flex items-center justify-center flex-shrink-0">
+                        <ImageIcon size={16} className="text-navy-300" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <span className="font-display font-medium text-navy-900 block truncate">{itemName}</span>
+                      {itemLabel && <span className="text-navy-400 text-xs">({itemLabel})</span>}
+                    </div>
+                  </div>
+                  <div className="text-right font-mono flex-shrink-0"><span className="text-navy-500">{item.quantity}x</span>
                     <span className="ml-2 font-semibold text-navy-900">{format(price * item.quantity)}</span></div>
                 </div>);
               })}</div>

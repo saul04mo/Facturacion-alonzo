@@ -26,6 +26,7 @@ export function isCountableSale(status: InvoiceStatus): boolean {
     status === 'Por Preparar' ||
     status === 'Preparado' ||
     status === 'Finalizado' ||
+    status === 'Pendiente' ||
     status === 'Pendiente de pago' ||
     status === 'Cambio'
   );
