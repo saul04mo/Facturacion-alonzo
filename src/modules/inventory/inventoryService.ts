@@ -29,7 +29,7 @@ export async function saveProduct(id: string | null, data: ProductInput): Promis
     if (id && data.currentImageUrl) {
       try { await deleteObject(ref(storage, data.currentImageUrl)); } catch { /* ignore */ }
     }
-    const compressed = await compressImage(data.imageFile);
+    const compressed = await compressImage(data.imageFile, 1600, 0.92);
     const imageRef = ref(storage, `products/${id || Date.now()}_${compressed.name}`);
     const snapshot = await uploadBytes(imageRef, compressed);
     imageUrl = await getDownloadURL(snapshot.ref);
@@ -42,7 +42,7 @@ export async function saveProduct(id: string | null, data: ProductInput): Promis
   // Upload new image files (compressed)
   if (data.newImageFiles && data.newImageFiles.length > 0) {
     const productRef = id || Date.now().toString();
-    const compressedFiles = await compressImages(data.newImageFiles);
+    const compressedFiles = await compressImages(data.newImageFiles, 1600, 0.92);
     for (const file of compressedFiles) {
       const imgRef = ref(storage, `products/${productRef}_${Date.now()}_${file.name}`);
       const snapshot = await uploadBytes(imgRef, file);

@@ -56,7 +56,7 @@ export async function compressImage(
                   resolve(jpegResult);
                 } else {
                   // If still too big, try lower quality
-                  tryFormat(canvas, 'image/jpeg', 0.6, file)
+                  tryFormat(canvas, 'image/jpeg', 0.82, file)
                     .then((lowResult) => resolve(lowResult || file));
                 }
               });
