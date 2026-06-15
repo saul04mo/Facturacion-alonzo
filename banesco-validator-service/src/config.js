@@ -23,5 +23,11 @@ export const config = {
     username: readEnv('BANESCO_USERNAME'),
     password: readEnv('BANESCO_PASSWORD'),
     accountId: readEnv('BANESCO_ACCOUNT_ID'),
+    // Bloque "device" que exige el payload de Banesco (no son secretos).
+    device: {
+      type: process.env.BANESCO_DEVICE_TYPE || 'Notebook',
+      description: process.env.BANESCO_DEVICE_DESC || 'ALONZO-POS',
+      ipAddress: process.env.BANESCO_DEVICE_IP || '0.0.0.0',
+    },
   },
 };

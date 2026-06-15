@@ -126,26 +126,57 @@ async function postTransactions(payload) {
 }
 
 /**
+ * Envuelve un objeto `transaction` en el payload que espera Banesco:
+ * `dataRequest` con los bloques `device`, `securityAuth` y `transaction`.
+ * Cada modo arma su propio `transaction` con los campos que corresponden.
+ */
+function buildPayload(transaction) {
+  const { device } = config.banesco;
+  return {
+    dataRequest: {
+      device: {
+        type: device.type,
+        description: device.description,
+        ipAddress: device.ipAddress,
+      },
+      securityAuth: {
+        sessionId: '',
+      },
+      transaction,
+    },
+  };
+}
+
+/**
  * Modo 1: consulta por rango de fechas.
- * Payload con accountId (de configuración), startDt, endDt y amount opcional.
+ * transaction lleva los 7 campos; referenceNumber/phoneNum/bankId van vacíos.
  */
 export function consultarPorFecha({ startDt, endDt, amount }) {
-  const payload = {
-    accountId: config.banesco.accountId,
-    startDt,
-    endDt,
-  };
-  if (amount !== undefined && amount !== null) {
-    payload.amount = amount;
-  }
-  return postTransactions(payload);
+  return postTransactions(
+    buildPayload({
+      referenceNumber: '',
+      amount: amount ?? 0,
+      accountId: config.banesco.accountId,
+      startDt,
+      endDt,
+      phoneNum: '',
+      bankId: '',
+    }),
+  );
 }
 
 /**
  * Modo 2: búsqueda de pago móvil por referencia.
- * Payload con referenceNumber, phoneNum, bankId y startDt (sin accountId ni endDt).
+ * transaction lleva solo referenceNumber, startDt, phoneNum y bankId
+ * (sin accountId, amount ni endDt).
  */
 export function buscarPagoMovil({ referenceNumber, phoneNum, bankId, startDt }) {
-  const payload = { referenceNumber, phoneNum, bankId, startDt };
-  return postTransactions(payload);
+  return postTransactions(
+    buildPayload({
+      referenceNumber,
+      startDt,
+      phoneNum,
+      bankId,
+    }),
+  );
 }
