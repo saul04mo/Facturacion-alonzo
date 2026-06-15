@@ -4,7 +4,7 @@ import { useAppStore } from '@/store/appStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { ROUTES } from '@/config/constants';
 import type { PermissionKey } from '@/config/constants';
-import { ShoppingCart, FileText, Package, Users, Truck, BarChart3, Shield, Settings, X, Tag, Wallet, LayoutDashboard, Crown, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { ShoppingCart, FileText, Package, Users, Truck, BarChart3, Shield, Settings, X, Tag, Wallet, LayoutDashboard, Crown, ChevronLeft, ChevronRight, ChevronDown, Landmark } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
@@ -25,6 +25,7 @@ const NAV_GROUPS = [
     title: 'REPORTES',
     items: [
       { path: ROUTES.REPORTS, label: 'Informes', icon: <BarChart3 size={18} />, permission: 'canAccessInformes' },
+      { path: ROUTES.PAYMENTS, label: 'Pagos Banesco', icon: <Landmark size={18} />, permission: 'canAccessPagos' },
     ]
   },
   {

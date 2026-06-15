@@ -15,6 +15,7 @@ export const ROUTES = {
   PAYROLL: '/nomina',
   PAYROLL_DRAFT: '/cierre-nomina',
   CRM: '/crm',
+  PAYMENTS: '/pagos',
   // Ruta PÚBLICA (sin login) — formulario de registro de envío para clientes
   CLIENT_REGISTRATION: '/registro-envio',
 } as const;
@@ -46,6 +47,7 @@ export const ALL_PERMISSIONS = {
   canAccessNomina: 'Acceder a Nómina',
   canAccessCierreNomina: 'Acceder a Cierre de Nómina',
   canAccessSettings: 'Acceder a Configuración',
+  canAccessPagos: 'Acceder a Pagos Banesco',
 } as const;
 
 export type PermissionKey = keyof typeof ALL_PERMISSIONS;
@@ -61,7 +63,7 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<PermissionKey, boolean>>
     canProcessReturns: false, canEditInvoices: false, canApplyDiscounts: true,
     canUpdateExchangeRate: false, canConfirmDeliveryPayment: false, canAddAbono: false,
     canAccessInformes: false, canManageOffers: false, canAccessNomina: false,
-    canAccessCierreNomina: false, canAccessSettings: false,
+    canAccessCierreNomina: false, canAccessSettings: false, canAccessPagos: false,
   },
   administrador: Object.keys(ALL_PERMISSIONS).reduce(
     (acc, key) => ({ ...acc, [key]: true }), {} as Record<PermissionKey, boolean>,

@@ -40,6 +40,33 @@ function toApiDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Consulta todas las transacciones de la cuenta en un rango de fechas.
+ * Devuelve el listado de movimientos (créditos y débitos).
+ */
+export async function consultarPagosPorFecha(opts: {
+  startDt: string;
+  endDt: string;
+}): Promise<BanescoTransaction[]> {
+  const res = await fetch(`${BASE_URL}/api/pagos/consultar-por-fecha`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ startDt: opts.startDt, endDt: opts.endDt }),
+  });
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.error || '';
+    } catch { /* respuesta sin JSON */ }
+    throw new Error(detail || `El validador respondió ${res.status}`);
+  }
+
+  const data: ConsultaResponse = await res.json();
+  return data.dataResponse?.transactionDetail ?? [];
+}
+
 /** Normaliza una referencia: solo dígitos, sin espacios ni ceros de relleno a la izquierda quitados. */
 function normalizeRef(ref: string): string {
   return (ref ?? '').replace(/\D/g, '');
