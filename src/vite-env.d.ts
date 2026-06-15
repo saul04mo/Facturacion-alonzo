@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_FIREBASE_MEASUREMENT_ID: string;
+  // URL del microservicio validador de pagos Banesco (Cloud Run)
+  readonly VITE_BANESCO_VALIDATOR_URL: string;
 }
 
 interface ImportMeta {

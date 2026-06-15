@@ -3,7 +3,8 @@ import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { PAYMENT_METHODS, processSale, type ActivePayment } from '@/modules/invoices/invoiceService';
-import { CreditCard, Check, Loader2 } from 'lucide-react';
+import { validarPagoMovil } from '@/services/banescoService';
+import { CreditCard, Check, Loader2, ShieldCheck, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 
 interface PaymentEntry {
   methodId: string;
@@ -33,11 +34,42 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
 
   const [entries, setEntries] = useState<PaymentEntry[]>(buildDefaultEntries);
 
+  // Validación de Pago Móvil contra Banesco (solo informativa).
+  type PmValidation = { status: 'idle' | 'loading' | 'found' | 'notfound' | 'error'; message?: string };
+  const [pmValidation, setPmValidation] = useState<PmValidation>({ status: 'idle' });
+
+  const handleValidatePagoMovil = useCallback(async (entry: PaymentEntry) => {
+    const ref = entry.ref.trim();
+    if (!ref) {
+      toast.warning('Ingresá la referencia del pago móvil primero.');
+      return;
+    }
+    setPmValidation({ status: 'loading' });
+    try {
+      const amountVes = parseFloat(entry.amount) || 0;
+      const result = await validarPagoMovil({ referenceNumber: ref, amountVes });
+      if (result.found && result.match) {
+        setPmValidation({
+          status: 'found',
+          message: `Encontrado en Banesco: Bs ${result.match.amount} · ${result.match.trnDate}`,
+        });
+      } else {
+        setPmValidation({
+          status: 'notfound',
+          message: `Sin coincidencia entre ${result.reviewed} crédito(s) de hoy.`,
+        });
+      }
+    } catch (err: any) {
+      setPmValidation({ status: 'error', message: err?.message || 'No se pudo validar.' });
+    }
+  }, [toast]);
+
   // FIX: Reset payment entries when cart items change significantly
   const prevItemCount = useRef(currentSale.items.length);
   useEffect(() => {
     if (currentSale.items.length === 0 && prevItemCount.current > 0) {
       setEntries(buildDefaultEntries());
+      setPmValidation({ status: 'idle' });
     }
     prevItemCount.current = currentSale.items.length;
   }, [currentSale.items.length]);
@@ -198,9 +230,36 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
                       className="input-field text-sm py-1.5 font-mono" />
                     {(method as any).hasRef && (
                       <input type="text" value={entry.ref}
-                        onChange={(e) => updateEntry(method.id, 'ref', e.target.value)}
+                        onChange={(e) => { updateEntry(method.id, 'ref', e.target.value); if (method.id === 'pago-movil') setPmValidation({ status: 'idle' }); }}
                           placeholder="Referencia" className="input-field text-sm py-1.5" />
                       )}
+                    {method.id === 'pago-movil' && (
+                      <div className="space-y-1.5">
+                        <button type="button"
+                          onClick={() => handleValidatePagoMovil(entry)}
+                          disabled={pmValidation.status === 'loading' || !entry.ref.trim()}
+                          className="w-full flex items-center justify-center gap-1.5 text-xs font-display font-medium py-1.5 rounded-lg border border-navy-200 text-navy-700 bg-white hover:bg-navy-50 disabled:opacity-50 transition-colors">
+                          {pmValidation.status === 'loading'
+                            ? (<><Loader2 size={14} className="animate-spin" /> Validando...</>)
+                            : (<><ShieldCheck size={14} /> Validar en Banesco</>)}
+                        </button>
+                        {pmValidation.status === 'found' && (
+                          <div className="flex items-start gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5">
+                            <CheckCircle2 size={14} className="mt-0.5 shrink-0" /><span>{pmValidation.message}</span>
+                          </div>
+                        )}
+                        {pmValidation.status === 'notfound' && (
+                          <div className="flex items-start gap-1.5 text-xs text-accent-red bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
+                            <XCircle size={14} className="mt-0.5 shrink-0" /><span>{pmValidation.message}</span>
+                          </div>
+                        )}
+                        {pmValidation.status === 'error' && (
+                          <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                            <AlertCircle size={14} className="mt-0.5 shrink-0" /><span>{pmValidation.message}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     </div>
                   )}
                 </div>
