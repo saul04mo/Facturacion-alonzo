@@ -4,6 +4,7 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { PAYMENT_METHODS } from './invoiceService';
 import { ArrowLeftRight, Minus, Plus } from 'lucide-react';
 import type { Invoice, Product } from '@/types';
+import { sizeLabel } from '@/utils/branchUtils';
 
 const EXCHANGE_REASONS = [
   'Cambio de Talla',
@@ -154,7 +155,7 @@ export function ExchangeModal({ invoice, products, loading, onClose, onConfirm }
       .map(([, rep]) => {
         const prod = products.find((p) => p.id === rep.productId)!;
         const variant = prod.variants[rep.variantIndex];
-        const parts = [variant.size, variant.color].filter(Boolean);
+        const parts = [sizeLabel(variant.size), variant.color].filter(Boolean);
         return {
           productId: rep.productId,
           variantIndex: rep.variantIndex,
@@ -327,7 +328,7 @@ export function ExchangeModal({ invoice, products, loading, onClose, onConfirm }
                         >
                           {(repProd?.variants ?? []).map((v, vi) => (
                             <option key={vi} value={vi}>
-                              {[v.size, v.color].filter(Boolean).join(' / ')} — {format(v.price)} (Stock: {v.stock ?? 0})
+                              {[sizeLabel(v.size), v.color].filter(Boolean).join(' / ')} — {format(v.price)} (Stock: {v.stock ?? 0})
                             </option>
                           ))}
                         </select>

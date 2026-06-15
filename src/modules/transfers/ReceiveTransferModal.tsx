@@ -4,6 +4,7 @@ import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
 import { receiveTransfer } from './transferService';
 import type { InventoryTransfer } from '@/types';
+import { sizeLabel } from '@/utils/branchUtils';
 import { CheckCircle2, AlertTriangle, Truck } from 'lucide-react';
 
 export function ReceiveTransferModal({
@@ -114,7 +115,7 @@ export function ReceiveTransferModal({
                 return (
                   <tr key={idx}>
                     <td className="px-3 py-2 text-navy-900 dark:text-gray-200 truncate">{item.productName}</td>
-                    <td className="px-3 py-2 font-mono text-navy-700 dark:text-gray-300">{item.size}</td>
+                    <td className="px-3 py-2 font-mono text-navy-700 dark:text-gray-300">{sizeLabel(item.size)}</td>
                     <td className="px-3 py-2 text-navy-600 dark:text-gray-400 truncate">{item.color}</td>
                     <td className="px-3 py-2 text-right font-mono text-navy-500">{item.quantitySent}</td>
                     <td className="px-3 py-2">

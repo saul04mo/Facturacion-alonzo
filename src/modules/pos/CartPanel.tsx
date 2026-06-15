@@ -11,12 +11,12 @@ import { ClientFormModal } from '@/modules/clients/ClientsPage';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { validateCoupon, calculateCouponDiscount, evaluatePromotions } from '@/services/promotionService';
 import { DELIVERY_TYPES } from '@/config/constants';
-import { branchFromDeliveryType, branchLabel } from '@/utils/branchUtils';
+import { branchFromDeliveryType, branchLabel, sizeLabel } from '@/utils/branchUtils';
 import { normalizeClient } from '@/types';
 import type { AppliedPromotion } from '@/types';
 import {
   ShoppingCart, Search, Tag, Plus, Minus, X, Trash2,
-  Truck, Users, Edit, Ticket, Zap, Gift, CheckCircle2,
+  Truck, Users, Edit, Ticket, Zap, Gift, CheckCircle2, Percent,
 } from 'lucide-react';
 
 export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = {}) {
@@ -29,6 +29,7 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
   const { format, formatBoth } = useCurrency();
   const toast = useToast();
   const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [itemDiscountIndex, setItemDiscountIndex] = useState<number | null>(null);
   const [showClientModal, setShowClientModal] = useState(false);
   const [searchCedula, setSearchCedula] = useState('');
   const [clientNotFound, setClientNotFound] = useState(false);
@@ -177,6 +178,12 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
     setCurrentSale({ ...currentSale, items: newItems });
   }
 
+  function updateItemDiscount(index: number, discount: { type: 'none' | 'percentage' | 'fixed'; value: number }) {
+    const newItems = [...currentSale.items];
+    newItems[index] = { ...newItems[index], discount };
+    setCurrentSale({ ...currentSale, items: newItems });
+  }
+
   const totals = formatBoth(cartDetails.total);
 
   return (
@@ -278,8 +285,12 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-display font-semibold text-navy-900 text-xs truncate">{item.product.name}</p>
-                <p className="text-[10px] text-navy-400">{item.variant.size} · {item.variant.color} · {format(item.variant.price)}</p>
-                {/* FIX: Show stock warning */}
+                <p className="text-[10px] text-navy-400">{sizeLabel(item.variant.size)} · {item.variant.color} · {format(item.variant.price)}</p>
+                {item.item.discount.type !== 'none' && (
+                  <p className="text-[9px] text-orange-500 font-medium">
+                    Desc: {item.item.discount.type === 'percentage' ? `${item.item.discount.value}%` : format(item.item.discount.value)} · -{format(item.discountAmt)}
+                  </p>
+                )}
                 {item.item.quantity >= item.variant.stock && (
                   <p className="text-[9px] text-accent-red font-medium">Stock máximo alcanzado ({item.variant.stock})</p>
                 )}
@@ -295,7 +306,17 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
               </div>
               <div className="text-right flex-shrink-0 w-16">
                 <p className="font-mono font-semibold text-navy-900 text-xs">{format(item.finalLine)}</p>
+                {item.discountAmt > 0 && (
+                  <p className="text-[9px] text-navy-400 line-through font-mono">{format(item.lineTotal)}</p>
+                )}
               </div>
+              <button
+                onClick={() => setItemDiscountIndex(item.index)}
+                className={`p-1 transition-colors flex-shrink-0 ${item.item.discount.type !== 'none' ? 'text-orange-400 hover:text-orange-600' : 'text-navy-300 hover:text-orange-400'}`}
+                title="Descuento por producto"
+              >
+                <Percent size={14} />
+              </button>
               <button onClick={() => removeItem(item.index)} className="p-1 text-navy-300 hover:text-accent-red transition-colors flex-shrink-0">
                 <X size={14} />
               </button>
@@ -430,8 +451,8 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
           <span className="font-mono">{format(cartDetails.subtotal)}</span>
         </div>
         {cartDetails.itemDiscountsTotal > 0 && (
-          <div className="flex justify-between text-[11px] text-pink-600">
-            <span>Ahorro Ofertas</span>
+          <div className="flex justify-between text-[11px] text-orange-500">
+            <span>Desc. por Producto</span>
             <span className="font-mono">-{format(cartDetails.itemDiscountsTotal)}</span>
           </div>
         )}
@@ -510,6 +531,20 @@ export function CartPanel({ onSaleComplete }: { onSaleComplete?: () => void } = 
           onClose={() => setShowDiscountModal(false)}
         />
       )}
+
+      {itemDiscountIndex !== null && (() => {
+        const itemDetail = cartDetails.items.find((i: any) => i.index === itemDiscountIndex);
+        if (!itemDetail) return null;
+        return (
+          <DiscountModal
+            title={`Descuento: ${itemDetail.product.name}`}
+            currentDiscount={itemDetail.item.discount}
+            subtotal={itemDetail.lineTotal}
+            onApply={(disc) => updateItemDiscount(itemDiscountIndex, disc)}
+            onClose={() => setItemDiscountIndex(null)}
+          />
+        );
+      })()}
 
       {showClientModal && (
         <ClientFormModal

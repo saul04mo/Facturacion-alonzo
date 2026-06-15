@@ -51,7 +51,9 @@ export function SettingsPage() {
   const [whatsappNumber, setWhatsappNumber] = useState('584123380976');
   const [currencySymbol, setCurrencySymbol] = useState('€');
   const [heroSubtitle, setHeroSubtitle] = useState('Newest Collection');
-  const [heroImage, setHeroImage] = useState('/images/hero-banner.jpg');
+  const [heroImages, setHeroImages] = useState<string[]>([]);
+  const [heroImagesMobile, setHeroImagesMobile] = useState<string[]>([]);
+  const [heroSlideInterval, setHeroSlideInterval] = useState(6);
   const [webSettingsSaving, setWebSettingsSaving] = useState(false);
 
   type SettingsTab = 'general' | 'rate' | 'pos' | 'web' | 'system';
@@ -89,7 +91,13 @@ export function SettingsPage() {
             if (data.whatsappNumber) setWhatsappNumber(data.whatsappNumber);
             if (data.currencySymbol) setCurrencySymbol(data.currencySymbol);
             if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
-            if (data.heroImage) setHeroImage(data.heroImage);
+            const imgs = Array.isArray(data.heroImages) && data.heroImages.length
+              ? data.heroImages : (data.heroImage ? [data.heroImage] : []);
+            setHeroImages(imgs);
+            const imgsMobile = Array.isArray(data.heroImagesMobile) && data.heroImagesMobile.length
+              ? data.heroImagesMobile : (data.heroImageMobile ? [data.heroImageMobile] : []);
+            setHeroImagesMobile(imgsMobile);
+            if (typeof data.heroSlideInterval === 'number') setHeroSlideInterval(data.heroSlideInterval);
           }
         } catch (e) { console.error('Error loading web settings:', e); }
       } catch (e) { console.error('Error initializing settings:', e); }
@@ -133,7 +141,9 @@ export function SettingsPage() {
         whatsappNumber,
         currencySymbol,
         heroSubtitle,
-        heroImage,
+        heroImages,
+        heroImagesMobile,
+        heroSlideInterval,
       }, { merge: true });
       toast.success('Configuración web guardada');
     } catch {
@@ -142,23 +152,50 @@ export function SettingsPage() {
     setWebSettingsSaving(false);
   }
 
-  async function handleHeroImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function handleHeroImageAdd(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     try {
       const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
       const { storage } = await import('@/config/firebase');
       const { compressImage } = await import('@/utils/imageUtils');
-      toast.info('Subiendo imagen...');
-      const compressed = await compressImage(file, 1920, 0.85);
-      const imgRef = ref(storage, `hero/hero-banner-${Date.now()}.${compressed.name.split('.').pop()}`);
-      const snap = await uploadBytes(imgRef, compressed);
-      const url = await getDownloadURL(snap.ref);
-      setHeroImage(url);
-      toast.success('Imagen subida. Recuerda guardar.');
+      toast.info(`Subiendo ${files.length > 1 ? files.length + ' imágenes' : 'imagen'}...`);
+      const urls: string[] = [];
+      for (const file of files) {
+        const compressed = await compressImage(file, 1920, 0.85);
+        const imgRef = ref(storage, `hero/hero-banner-${Date.now()}-${Math.random().toString(36).slice(2,6)}.${compressed.name.split('.').pop()}`);
+        const snap = await uploadBytes(imgRef, compressed);
+        urls.push(await getDownloadURL(snap.ref));
+      }
+      setHeroImages((prev) => [...prev, ...urls]);
+      toast.success('Imagen(es) subida(s). Recuerda guardar.');
     } catch {
       toast.error('Error al subir imagen');
     }
+    e.target.value = '';
+  }
+
+  async function handleHeroImageMobileAdd(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    try {
+      const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const { storage } = await import('@/config/firebase');
+      const { compressImage } = await import('@/utils/imageUtils');
+      toast.info(`Subiendo ${files.length > 1 ? files.length + ' imágenes móvil' : 'imagen móvil'}...`);
+      const urls: string[] = [];
+      for (const file of files) {
+        const compressed = await compressImage(file, 1080, 0.85);
+        const imgRef = ref(storage, `hero/hero-banner-mobile-${Date.now()}-${Math.random().toString(36).slice(2,6)}.${compressed.name.split('.').pop()}`);
+        const snap = await uploadBytes(imgRef, compressed);
+        urls.push(await getDownloadURL(snap.ref));
+      }
+      setHeroImagesMobile((prev) => [...prev, ...urls]);
+      toast.success('Imagen(es) móvil subida(s). Recuerda guardar.');
+    } catch {
+      toast.error('Error al subir imagen');
+    }
+    e.target.value = '';
   }
 
   async function handleSaveAnnouncement(ann: AnnouncementDoc) {
@@ -748,20 +785,128 @@ export function SettingsPage() {
                 />
               </div>
 
-              {/* Hero image */}
+              {/* Intervalo del carrusel */}
               <div>
-                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">Imagen del Banner</label>
-                <p className="text-[10px] text-navy-400 dark:text-gray-500 mb-2">Foto de portada de la tienda. Se recomienda 1920×1080 o superior.</p>
+                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">Intervalo del Carrusel</label>
+                <p className="text-[10px] text-navy-400 dark:text-gray-500 mb-2">Segundos entre cada imagen del banner.</p>
                 <div className="flex items-center gap-3">
-                  {heroImage && (
-                    <div className="w-24 h-14 rounded-lg overflow-hidden border border-surface-200 flex-shrink-0">
-                      <img src={heroImage} alt="Banner" className="w-full h-full object-cover" />
+                  {[4, 5, 6, 8, 10].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setHeroSlideInterval(s)}
+                      className={`px-4 py-2 text-xs font-display font-bold rounded-lg transition-colors ${
+                        heroSlideInterval === s
+                          ? 'bg-navy-900 dark:bg-gray-100 text-white dark:text-gray-900'
+                          : 'bg-surface-50 text-navy-500 border border-surface-200 hover:border-navy-300'
+                      }`}
+                    >
+                      {s}s
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={2}
+                    max={30}
+                    value={heroSlideInterval}
+                    onChange={(e) => setHeroSlideInterval(Number(e.target.value))}
+                    className="w-16 px-3 py-2 border border-surface-200 rounded-lg text-sm text-center bg-white dark:bg-gray-800 dark:text-gray-100 focus:ring-1 focus:ring-navy-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Hero images — desktop */}
+              <div>
+                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">
+                  Imágenes del Banner (PC) <span className="text-navy-400 font-normal">— {heroImages.length} imagen{heroImages.length !== 1 ? 'es' : ''}</span>
+                </label>
+                <p className="text-[10px] text-navy-400 dark:text-gray-500 mb-3">Carrusel de portada para escritorio. 1920×1080 o superior. El orden en pantalla es de izquierda a derecha.</p>
+                <div className="flex flex-wrap gap-3 mb-3">
+                  {heroImages.map((url, idx) => (
+                    <div key={url + idx} className="relative group">
+                      <div className="w-28 h-16 rounded-lg overflow-hidden border border-surface-200">
+                        <img src={url} alt={`Banner ${idx + 1}`} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
+                        {idx > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const arr = [...heroImages];
+                              [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                              setHeroImages(arr);
+                            }}
+                            className="w-6 h-6 bg-white/90 rounded text-xs flex items-center justify-center hover:bg-white"
+                            title="Mover izquierda"
+                          >←</button>
+                        )}
+                        {idx < heroImages.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const arr = [...heroImages];
+                              [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+                              setHeroImages(arr);
+                            }}
+                            className="w-6 h-6 bg-white/90 rounded text-xs flex items-center justify-center hover:bg-white"
+                            title="Mover derecha"
+                          >→</button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setHeroImages(heroImages.filter((_, i) => i !== idx))}
+                          className="w-6 h-6 bg-red-500 rounded text-white text-xs flex items-center justify-center hover:bg-red-600"
+                          title="Eliminar"
+                        ><Trash2 size={10} /></button>
+                      </div>
+                      <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1 rounded">{idx + 1}</span>
                     </div>
-                  )}
-                  <label className="flex items-center gap-1.5 px-4 py-2 bg-surface-50 border border-surface-200 text-navy-600 dark:text-gray-300 text-xs font-display font-semibold rounded-lg hover:border-navy-300 transition-colors cursor-pointer">
-                    <Upload size={14} />
-                    Cambiar imagen
-                    <input type="file" accept="image/*" onChange={handleHeroImageUpload} className="hidden" />
+                  ))}
+                  <label className="w-28 h-16 rounded-lg border-2 border-dashed border-surface-300 hover:border-navy-400 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors">
+                    <Upload size={14} className="text-navy-400" />
+                    <span className="text-[9px] text-navy-400 font-medium">Agregar</span>
+                    <input type="file" accept="image/*" multiple onChange={handleHeroImageAdd} className="hidden" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Hero images — mobile */}
+              <div>
+                <label className="block text-xs font-display font-semibold text-navy-900 dark:text-gray-100 mb-1">
+                  Imágenes del Banner (Móvil) <span className="text-navy-400 font-normal">— {heroImagesMobile.length} imagen{heroImagesMobile.length !== 1 ? 'es' : ''}</span>
+                </label>
+                <p className="text-[10px] text-navy-400 dark:text-gray-500 mb-3">Opcional. Formato vertical (1080×1350). Si no se sube, se usan las de PC. La imagen 1 de móvil corresponde a la imagen 1 de PC, etc.</p>
+                <div className="flex flex-wrap gap-3 mb-3">
+                  {heroImagesMobile.map((url, idx) => (
+                    <div key={url + idx} className="relative group">
+                      <div className="w-10 h-16 rounded-lg overflow-hidden border border-surface-200">
+                        <img src={url} alt={`Banner móvil ${idx + 1}`} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
+                        {idx > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const arr = [...heroImagesMobile];
+                              [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                              setHeroImagesMobile(arr);
+                            }}
+                            className="w-5 h-5 bg-white/90 rounded text-[10px] flex items-center justify-center hover:bg-white"
+                          >←</button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setHeroImagesMobile(heroImagesMobile.filter((_, i) => i !== idx))}
+                          className="w-5 h-5 bg-red-500 rounded text-white flex items-center justify-center hover:bg-red-600"
+                        ><Trash2 size={9} /></button>
+                      </div>
+                      <span className="absolute bottom-1 left-0 right-0 text-center bg-black/60 text-white text-[9px]">{idx + 1}</span>
+                    </div>
+                  ))}
+                  <label className="w-10 h-16 rounded-lg border-2 border-dashed border-surface-300 hover:border-navy-400 flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors">
+                    <Upload size={11} className="text-navy-400" />
+                    <span className="text-[8px] text-navy-400 font-medium text-center leading-tight">Agregar</span>
+                    <input type="file" accept="image/*" multiple onChange={handleHeroImageMobileAdd} className="hidden" />
                   </label>
                 </div>
               </div>

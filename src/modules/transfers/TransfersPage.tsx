@@ -11,6 +11,7 @@ import {
 import { CreateTransferModal } from './CreateTransferModal';
 import { ReceiveTransferModal } from './ReceiveTransferModal';
 import type { InventoryTransfer, TransferStatus } from '@/types';
+import { sizeLabel } from '@/utils/branchUtils';
 import {
   Truck, Plus, RefreshCw, Eye, Send, CheckCircle2, XCircle, Image as ImageIcon,
   Package, Calendar, User, FileText, AlertTriangle, ArrowRight, Clock, Store, Warehouse,
@@ -428,7 +429,7 @@ function TransferDetail({ transfer, onPrinted }: { transfer: InventoryTransfer; 
                 return (
                   <tr key={idx}>
                     <td className="px-3 py-2 text-navy-900 dark:text-gray-200">{item.productName}</td>
-                    <td className="px-3 py-2 font-mono text-navy-700 dark:text-gray-300">{item.size}</td>
+                    <td className="px-3 py-2 font-mono text-navy-700 dark:text-gray-300">{sizeLabel(item.size)}</td>
                     <td className="px-3 py-2 text-navy-600 dark:text-gray-400">{item.color}</td>
                     <td className="px-3 py-2 text-right font-mono font-semibold text-navy-900 dark:text-gray-200">{item.quantitySent}</td>
                     {transfer.status === 'received' && (

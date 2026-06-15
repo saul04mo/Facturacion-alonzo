@@ -5,6 +5,7 @@ import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Printer } from 'lucide-react';
 import type { Product, ProductVariant } from '@/types';
+import { sizeLabel } from '@/utils/branchUtils';
 
 // ============================
 // BARCODE RENDERER (SVG)
@@ -110,7 +111,7 @@ export function BarcodePrintModal({
           .map(({ v }) => ({
             barcode: v.barcode!,
             productName: product.name,
-            variantLabel: `${v.size} / ${v.color}`,
+            variantLabel: `${sizeLabel(v.size)} / ${v.color}`,
             price: v.price,
             quantity: 1,
           }))
@@ -124,7 +125,7 @@ export function BarcodePrintModal({
             allItems.push({
               barcode: v.barcode,
               productName: p.name,
-              variantLabel: `${v.size} / ${v.color}`,
+              variantLabel: `${sizeLabel(v.size)} / ${v.color}`,
               price: v.price,
               quantity: 1,
             });

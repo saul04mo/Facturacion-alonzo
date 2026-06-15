@@ -4,15 +4,20 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
-import { Pagination } from '@/components/Pagination';
 import { saveProduct, deleteProduct, toggleProductActive } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
-import { getStockBreakdown, getProductStockBreakdown } from '@/utils/branchUtils';
+import { getStockBreakdown, getProductStockBreakdown, NO_SIZE_LABEL, isNoSize, sizeLabel } from '@/utils/branchUtils';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy, Store, Warehouse, Truck as TruckIcon } from 'lucide-react';
+import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy, Store, Warehouse, Truck as TruckIcon, FileSpreadsheet } from 'lucide-react';
 
 /** Vista de stock por sucursal en el inventario. */
 type StockView = 'total' | 'store' | 'warehouse' | 'transit';
+
+/** Formatea un valor de stock. */
+function fmtStock(n: number): string {
+  return String(n);
+}
+
 
 // ============================
 // VARIANT EDITOR (Modal)
@@ -27,6 +32,18 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
   };
   const remove = (i: number) => onChange(variants.filter((_, idx) => idx !== i));
   const add = () => onChange([...variants, { size: '', color: '', price: 0, stock: 0, stockStore: 0, stockWarehouse: 0, stockInTransit: 0 }]);
+  // Agrega una línea "Sin talla" (S/T). Hereda el precio/color de la
+  // primera variante existente para no tener que retipearlo.
+  const addNoSize = () => {
+    const ref = variants[0];
+    onChange([...variants, {
+      size: NO_SIZE_LABEL,
+      color: ref?.color || '',
+      price: ref?.price || 0,
+      stock: 0, stockStore: 0, stockWarehouse: 0, stockInTransit: 0,
+    }]);
+  };
+  const hasNoSize = variants.some((v) => isNoSize(v.size));
 
   function generateBarcodeForVariant(i: number) {
     const code = generateBarcode();
@@ -80,7 +97,16 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariant[]; onC
               <Barcode size={13} /> Generar Códigos ({missingBarcodes})
             </button>
           )}
-          <button type="button" onClick={add} className="btn-ghost text-xs"><Plus size={14} /> Agregar</button>
+          <button
+            type="button"
+            onClick={addNoSize}
+            disabled={hasNoSize}
+            title={hasNoSize ? 'Este producto ya tiene una línea sin talla' : 'Agregar una línea sin talla (S/T)'}
+            className="btn-ghost text-xs text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+          >
+            <Plus size={14} /> Sin talla
+          </button>
+          <button type="button" onClick={add} className="btn-ghost text-xs"><Plus size={14} /> Agregar talla</button>
         </div>
       </div>
       {variants.length === 0 && <p className="text-sm text-navy-300 text-center py-4">Agrega al menos una variante.</p>}
@@ -578,8 +604,6 @@ export function InventoryPage() {
       setTogglingCategoryKey(null);
     }
   }
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
   // Vista de stock: total / por sucursal
   const [stockView, setStockView] = useState<StockView>('total');
 
@@ -606,7 +630,7 @@ export function InventoryPage() {
         const el = document.querySelector(`[data-product-id="${result.product.id}"]`);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
       });
-      toast.success(`Producto encontrado: ${result.product.name} (${result.variant.size}/${result.variant.color})`);
+      toast.success(`Producto encontrado: ${result.product.name} (${sizeLabel(result.variant.size)}/${result.variant.color})`);
     } else {
       toast.warning(`No se encontró producto con código: ${barcode}`);
     }
@@ -630,14 +654,12 @@ export function InventoryPage() {
     setAppliedGender(draftGender);
     setAppliedCategory(draftCategory);
     setAppliedSearch(draftSearch);
-    setPage(1);
     setExpandedId(null);
   }
 
   function clearFilters() {
     setDraftGender('all'); setDraftCategory('all'); setDraftSearch('');
     setAppliedGender('all'); setAppliedCategory('all'); setAppliedSearch('');
-    setPage(1);
   }
 
   const hasActiveFilters = appliedGender !== 'all' || appliedCategory !== 'all' || appliedSearch !== '';
@@ -685,24 +707,10 @@ export function InventoryPage() {
     return groups;
   }, [filtered]);
 
-  // Flatten for pagination
-  const allProducts = useMemo(() => grouped.flatMap((g) => g.products), [grouped]);
-  const totalPages = Math.max(1, Math.ceil(allProducts.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedIds = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return new Set(allProducts.slice(start, start + pageSize).map((p) => p.id));
-  }, [allProducts, currentPage, pageSize]);
-
-  // Filter grouped to only show current page items
+  // Mostrar todos los productos en una sola página (sin paginado)
   const paginatedGroups = useMemo(() => {
-    return grouped.map((g) => ({
-      ...g,
-      products: g.products.filter((p) => paginatedIds.has(p.id)),
-    })).filter((g) => g.products.length > 0);
-  }, [grouped, paginatedIds]);
-
-  function handlePageSizeChange(size: number) { setPageSize(size); setPage(1); }
+    return grouped.filter((g) => g.products.length > 0);
+  }, [grouped]);
 
   // Stock breakdown agregado de toda la lista filtrada
   const stockTotals = useMemo(() => {
@@ -721,6 +729,90 @@ export function InventoryPage() {
   }, [filtered]);
   const totalStock = stockTotals.total;
   const lowStockCount = filtered.filter((p) => getProductStockBreakdown(p).total <= 5).length;
+
+  // Exporta el inventario filtrado a Excel.
+  //  - mode 'all': desglose Tienda / Almacén / En Tránsito + Total.
+  //  - mode 'warehouse': SOLO variantes con stock en almacén (>0), columna Almacén.
+  const handleExportExcel = useCallback(async (mode: 'all' | 'warehouse' = 'all') => {
+    if (filtered.length === 0) { toast.warning('No hay productos para exportar.'); return; }
+    const onlyWarehouse = mode === 'warehouse';
+    try {
+      const XLSX = await import('xlsx');
+
+      // ── Hoja 1: una fila por variante, ordenado por género→categoría→nombre ──
+      const rows: Record<string, string | number>[] = [];
+      let warehouseQty = 0;
+      grouped.forEach((g) => g.products.forEach((p) => {
+        (p.variants || []).forEach((v) => {
+          const b = getStockBreakdown(v);
+          // En modo almacén, solo incluimos lo que realmente hay en almacén.
+          if (onlyWarehouse && b.warehouse <= 0) return;
+          warehouseQty += b.warehouse;
+          const base = {
+            'Género': p.gender,
+            'Categoría': p.category || 'Sin Categoría',
+            'Producto': p.name,
+            'Talla': sizeLabel(v.size),
+            'Color': v.color || '—',
+            'Código': v.barcode || '',
+            'Precio (USD)': v.price ?? 0,
+          };
+          rows.push(onlyWarehouse
+            ? { ...base, 'Almacén': b.warehouse }
+            : { ...base, 'Tienda': b.store, 'Almacén': b.warehouse, 'En Tránsito': b.inTransit, 'Total': b.total });
+        });
+      }));
+
+      if (onlyWarehouse && rows.length === 0) {
+        toast.warning('No hay stock en almacén para exportar.');
+        return;
+      }
+
+      // Fila de totales
+      rows.push(onlyWarehouse
+        ? { 'Género': '', 'Categoría': '', 'Producto': 'TOTAL ALMACÉN', 'Talla': '', 'Color': '', 'Código': '', 'Precio (USD)': '', 'Almacén': warehouseQty }
+        : { 'Género': '', 'Categoría': '', 'Producto': 'TOTAL GENERAL', 'Talla': '', 'Color': '', 'Código': '', 'Precio (USD)': '', 'Tienda': stockTotals.store, 'Almacén': stockTotals.warehouse, 'En Tránsito': stockTotals.inTransit, 'Total': stockTotals.total });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = onlyWarehouse
+        ? [{ wch: 9 }, { wch: 18 }, { wch: 32 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 11 }, { wch: 9 }]
+        : [{ wch: 9 }, { wch: 18 }, { wch: 32 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 8 }];
+
+      // ── Hoja 2: Resumen por categoría ──
+      const summary: Record<string, string | number>[] = [];
+      grouped.forEach((g) => {
+        const t = g.products.reduce(
+          (acc, p) => {
+            const b = getProductStockBreakdown(p);
+            return { store: acc.store + b.store, warehouse: acc.warehouse + b.warehouse, inTransit: acc.inTransit + b.inTransit, total: acc.total + b.total };
+          },
+          { store: 0, warehouse: 0, inTransit: 0, total: 0 },
+        );
+        // En modo almacén, omitimos categorías sin stock en almacén.
+        if (onlyWarehouse && t.warehouse <= 0) return;
+        summary.push(onlyWarehouse
+          ? { 'Género': g.gender, 'Categoría': g.category, 'Almacén': t.warehouse }
+          : { 'Género': g.gender, 'Categoría': g.category, 'Productos': g.products.length, 'Tienda': t.store, 'Almacén': t.warehouse, 'En Tránsito': t.inTransit, 'Total': t.total });
+      });
+      summary.push(onlyWarehouse
+        ? { 'Género': '', 'Categoría': 'TOTAL ALMACÉN', 'Almacén': stockTotals.warehouse }
+        : { 'Género': '', 'Categoría': 'TOTAL GENERAL', 'Productos': filtered.length, 'Tienda': stockTotals.store, 'Almacén': stockTotals.warehouse, 'En Tránsito': stockTotals.inTransit, 'Total': stockTotals.total });
+      const wsSummary = XLSX.utils.json_to_sheet(summary);
+      wsSummary['!cols'] = onlyWarehouse
+        ? [{ wch: 9 }, { wch: 20 }, { wch: 9 }]
+        : [{ wch: 9 }, { wch: 20 }, { wch: 10 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 8 }];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, onlyWarehouse ? 'Almacén' : 'Inventario');
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen');
+      const prefix = onlyWarehouse ? 'almacen' : 'inventario';
+      XLSX.writeFile(wb, `${prefix}-alonzo-${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success(`${onlyWarehouse ? 'Almacén' : 'Inventario'} exportado (${rows.length - 1} variantes).`);
+    } catch (err) {
+      console.error('Error exportando inventario:', err);
+      toast.error('No se pudo exportar el Excel.');
+    }
+  }, [filtered, grouped, stockTotals, toast]);
 
   function handleEdit(p: Product) { setEditProduct(p); setFormOpen(true); }
 
@@ -768,6 +860,14 @@ export function InventoryPage() {
             <button onClick={() => openPrintModal()}
               className="btn-secondary text-sm gap-1" title="Imprimir códigos de barras">
               <Barcode size={14} /> Códigos
+            </button>
+            <button onClick={() => handleExportExcel('all')}
+              className="btn-secondary text-sm gap-1" title="Descargar inventario completo (Tienda + Almacén) en Excel">
+              <FileSpreadsheet size={14} /> Excel
+            </button>
+            <button onClick={() => handleExportExcel('warehouse')}
+              className="btn-secondary text-sm gap-1" title="Descargar solo el stock de Almacén en Excel">
+              <Warehouse size={14} /> Almacén
             </button>
             <button onClick={() => setShowFilters(!showFilters)}
               className={`btn-secondary text-sm ${showFilters ? 'border-amber-300 bg-amber-50' : ''}`}>
@@ -982,7 +1082,7 @@ export function InventoryPage() {
                               }`}
                               title={`Tienda: ${productBreakdown.store}`}
                             >
-                              <Store size={10} /> {productBreakdown.store}
+                              <Store size={10} /> {fmtStock(productBreakdown.store)}
                             </span>
                             <span
                               className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold backdrop-blur-sm shadow-sm ${
@@ -992,7 +1092,7 @@ export function InventoryPage() {
                               }`}
                               title={`Almacén: ${productBreakdown.warehouse}`}
                             >
-                              <Warehouse size={10} /> {productBreakdown.warehouse}
+                              <Warehouse size={10} /> {fmtStock(productBreakdown.warehouse)}
                             </span>
                           </div>
 
@@ -1046,6 +1146,23 @@ export function InventoryPage() {
 
                         {/* Sizes / stock list */}
                         <div className="flex-1 px-2.5 py-2 space-y-0.5">
+                          {/* Encabezado de columna: indica qué representa cada número.
+                              Usa las mismas columnas de ancho fijo que las filas para
+                              que la T y la A queden alineadas sobre sus números. */}
+                          <div className="flex items-baseline justify-between border-b border-surface-200 pb-1 mb-1 leading-none">
+                            {stockView === 'total' ? (
+                              <span className="flex items-baseline gap-1 font-mono font-extrabold text-sm">
+                                <span className="w-9 text-right text-emerald-600 dark:text-emerald-400" title="Tienda">T</span>
+                                <span className="text-navy-300 dark:text-gray-600 font-normal opacity-0">·</span>
+                                <span className="w-9 text-right text-blue-600 dark:text-blue-400" title="Almacén">A</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-500 dark:text-gray-400">
+                                {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : 'Tránsito'}
+                              </span>
+                            )}
+                            <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-400 dark:text-gray-500">Talla</span>
+                          </div>
                           {sortedVariants.map((v, idx) => {
                             const breakdown = getStockBreakdown(v);
                             const variantStock = stockView === 'store' ? breakdown.store
@@ -1063,22 +1180,22 @@ export function InventoryPage() {
                                 {stockView === 'total' ? (
                                   // Vista por defecto: mostrar Tienda · Almacén lado a lado
                                   // con colores propios de cada sucursal para lectura rápida.
-                                  <span className="tabular-nums font-bold flex items-baseline gap-0.5">
-                                    <span className={breakdown.store === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-emerald-600 dark:text-emerald-400'}>
-                                      {breakdown.store}
+                                  <span className="tabular-nums font-bold flex items-baseline gap-1">
+                                    <span className={`w-9 text-right ${breakdown.store <= 0 ? 'text-navy-300 dark:text-gray-600' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                      {fmtStock(breakdown.store)}
                                     </span>
-                                    <span className="text-navy-300 dark:text-gray-600 font-normal">·</span>
-                                    <span className={breakdown.warehouse === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}>
-                                      {breakdown.warehouse}
+                                    <span className="text-navy-300 dark:text-gray-600 font-normal opacity-0">·</span>
+                                    <span className={`w-9 text-right ${breakdown.warehouse <= 0 ? 'text-navy-300 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}`}>
+                                      {fmtStock(breakdown.warehouse)}
                                     </span>
                                   </span>
                                 ) : (
                                   <span className={`font-bold tabular-nums ${isOut ? 'text-navy-300' : 'text-navy-900 dark:text-gray-100'}`}>
-                                    {variantStock}
+                                    {fmtStock(variantStock)}
                                   </span>
                                 )}
                                 <span className={`text-[10px] uppercase font-display ${isOut ? 'text-navy-300 line-through' : isLow ? 'text-accent-red font-semibold' : 'text-navy-600 dark:text-gray-400'}`}>
-                                  {v.size}
+                                  {sizeLabel(v.size)}
                                   {!allSameColor && v.color && <span className="text-navy-300 ml-1 normal-case">· {v.color}</span>}
                                 </span>
                               </div>
@@ -1088,29 +1205,41 @@ export function InventoryPage() {
 
                         {/* Total */}
                         <div
-                          className={`px-2.5 py-2 border-t border-surface-200 flex items-center justify-between rounded-b-xl ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}
+                          className={`px-2.5 pt-2 ${stockView === 'total' ? 'pb-1' : 'pb-2 rounded-b-xl'} border-t border-surface-200 flex items-center justify-start ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}
                           title={stockView === 'total' ? `Tienda: ${productBreakdown.store} · Almacén: ${productBreakdown.warehouse}${productBreakdown.inTransit > 0 ? ` · En tránsito: ${productBreakdown.inTransit}` : ''} · Total: ${productBreakdown.total}` : undefined}
                         >
-                          <span className="text-[11px] font-display font-semibold text-navy-600 dark:text-gray-200 uppercase tracking-wider">
-                            {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : stockView === 'transit' ? 'Tránsito' : 'T · A'}
-                          </span>
                           {stockView === 'total' ? (
-                            <span className="text-sm font-mono font-bold tabular-nums flex items-baseline gap-0.5">
-                              <span className={productBreakdown.store === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-emerald-600 dark:text-emerald-400'}>
-                                {productBreakdown.store}
+                            <span className="text-sm font-mono font-bold tabular-nums flex items-baseline gap-1">
+                              <span className={`w-9 text-right ${productBreakdown.store <= 0 ? 'text-navy-300 dark:text-gray-600' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                {fmtStock(productBreakdown.store)}
                               </span>
-                              <span className="text-navy-300 dark:text-gray-600 font-normal">·</span>
-                              <span className={productBreakdown.warehouse === 0 ? 'text-navy-300 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}>
-                                {productBreakdown.warehouse}
+                              <span className="text-navy-300 dark:text-gray-600 font-normal opacity-0">·</span>
+                              <span className={`w-9 text-right ${productBreakdown.warehouse <= 0 ? 'text-navy-300 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}`}>
+                                {fmtStock(productBreakdown.warehouse)}
                               </span>
                               {lowStock && <AlertTriangle size={11} className="inline -mt-0.5 ml-1 text-accent-red" />}
                             </span>
                           ) : (
                             <span className={`text-sm font-mono font-bold tabular-nums ${lowStock ? 'text-accent-red' : 'text-navy-900 dark:text-gray-100'}`}>
-                              {visibleStock} {lowStock && <AlertTriangle size={11} className="inline -mt-0.5" />}
+                              {fmtStock(visibleStock)} {lowStock && <AlertTriangle size={11} className="inline -mt-0.5" />}
                             </span>
                           )}
                         </div>
+
+                        {/* Total general (Tienda + Almacén + Tránsito) — solo en vista combinada */}
+                        {stockView === 'total' && (
+                          <div
+                            className={`px-2.5 py-1.5 border-t border-surface-200 flex items-center justify-between rounded-b-xl ${lowStock ? 'bg-red-50 dark:bg-red-900/20' : 'bg-surface-50 dark:bg-surface-100/30'}`}
+                            title={`Total general: ${productBreakdown.total}`}
+                          >
+                            <span className="text-[11px] font-display font-bold text-navy-700 dark:text-gray-100 uppercase tracking-wider">
+                              Total
+                            </span>
+                            <span className={`text-sm font-mono font-bold tabular-nums ${lowStock ? 'text-accent-red' : 'text-navy-900 dark:text-gray-100'}`}>
+                              {fmtStock(productBreakdown.total)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1119,14 +1248,6 @@ export function InventoryPage() {
           ))
         )}
       </div>
-
-      {/* Pagination */}
-      {allProducts.length > 0 && (
-        <div className="card overflow-hidden">
-          <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={allProducts.length}
-            pageSize={pageSize} onPageChange={setPage} onPageSizeChange={handlePageSizeChange} />
-        </div>
-      )}
 
       {formOpen && <ProductFormModal open={formOpen} onClose={() => { setFormOpen(false); setEditProduct(null); }} product={editProduct} />}
 

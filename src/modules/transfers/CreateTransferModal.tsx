@@ -4,6 +4,7 @@ import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
 import { createTransfer } from './transferService';
 import type { Product, Branch } from '@/types';
+import { sizeLabel } from '@/utils/branchUtils';
 import {
   Plus, Trash2, Search, Image as ImageIcon, X, Warehouse, ArrowRight, Store,
   Package, Camera, AlertTriangle, ArrowLeftRight,
@@ -72,7 +73,7 @@ export function CreateTransferModal({
     const variant = product.variants[variantIndex];
     const available = (variant as any)[sourceField] ?? 0;
     if (available <= 0) {
-      toast.warning(`${product.name} ${variant.size}/${variant.color} no tiene stock en ${sourceLabel.toLowerCase()}.`);
+      toast.warning(`${product.name} ${sizeLabel(variant.size)}/${variant.color} no tiene stock en ${sourceLabel.toLowerCase()}.`);
       return;
     }
     // Si ya existe en la draft, sumamos 1
@@ -141,7 +142,7 @@ export function CreateTransferModal({
     const overflow = items.find((i) => i.quantitySent > i.availableAtSource);
     if (overflow) {
       toast.warning(
-        `${overflow.productName} ${overflow.size}/${overflow.color}: cantidad excede el stock de ${sourceLabel.toLowerCase()} (${overflow.availableAtSource}).`,
+        `${overflow.productName} ${sizeLabel(overflow.size)}/${overflow.color}: cantidad excede el stock de ${sourceLabel.toLowerCase()} (${overflow.availableAtSource}).`,
       );
       return;
     }
@@ -254,7 +255,7 @@ export function CreateTransferModal({
                     return (
                       <tr key={idx}>
                         <td className="px-3 py-2 text-navy-900 dark:text-gray-200 truncate">{item.productName}</td>
-                        <td className="px-3 py-2 font-mono text-navy-700 dark:text-gray-300">{item.size}</td>
+                        <td className="px-3 py-2 font-mono text-navy-700 dark:text-gray-300">{sizeLabel(item.size)}</td>
                         <td className="px-3 py-2 text-navy-600 dark:text-gray-400 truncate">{item.color}</td>
                         <td className="px-3 py-2 text-right font-mono text-navy-500">{item.availableAtSource}</td>
                         <td className="px-3 py-2">
@@ -520,7 +521,7 @@ function ProductPickerModal({
                           type="button"
                           title={`Click para agregar 1 unidad (stock en ${sourceLabel}: ${stockHere})`}
                         >
-                          <span className="font-semibold text-navy-700 dark:text-gray-300">{v.size}</span>
+                          <span className="font-semibold text-navy-700 dark:text-gray-300">{sizeLabel(v.size)}</span>
                           <span className="mx-1 text-navy-300">·</span>
                           <span className="text-navy-500">{v.color}</span>
                           <span className="ml-2 font-mono text-blue-600">×{stockHere}</span>

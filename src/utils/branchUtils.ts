@@ -14,6 +14,34 @@
 import type { Branch, ProductVariant, Product, DeliveryType } from '@/types';
 
 /**
+ * Etiqueta de talla para variantes que NO manejan talla (modelos,
+ * accesorios, prendas únicas). Se trata como una variante normal: lleva
+ * su stock por sucursal y se contabiliza en los totales.
+ */
+export const NO_SIZE_LABEL = 'S/T';
+
+/**
+ * Etiquetas legacy que significaban "sin talla" antes de migrar a 'S/T'.
+ * Se mantienen para que los productos ya guardados en BD con ese valor
+ * sigan detectándose como sin talla.
+ */
+const LEGACY_NO_SIZE_LABELS = ['ÚNICA', 'UNICA'];
+
+/** True si la variante es "sin talla" (talla vacía, S/T o etiqueta legacy). */
+export function isNoSize(size: string): boolean {
+  const s = String(size ?? '').trim().toUpperCase();
+  return s === '' || s === NO_SIZE_LABEL || LEGACY_NO_SIZE_LABELS.includes(s);
+}
+
+/**
+ * Etiqueta de talla lista para mostrar al usuario: normaliza cualquier
+ * variante sin talla (incluido el legacy 'ÚNICA') a la etiqueta actual.
+ */
+export function sizeLabel(size: string): string {
+  return isNoSize(size) ? NO_SIZE_LABEL : size;
+}
+
+/**
  * Stock total de una variante (tienda + almacén + en tránsito).
  * Usar para mostrar "Stock total" o para chequeos de stock global.
  */

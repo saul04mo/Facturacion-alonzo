@@ -4,7 +4,7 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { CartPanel } from './CartPanel';
 import { VariantSelector } from './VariantSelector';
-import { getAvailableStock } from '@/utils/branchUtils';
+import { getAvailableStock, sizeLabel, isNoSize } from '@/utils/branchUtils';
 import type { Product, Discount } from '@/types';
 import {
   ArrowLeft, Search, Tag, Calculator, ChevronRight, ShoppingCart, X,
@@ -90,7 +90,9 @@ export function POSPage() {
     // Validate stock against the ACTIVE BRANCH only (not aggregate).
     // El cajero no puede vender desde la tienda algo que solo tiene
     // stock en almacén — debe primero hacer una transferencia.
-    if (!allowNegative) {
+    // EXCEPCIÓN: las prendas SIN TALLA se permiten agregar siempre (aunque
+    // no haya stock), porque se contabilizan aunque la prenda no esté.
+    if (!allowNegative && !isNoSize(variant.size)) {
       const existingItem = currentSale.items.find(
         (i) => i.productId === productId && i.variantIndex === variantIndex,
       );
@@ -98,7 +100,7 @@ export function POSPage() {
       const availableInBranch = getAvailableStock(variant, branch);
       if (availableInBranch <= currentQty) {
         const branchLabel = branch === 'store' ? 'la tienda' : 'el almacén';
-        toast.warning(`Sin stock en ${branchLabel} para "${product.name}" (${variant.size}/${variant.color})`);
+        toast.warning(`Sin stock en ${branchLabel} para "${product.name}" (${sizeLabel(variant.size)}/${variant.color})`);
         return;
       }
     }

@@ -2,6 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+[functions]
+  # Carpeta de funciones serverless (registro de cliente desde web pública)
+  directory = "netlify/functions"
+  # Empaqueta firebase-admin con la función
+  external_node_modules = ["firebase-admin"]
+  node_bundler = "esbuild"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

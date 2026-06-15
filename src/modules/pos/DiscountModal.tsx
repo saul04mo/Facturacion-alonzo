@@ -3,12 +3,13 @@ import { Modal } from '@/components/Modal';
 import { useToast } from '@/components/Toast';
 
 export function DiscountModal({
-  currentDiscount, subtotal, onApply, onClose,
+  currentDiscount, subtotal, onApply, onClose, title = 'Aplicar Descuento General',
 }: {
   currentDiscount: { type: 'none' | 'percentage' | 'fixed'; value: number };
   subtotal: number;
   onApply: (discount: { type: 'none' | 'percentage' | 'fixed'; value: number }) => void;
   onClose: () => void;
+  title?: string;
 }) {
   const [type, setType] = useState<'percentage' | 'fixed'>(
     currentDiscount.type === 'none' ? 'percentage' : currentDiscount.type,
@@ -34,7 +35,7 @@ export function DiscountModal({
   }
 
   return (
-    <Modal open={true} onClose={onClose} title="Aplicar Descuento General" size="sm">
+    <Modal open={true} onClose={onClose} title={title} size="sm">
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-display font-medium text-navy-700 mb-2">Tipo de Descuento</label>

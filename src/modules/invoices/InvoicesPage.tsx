@@ -13,6 +13,7 @@ import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import { STATUS_CONFIG, isCountableSale } from '@/utils/invoiceStatus';
+import { sizeLabel } from '@/utils/branchUtils';
 import type { Product, Invoice, InvoiceStatus } from '@/types';
 import {
   FileText, RotateCcw, XCircle, CheckCircle, DollarSign,
@@ -145,6 +146,78 @@ function StatusFlowDropdown({
   );
 }
 
+// ════════════════════════════════════════════════
+// MULTI-SELECT con checkboxes para filtros
+// ════════════════════════════════════════════════
+function MultiSelect({
+  options,
+  value,
+  onChange,
+  placeholder = 'Todos',
+}: {
+  options: { value: string; label: string }[];
+  value: string[];
+  onChange: (v: string[]) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+
+  function toggle(v: string) {
+    if (value.includes(v)) onChange(value.filter((x) => x !== v));
+    else onChange([...value, v]);
+  }
+
+  const displayText =
+    value.length === 0
+      ? placeholder
+      : value.length === 1
+        ? (options.find((o) => o.value === value[0])?.label ?? value[0])
+        : `${value.length} seleccionados`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="input-field text-sm text-left flex items-center justify-between w-full gap-2"
+      >
+        <span className={value.length === 0 ? 'text-navy-400 truncate' : 'text-navy-900 dark:text-gray-100 truncate font-medium'}>
+          {displayText}
+        </span>
+        <ChevronDown size={14} className={`text-navy-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full left-0 mt-1 w-full min-w-[200px] bg-white dark:bg-dark-300 border border-surface-200 dark:border-dark-400 rounded-lg shadow-xl py-1 max-h-64 overflow-y-auto">
+          {options.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 dark:hover:bg-dark-400/60 cursor-pointer select-none"
+            >
+              <input
+                type="checkbox"
+                checked={value.includes(opt.value)}
+                onChange={() => toggle(opt.value)}
+                className="rounded text-blue-500 focus:ring-blue-500 flex-shrink-0"
+              />
+              <span className="text-sm text-navy-700 dark:text-gray-200">{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const RETURN_REASONS = ['Cambio de Producto', 'Producto Dañado (Merma)', 'Cambio de Talla/Color', 'Insatisfacción del Cliente', 'Error en la Venta', 'Otro'];
 
 export function InvoicesPage() {
@@ -163,19 +236,19 @@ export function InvoicesPage() {
   const [dSearch, setDSearch] = useState('');
   const [dStart, setDStart] = useState(today);
   const [dEnd, setDEnd] = useState(today);
-  const [dStatus, setDStatus] = useState('all');
-  const [dSeller, setDSeller] = useState('all');
-  const [dMethod, setDMethod] = useState('all');
-  const [dDelivery, setDDelivery] = useState('all');
+  const [dStatus, setDStatus] = useState<string[]>([]);
+  const [dSeller, setDSeller] = useState<string[]>([]);
+  const [dMethod, setDMethod] = useState<string[]>([]);
+  const [dDelivery, setDDelivery] = useState<string[]>([]);
 
   // Applied filters
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [sellerFilter, setSellerFilter] = useState('all');
-  const [methodFilter, setMethodFilter] = useState('all');
-  const [deliveryFilter, setDeliveryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [sellerFilter, setSellerFilter] = useState<string[]>([]);
+  const [methodFilter, setMethodFilter] = useState<string[]>([]);
+  const [deliveryFilter, setDeliveryFilter] = useState<string[]>([]);
 
   // Paginación removida: ahora se muestran todas las facturas filtradas
   // en una sola lista con scroll. El array `filtered` ya está acotado por
@@ -258,11 +331,11 @@ export function InvoicesPage() {
     }
   }
 
-  async function applyFilters() { 
-    setSearch(dSearch); 
-    setStartDate(dStart); 
-    setEndDate(dEnd); 
-    setStatusFilter(dStatus); 
+  async function applyFilters() {
+    setSearch(dSearch);
+    setStartDate(dStart);
+    setEndDate(dEnd);
+    setStatusFilter(dStatus);
     setSellerFilter(dSeller);
     setMethodFilter(dMethod);
     setDeliveryFilter(dDelivery);
@@ -283,16 +356,16 @@ export function InvoicesPage() {
     }
   }
 
-  function clearFilters() { 
-    setDSearch(''); setDStart(today); setDEnd(today); setDStatus('all'); 
-    setDSeller('all'); setDMethod('all'); setDDelivery('all');
-    setSearch(''); setStartDate(today); setEndDate(today); setStatusFilter('all'); 
-    setSellerFilter('all'); setMethodFilter('all'); setDeliveryFilter('all');
+  function clearFilters() {
+    setDSearch(''); setDStart(today); setDEnd(today); setDStatus([]);
+    setDSeller([]); setDMethod([]); setDDelivery([]);
+    setSearch(''); setStartDate(today); setEndDate(today); setStatusFilter([]);
+    setSellerFilter([]); setMethodFilter([]); setDeliveryFilter([]);
     setServerInvoices(null);
   }
   const hasActive = search || startDate !== today || endDate !== today
-    || statusFilter !== 'all' || sellerFilter !== 'all'
-    || methodFilter !== 'all' || deliveryFilter !== 'all';
+    || statusFilter.length > 0 || sellerFilter.length > 0
+    || methodFilter.length > 0 || deliveryFilter.length > 0;
 
   // Lista de vendedores únicos derivada de las facturas en memoria/servidor
   const availableSellers = useMemo(() => {
@@ -330,19 +403,22 @@ export function InvoicesPage() {
       result = result.filter((inv: any) => { const d = toDate(inv.date); return d && d >= s && d <= e; });
     }
     
-    if (statusFilter !== 'all') result = result.filter((inv: any) => inv.status === statusFilter);
-    else result = result.filter((inv: any) => inv.status !== 'Cancelado' && inv.status !== 'Devolución');
-
-    if (sellerFilter !== 'all') {
-      result = result.filter((inv: any) => inv.sellerName === sellerFilter);
+    if (statusFilter.length > 0) {
+      result = result.filter((inv: any) => statusFilter.includes(inv.status));
+    } else {
+      result = result.filter((inv: any) => inv.status !== 'Cancelado' && inv.status !== 'Devolución');
     }
-    if (methodFilter !== 'all') {
+
+    if (sellerFilter.length > 0) {
+      result = result.filter((inv: any) => sellerFilter.includes(inv.sellerName));
+    }
+    if (methodFilter.length > 0) {
       result = result.filter((inv: any) =>
-        Array.isArray(inv.payments) && inv.payments.some((p: any) => p.method === methodFilter)
+        Array.isArray(inv.payments) && inv.payments.some((p: any) => methodFilter.includes(p.method))
       );
     }
-    if (deliveryFilter !== 'all') {
-      result = result.filter((inv: any) => inv.deliveryType === deliveryFilter);
+    if (deliveryFilter.length > 0) {
+      result = result.filter((inv: any) => deliveryFilter.includes(inv.deliveryType));
     }
     
     if (search) {
@@ -519,32 +595,42 @@ export function InvoicesPage() {
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Hasta</label>
                 <input type="date" value={dEnd} onChange={(e) => setDEnd(e.target.value)} className="input-field text-sm" /></div>
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Estado</label>
-                <select value={dStatus} onChange={(e) => setDStatus(e.target.value)} className="input-field text-sm">
-                  <option value="all">Activas</option>
-                  <option value="Por Preparar">Por Preparar</option>
-                  <option value="Preparado">Preparado</option>
-                  <option value="Pendiente">Pendiente</option>
-                  <option value="Finalizado">Finalizado</option>
-                  <option value="Pendiente de pago">Crédito</option>
-                  <option value="Devolución">Devolución</option>
-                  <option value="Cancelado">Cancelado</option>
-                  <option value="Creada">Web</option>
-                </select></div>
+                <MultiSelect
+                  value={dStatus}
+                  onChange={setDStatus}
+                  placeholder="Activas (todas)"
+                  options={[
+                    { value: 'Por Preparar', label: 'Por Preparar' },
+                    { value: 'Preparado', label: 'Preparado' },
+                    { value: 'Pendiente', label: 'Pendiente' },
+                    { value: 'Finalizado', label: 'Finalizado' },
+                    { value: 'Pendiente de pago', label: 'Crédito' },
+                    { value: 'Devolución', label: 'Devolución' },
+                    { value: 'Cancelado', label: 'Cancelado' },
+                    { value: 'Creada', label: 'Web' },
+                  ]}
+                /></div>
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Vendedor</label>
-                <select value={dSeller} onChange={(e) => setDSeller(e.target.value)} className="input-field text-sm">
-                  <option value="all">Todos</option>
-                  {availableSellers.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select></div>
+                <MultiSelect
+                  value={dSeller}
+                  onChange={setDSeller}
+                  placeholder="Todos"
+                  options={availableSellers.map((s) => ({ value: s, label: s }))}
+                /></div>
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Método de Pago</label>
-                <select value={dMethod} onChange={(e) => setDMethod(e.target.value)} className="input-field text-sm">
-                  <option value="all">Todos</option>
-                  {PAYMENT_METHODS.filter((m) => m.currency !== 'none').map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
-                </select></div>
+                <MultiSelect
+                  value={dMethod}
+                  onChange={setDMethod}
+                  placeholder="Todos"
+                  options={PAYMENT_METHODS.filter((m) => m.currency !== 'none').map((m) => ({ value: m.name, label: m.name }))}
+                /></div>
               <div><label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Entrega</label>
-                <select value={dDelivery} onChange={(e) => setDDelivery(e.target.value)} className="input-field text-sm">
-                  <option value="all">Todas</option>
-                  {DELIVERY_TYPES.map((dt) => <option key={dt.value} value={dt.value}>{dt.label}</option>)}
-                </select></div>
+                <MultiSelect
+                  value={dDelivery}
+                  onChange={setDDelivery}
+                  placeholder="Todas"
+                  options={DELIVERY_TYPES.map((dt) => ({ value: dt.value, label: dt.label }))}
+                /></div>
               <div className="flex items-end gap-2">
                 <button onClick={applyFilters} disabled={isSearchingServer} className="btn-primary text-sm flex-1">
                   {isSearchingServer ? 'Buscando...' : <><Check size={14} /> Aplicar</>}
@@ -754,7 +840,7 @@ export function InvoicesPage() {
                 const p = products.find((pr: Product) => pr.id === item.productId); const v = p?.variants?.[item.variantIndex];
                 const price = item.priceAtSale ?? v?.price ?? 0;
                 const itemName = item.productName || p?.name || 'Eliminado';
-                const itemLabel = item.variantLabel || (v ? `${v.size}, ${v.color}` : '');
+                const itemLabel = item.variantLabel || (v ? `${sizeLabel(v.size)}, ${v.color}` : '');
                 const imgSrc = p?.imageUrl || p?.imageUrls?.[0];
                 return (<div key={i} className="flex justify-between items-center text-sm p-2 bg-surface-50 rounded-lg hover-lift gap-3">
                   <div className="flex items-center gap-2.5 min-w-0">

@@ -1,7 +1,7 @@
 import { Modal } from '@/components/Modal';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useAppStore } from '@/store/appStore';
-import { getAvailableStock, getStockBreakdown } from '@/utils/branchUtils';
+import { getAvailableStock, getStockBreakdown, isNoSize } from '@/utils/branchUtils';
 import { Store, Warehouse } from 'lucide-react';
 import type { Product } from '@/types';
 
@@ -43,7 +43,9 @@ export function VariantSelector({ product, onSelect, onClose }: {
             const stockStore = breakdown.store;
             const stockWarehouse = breakdown.warehouse;
             const noStock = stockHere <= 0;
-            const blocked = noStock && !allowNegative;
+            // Las prendas SIN TALLA se permiten agregar aunque no haya stock
+            // (se contabilizan aunque la prenda no esté físicamente).
+            const blocked = noStock && !allowNegative && !isNoSize(v.size);
             return (
               <button key={idx} onClick={() => { onSelect(idx); onClose(); }}
                 disabled={blocked}
@@ -54,7 +56,7 @@ export function VariantSelector({ product, onSelect, onClose }: {
               >
                 <div className="flex items-center gap-3">
                   <div className="text-sm text-left">
-                    <span className="font-display font-semibold text-navy-900">Talla {v.size || '—'}</span>
+                    <span className="font-display font-semibold text-navy-900">{isNoSize(v.size) ? 'Sin talla' : `Talla ${v.size}`}</span>
                     <span className="mx-2 text-navy-200">·</span>
                     <span className="text-navy-500">{v.color || 'Sin color'}</span>
                   </div>

@@ -22,6 +22,7 @@ const SettingsPage = lazy(() => import('@/modules/settings/SettingsPage').then((
 const PayrollPage = lazy(() => import('@/modules/payroll/PayrollPage').then((m) => ({ default: m.PayrollPage })));
 const PayrollDraftPage = lazy(() => import('@/modules/payroll/PayrollDraftPage').then((m) => ({ default: m.PayrollDraftPage })));
 const CRMPage = lazy(() => import('@/modules/clients/CRMPage').then((m) => ({ default: m.CRMPage })));
+const ClientRegistrationPage = lazy(() => import('@/modules/public/ClientRegistrationPage').then((m) => ({ default: m.ClientRegistrationPage })));
 
 export function App() {
   return (
@@ -31,6 +32,9 @@ export function App() {
         <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+
+            {/* Ruta PÚBLICA — formulario de registro de envío (sin auth) */}
+            <Route path={ROUTES.CLIENT_REGISTRATION} element={<ClientRegistrationPage />} />
 
             <Route element={<RequireAuth><Layout /></RequireAuth>}>
               <Route path={ROUTES.DASHBOARD} element={<DashboardPage />} />

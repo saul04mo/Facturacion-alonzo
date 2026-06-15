@@ -11,6 +11,7 @@ import {
 import { fetchInvoicesByDateRange } from '@/modules/invoices/invoiceService';
 import { useToast } from '@/components/Toast';
 import type { Invoice } from '@/types';
+import { sizeLabel } from '@/utils/branchUtils';
 
 // ════════════════════════════════════════
 // Helpers
@@ -250,7 +251,7 @@ export function DashboardPage() {
     const alerts: { name: string; variant: string; stock: number }[] = [];
     products.forEach((p) => (p.variants || []).forEach((v: any) => {
       const s = typeof v.stock === 'string' ? parseInt(v.stock) : v.stock;
-      if (s <= 3 && s >= 0) alerts.push({ name: p.name, variant: `${v.size} / ${v.color}`, stock: s });
+      if (s <= 3 && s >= 0) alerts.push({ name: p.name, variant: `${sizeLabel(v.size)} / ${v.color}`, stock: s });
     }));
     return alerts.sort((a, b) => a.stock - b.stock).slice(0, 8);
   }, [products]);

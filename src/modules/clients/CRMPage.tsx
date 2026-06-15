@@ -3,6 +3,7 @@ import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
+import { sizeLabel } from '@/utils/branchUtils';
 import {
   Users, Crown, TrendingUp, ShoppingBag, Phone, Mail, MapPin,
   Download, Search, ChevronRight, ArrowUpDown, MessageCircle,
@@ -189,7 +190,7 @@ export function CRMPage() {
         const realProduct = item.productId ? products.find((p: any) => p.id === item.productId) : null;
         const variant = realProduct?.variants?.[item.variantIndex];
         const pName = realProduct?.name || item.productName || item.titulo || item.name || 'Producto';
-        const variantInfo = variant ? ` (${variant.size || ''}${variant.size && variant.color ? '/' : ''}${variant.color || ''})` : '';
+        const variantInfo = variant ? ` (${sizeLabel(variant.size)}${variant.color ? '/' : ''}${variant.color || ''})` : '';
         const qty = item.quantity || item.qty || 1;
         const key = pName + variantInfo;
         c.products[key] = (c.products[key] || 0) + qty;
@@ -765,7 +766,7 @@ function ClientDetailModal({ client, format, onClose, whatsappLink }: {
                             <div className="flex-1 min-w-0">
                               <p className="text-[11px] font-display font-medium text-navy-900 truncate">{item.name}</p>
                               <p className="text-[9px] text-navy-400">
-                                {item.size && <span>{item.size}</span>}
+                                {item.size && <span>{sizeLabel(item.size)}</span>}
                                 {item.size && item.color && ' / '}
                                 {item.color && <span>{item.color}</span>}
                                 {(item.size || item.color) && ' · '}

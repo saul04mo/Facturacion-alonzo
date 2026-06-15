@@ -1,6 +1,7 @@
 import { doc, type WriteBatch } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import type { Product, Branch } from '@/types';
+import { isNoSize } from '@/utils/branchUtils';
 
 /**
  * Helper interno: aplica un delta a stockStore o stockWarehouse según
@@ -108,6 +109,9 @@ export function validateStock(
     const variant = product.variants[item.variantIndex];
     if (!variant) return `Variante no encontrada para "${product.name}"`;
     if (allowNegative) continue;
+    // Las prendas SIN TALLA se permiten facturar aunque no haya stock
+    // (se contabilizan aunque la prenda no esté físicamente disponible).
+    if (isNoSize(variant.size)) continue;
 
     const available = branch === 'store'
       ? (variant.stockStore ?? 0)

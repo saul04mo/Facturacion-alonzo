@@ -4,3 +4,14 @@ dist
 .env.local
 *.log
 .DS_Store
+
+# 🔒 Llaves de servicio de Firebase — NUNCA subir a git
+serviceAccountKey.json
+*serviceAccount*.json
+
+# Netlify
+.netlify
+
+# Logs de errores temporales de TypeScript
+errors.txt
+errors_utf8.txt

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import { isCountableSale } from '@/utils/invoiceStatus';
+import { sizeLabel } from '@/utils/branchUtils';
 import { AdSpendReport } from './AdSpendReport';
 import { ChannelReport } from './ChannelReport';
 
@@ -143,7 +144,15 @@ export function ReportsPage() {
   }, [filtered]);
 
   const productsSummary = useMemo(() => {
-    const summary: Record<string, { name: string; variant: string; quantity: number; totalUsd: number }> = {};
+    // Agrupado por PRODUCTO (no por variante): cada producto reúne su foto,
+    // sus tallas vendidas y el monto, igual que las tarjetas de inventario.
+    type VariantSold = { label: string; size: string; color: string; quantity: number; totalUsd: number };
+    type ProductSold = {
+      productId: string; name: string; imageUrl?: string;
+      quantity: number; totalUsd: number;
+      variants: Record<string, VariantSold>;
+    };
+    const byProduct: Record<string, ProductSold> = {};
     let gt = 0, tq = 0, td = 0, oc = 0;
     filtered.forEach((inv: any) => {
       if (!inv.items) return;
@@ -168,14 +177,31 @@ export function ReportsPage() {
         const lineTotal = price * item.quantity;
         const ib = lineTotal - calcDiscountAmount(lineTotal, item.discount);
         const net = ib * factor; gt += net; td += (price * item.quantity) - net; tq += item.quantity;
-        const k = `${p.id}-${item.variantIndex}`;
-        const label = item.variantLabel || `${v.size || 'N/A'} / ${v.color || 'N/A'}`;
-        if (!summary[k]) summary[k] = { name: item.productName || p.name, variant: label, quantity: 0, totalUsd: 0 };
-        summary[k].quantity += item.quantity; summary[k].totalUsd += net;
+        const size = v.size ? sizeLabel(v.size) : 'N/A';
+        const color = v.color || 'N/A';
+        if (!byProduct[p.id]) {
+          byProduct[p.id] = {
+            productId: p.id,
+            name: item.productName || p.name,
+            imageUrl: p.imageUrl || p.imageUrls?.[0],
+            quantity: 0, totalUsd: 0, variants: {},
+          };
+        }
+        const grp = byProduct[p.id];
+        grp.quantity += item.quantity; grp.totalUsd += net;
+        const vk = String(item.variantIndex);
+        if (!grp.variants[vk]) grp.variants[vk] = { label: `${size} / ${color}`, size, color, quantity: 0, totalUsd: 0 };
+        grp.variants[vk].quantity += item.quantity; grp.variants[vk].totalUsd += net;
       });
       if (hasM) oc++;
     });
-    return { items: Object.values(summary).sort((a, b) => b.quantity !== a.quantity ? b.quantity - a.quantity : b.totalUsd - a.totalUsd), grandTotal: gt, totalQty: tq, totalDiscount: td, orderCount: oc };
+    const items = Object.values(byProduct)
+      .map((g) => ({
+        ...g,
+        variants: Object.values(g.variants).sort((a, b) => b.quantity - a.quantity),
+      }))
+      .sort((a, b) => b.quantity !== a.quantity ? b.quantity - a.quantity : b.totalUsd - a.totalUsd);
+    return { items, grandTotal: gt, totalQty: tq, totalDiscount: td, orderCount: oc };
   }, [filtered, products, genderFilter, categoryFilter]);
 
   return (
@@ -335,54 +361,65 @@ export function ReportsPage() {
                 <p className={`text-xl font-mono font-bold mt-1 ${c.c}`}>{c.v}</p></div>
             ))}
           </div>
-          <div className="card overflow-hidden">
-            {productsSummary.items.length === 0 ? (
-              <div className="p-12 text-center"><Package size={40} className="mx-auto text-navy-200 mb-3" /><p className="text-navy-400 text-sm">Sin productos.</p></div>
-            ) : (
-              <div className="overflow-x-auto"><table className="w-full"><thead><tr className="border-b border-surface-200 bg-surface-50">
-                {['#', 'Producto', 'Variante', 'Cantidad', 'Total Neto'].map((h) => (
-                  <th key={h} className={`text-${['#', 'Cantidad', 'Total Neto'].includes(h) ? 'right' : 'left'} text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider px-4 py-3`}>{h}</th>
-                ))}</tr></thead>
-                <tbody className="divide-y divide-surface-100">
-                  {productsSummary.items.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item, i) => (
-                    <tr key={i} className="hover:bg-surface-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-navy-300 text-right w-10">{(currentPage - 1) * itemsPerPage + i + 1}</td>
-                      <td className="px-4 py-3 font-display font-semibold text-sm text-navy-900">{item.name}</td>
-                      <td className="px-4 py-3 text-sm text-navy-500">{item.variant}</td>
-                      <td className="px-4 py-3 font-mono font-semibold text-sm text-navy-900 text-right">{item.quantity}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-sm text-emerald-600 text-right">{format(item.totalUsd)}</td>
-                    </tr>))}
-                </tbody></table></div>
-            )}
+          {productsSummary.items.length === 0 ? (
+            <div className="card p-12 text-center"><Package size={40} className="mx-auto text-navy-200 mb-3" /><p className="text-navy-400 text-sm">Sin productos.</p></div>
+          ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3">
+                {productsSummary.items.map((item) => (
+                  <div
+                    key={item.productId}
+                    className="group/card relative flex flex-col rounded-xl border border-surface-200 bg-card overflow-hidden transition-all hover:border-rose-300 hover:shadow-lg"
+                  >
+                    {/* Imagen */}
+                    <div className="relative aspect-[4/5] bg-surface-50 dark:bg-surface-100/50 overflow-hidden">
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain p-2 mix-blend-multiply dark:mix-blend-normal" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center"><Package size={32} className="text-navy-200" /></div>
+                      )}
+                      {/* Total de unidades vendidas — chip arriba a la derecha */}
+                      <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-rose-500/90 text-white shadow-sm backdrop-blur-sm" title="Unidades vendidas">
+                        <ShoppingBag size={10} /> {item.quantity}
+                      </span>
+                    </div>
 
-            {/* Pagination Controls */}
-            {productsSummary.items.length > itemsPerPage && (
-              <div className="px-4 py-3 bg-surface-50 border-t border-surface-200 flex items-center justify-between">
-                <p className="text-xs text-navy-400 font-display">
-                  Mostrando <span className="font-semibold text-navy-700">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="font-semibold text-navy-700">{Math.min(currentPage * itemsPerPage, productsSummary.items.length)}</span> de <span className="font-semibold text-navy-700">{productsSummary.items.length}</span> productos
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
-                  >
-                    Anterior
-                  </button>
-                  <div className="flex items-center px-2 text-xs font-mono font-bold text-navy-900">
-                    {currentPage} / {Math.ceil(productsSummary.items.length / itemsPerPage)}
+                    {/* Nombre */}
+                    <div className="px-2.5 pt-2 pb-1.5 border-b border-surface-100">
+                      <p className="font-display font-bold text-navy-900 text-[11px] leading-tight uppercase line-clamp-2 min-h-[26px]">{item.name}</p>
+                    </div>
+
+                    {/* Desglose por talla: cantidad + monto */}
+                    <div className="flex-1 px-2.5 py-2 space-y-0.5">
+                      <div className="flex items-baseline justify-between border-b border-surface-200 pb-1 mb-1 leading-none">
+                        <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-400">Talla</span>
+                        <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-400">Cant · Monto</span>
+                      </div>
+                      {item.variants.map((v, vi) => (
+                        <div key={vi} className="flex items-baseline justify-between text-xs font-mono leading-snug gap-1.5">
+                          <span className="text-[10px] uppercase font-display text-navy-600 dark:text-gray-400 truncate">
+                            {v.size}
+                            {v.color && v.color !== 'N/A' && <span className="text-navy-300 ml-1 normal-case">· {v.color}</span>}
+                          </span>
+                          <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+                            <span className="font-bold tabular-nums text-navy-900 dark:text-gray-100">{v.quantity}</span>
+                            <span className="font-semibold tabular-nums text-emerald-600">{format(v.totalUsd)}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Total del producto */}
+                    <div className="px-2.5 py-2 border-t border-surface-200 bg-surface-50 dark:bg-surface-100/30 flex items-center justify-between">
+                      <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-500">Total</span>
+                      <span className="flex items-baseline gap-1.5 font-mono">
+                        <span className="text-xs font-bold tabular-nums text-navy-700 dark:text-gray-300">{item.quantity} u.</span>
+                        <span className="text-sm font-bold tabular-nums text-emerald-600">{format(item.totalUsd)}</span>
+                      </span>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(productsSummary.items.length / itemsPerPage)))}
-                    disabled={currentPage >= Math.ceil(productsSummary.items.length / itemsPerPage)}
-                    className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
-                  >
-                    Siguiente
-                  </button>
-                </div>
+                ))}
               </div>
-            )}
-          </div>
+          )}
         </div>
       )}
 
