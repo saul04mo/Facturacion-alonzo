@@ -67,6 +67,65 @@ export async function consultarPagosPorFecha(opts: {
   return data.dataResponse?.transactionDetail ?? [];
 }
 
+export interface Banco {
+  code: string;
+  name: string;
+}
+
+/** Catálogo de bancos venezolanos (GET /api/bancos). */
+export async function getBancos(): Promise<Banco[]> {
+  const res = await fetch(`${BASE_URL}/api/bancos`);
+  if (!res.ok) throw new Error(`No se pudo cargar el catálogo de bancos (${res.status})`);
+  const data = await res.json();
+  return (data?.banks as Banco[]) ?? [];
+}
+
+/**
+ * Normaliza un teléfono al formato que espera Banesco: código de país 58 +
+ * número sin el 0 inicial. Ej: "04143775031" -> "584143775031".
+ */
+export function normalizePhone(phone: string): string {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (digits.startsWith('58')) return digits;
+  if (digits.startsWith('0')) return `58${digits.slice(1)}`;
+  return `58${digits}`;
+}
+
+/**
+ * Busca un pago móvil por referencia + teléfono + banco emisor + fecha
+ * (POST /api/pagos/buscar-pago-movil). Devuelve las transacciones que
+ * Banesco asocia a esa búsqueda.
+ */
+export async function buscarPagoMovil(opts: {
+  referenceNumber: string;
+  phoneNum: string;
+  bankId: string;
+  startDt: string;
+}): Promise<BanescoTransaction[]> {
+  const res = await fetch(`${BASE_URL}/api/pagos/buscar-pago-movil`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      referenceNumber: opts.referenceNumber,
+      phoneNum: normalizePhone(opts.phoneNum),
+      bankId: opts.bankId,
+      startDt: opts.startDt,
+    }),
+  });
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.error || '';
+    } catch { /* sin JSON */ }
+    throw new Error(detail || `El validador respondió ${res.status}`);
+  }
+
+  const data: ConsultaResponse = await res.json();
+  return data.dataResponse?.transactionDetail ?? [];
+}
+
 /** Normaliza una referencia: solo dígitos, sin espacios ni ceros de relleno a la izquierda quitados. */
 function normalizeRef(ref: string): string {
   return (ref ?? '').replace(/\D/g, '');
@@ -78,7 +137,7 @@ function normalizeRef(ref: string): string {
  * final visible (p. ej. "050206"). Se consideran iguales si una termina
  * con la otra (con un mínimo de 4 dígitos para evitar falsos positivos).
  */
-function refMatches(entered: string, fromBank: string): boolean {
+export function refMatches(entered: string, fromBank: string): boolean {
   const a = normalizeRef(entered);
   const b = normalizeRef(fromBank);
   if (a.length < 4 || b.length < 4) return false;
