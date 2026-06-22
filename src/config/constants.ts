@@ -16,6 +16,7 @@ export const ROUTES = {
   PAYROLL_DRAFT: '/cierre-nomina',
   CRM: '/crm',
   PAYMENTS: '/pagos',
+  ANALYTICS: '/trafico-web',
   // Ruta PÚBLICA (sin login) — formulario de registro de envío para clientes
   CLIENT_REGISTRATION: '/registro-envio',
 } as const;

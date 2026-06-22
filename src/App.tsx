@@ -23,6 +23,7 @@ const PayrollPage = lazy(() => import('@/modules/payroll/PayrollPage').then((m) 
 const PayrollDraftPage = lazy(() => import('@/modules/payroll/PayrollDraftPage').then((m) => ({ default: m.PayrollDraftPage })));
 const CRMPage = lazy(() => import('@/modules/clients/CRMPage').then((m) => ({ default: m.CRMPage })));
 const PaymentsPage = lazy(() => import('@/modules/payments/PaymentsPage').then((m) => ({ default: m.PaymentsPage })));
+const AnalyticsPage = lazy(() => import('@/modules/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const ClientRegistrationPage = lazy(() => import('@/modules/public/ClientRegistrationPage').then((m) => ({ default: m.ClientRegistrationPage })));
 
 export function App() {
@@ -53,6 +54,7 @@ export function App() {
               <Route path={ROUTES.PAYROLL_DRAFT} element={<PayrollDraftPage />} />
               <Route path={ROUTES.CRM} element={<CRMPage />} />
               <Route path={ROUTES.PAYMENTS} element={<PaymentsPage />} />
+              <Route path={ROUTES.ANALYTICS} element={<AnalyticsPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to={ROUTES.INVOICES} replace />} />

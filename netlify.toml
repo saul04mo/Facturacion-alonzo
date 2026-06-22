@@ -5,8 +5,8 @@
 [functions]
   # Carpeta de funciones serverless (registro de cliente desde web pública)
   directory = "netlify/functions"
-  # Empaqueta firebase-admin con la función
-  external_node_modules = ["firebase-admin"]
+  # Empaqueta firebase-admin y el cliente de Google Analytics con la función
+  external_node_modules = ["firebase-admin", "@google-analytics/data"]
   node_bundler = "esbuild"
 
 [[redirects]]
