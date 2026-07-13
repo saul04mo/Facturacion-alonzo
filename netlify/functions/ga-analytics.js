@@ -198,12 +198,22 @@ exports.handler = async (event) => {
   } catch (err) {
     console.error('ga-analytics error:', err);
     const msg = String(err?.message || err);
+
+    // El orden importa: RESOURCE_EXHAUSTED va primero porque es el fallo más
+    // común en uso normal (GA4 limita los tokens por propiedad y por hora) y
+    // no requiere tocar nada — solo esperar. Antes caía en el mensaje genérico
+    // y mandaba a revisar permisos de Google Cloud que estaban perfectos.
     let hint = 'Error consultando Google Analytics.';
-    if (/has not been used|disabled|SERVICE_DISABLED/i.test(msg)) {
+    let statusCode = 500;
+    if (/RESOURCE_EXHAUSTED|quota/i.test(msg)) {
+      hint = 'Google Analytics agotó la cuota de consultas de esta hora. '
+           + 'No hay nada que arreglar: vuelve a intentar en menos de una hora.';
+      statusCode = 429;
+    } else if (/has not been used|disabled|SERVICE_DISABLED/i.test(msg)) {
       hint = 'Falta habilitar "Google Analytics Data API" en Google Cloud.';
     } else if (/permission|PERMISSION_DENIED|403/i.test(msg)) {
       hint = 'La cuenta de servicio no tiene acceso de Lector en la propiedad GA4.';
     }
-    return { statusCode: 500, headers: HEADERS, body: JSON.stringify({ error: hint, detail: msg }) };
+    return { statusCode, headers: HEADERS, body: JSON.stringify({ error: hint, detail: msg }) };
   }
 };

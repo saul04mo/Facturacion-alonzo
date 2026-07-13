@@ -292,11 +292,11 @@ export function AnalyticsPage() {
           <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={20} />
           <div>
             <p className="font-semibold text-amber-800">No se pudieron cargar las analíticas</p>
+            {/* El backend ya distingue cuota agotada, API deshabilitada y falta
+                de permisos, así que mostramos SU mensaje. Antes había aquí un
+                texto fijo sobre Google Cloud que se mostraba ante cualquier
+                fallo y mandaba a revisar cosas que estaban bien. */}
             <p className="text-sm text-amber-700 mt-1">{error}</p>
-            <p className="text-xs text-amber-600 mt-2">
-              Revisa que esté habilitada la "Google Analytics Data API" en Google Cloud y que la cuenta de servicio
-              tenga acceso de Lector en la propiedad GA4.
-            </p>
           </div>
         </div>
       )}
