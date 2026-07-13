@@ -63,6 +63,24 @@ function rows(resp) {
 
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 
+const iso = (d) => d.toISOString().slice(0, 10);
+const parseIso = (s) => new Date(`${s}T00:00:00Z`);
+const addDays = (d, n) => new Date(d.getTime() + n * 86400000);
+
+/**
+ * Período inmediatamente anterior, del mismo largo, para comparar contra él.
+ * Un rango de 7 días que va del 10 al 16 se compara con el 3 al 9.
+ */
+function previousPeriod(startIso, endIso) {
+  const start = parseIso(startIso);
+  const end = parseIso(endIso);
+  const lenDays = Math.round((end - start) / 86400000) + 1;
+  return {
+    startDate: iso(addDays(start, -lenDays)),
+    endDate: iso(addDays(start, -1)),
+  };
+}
+
 // ── Bloque de tiempo real (últimos 30 min). Se usa en ambos modos. ──
 async function getRealtime(client, property) {
   const [totalRt, pagesRt, countriesRt] = await Promise.all([
@@ -110,8 +128,11 @@ exports.handler = async (event) => {
     }
 
     // ── Rango: personalizado (start/end) o preset (days) ──
+    // Siempre se resuelve a fechas YYYY-MM-DD explícitas (no "7daysAgo") porque
+    // el período anterior con el que comparamos se calcula restando días, y para
+    // eso hace falta saber la fecha real de inicio.
     let startDate;
-    let endDate = 'today';
+    let endDate;
     let range; // etiqueta para el front
     if (isDate(qp.start) && isDate(qp.end)) {
       startDate = qp.start;
@@ -120,28 +141,46 @@ exports.handler = async (event) => {
     } else {
       const daysParam = Number(qp.days);
       const days = [7, 28, 90].includes(daysParam) ? daysParam : 28;
-      startDate = `${days}daysAgo`;
+      const today = new Date();
+      endDate = iso(today);
+      startDate = iso(addDays(today, -(days - 1)));
       range = days;
     }
     const dateRanges = [{ startDate, endDate }];
+    const prev = previousPeriod(startDate, endDate);
 
-    const [summary, timeseries, topPages, countries, devices, sources, rt] = await Promise.all([
+    const SUMMARY_METRICS = [
+      { name: 'totalUsers' },
+      { name: 'newUsers' },
+      { name: 'sessions' },
+      { name: 'screenPageViews' },
+      { name: 'averageSessionDuration' },
+    ];
+
+    const [summary, prevSummary, timeseries, hourly, topPages, countries, devices, sources, rt] = await Promise.all([
+      client.runReport({ property, dateRanges, metrics: SUMMARY_METRICS }),
+      // Mismo bloque de métricas sobre el período anterior, para los deltas.
       client.runReport({
         property,
-        dateRanges,
-        metrics: [
-          { name: 'totalUsers' },
-          { name: 'newUsers' },
-          { name: 'sessions' },
-          { name: 'screenPageViews' },
-          { name: 'averageSessionDuration' },
-        ],
+        dateRanges: [{ startDate: prev.startDate, endDate: prev.endDate }],
+        metrics: SUMMARY_METRICS,
       }),
+      // Serie diaria con TODAS las métricas, no solo visitantes: así el panel
+      // puede graficar el rendimiento por día de cada una sin pedir más datos.
       client.runReport({
         property, dateRanges,
         dimensions: [{ name: 'date' }],
-        metrics: [{ name: 'totalUsers' }],
+        metrics: SUMMARY_METRICS,
         orderBys: [{ dimension: { dimensionName: 'date' } }],
+        limit: 400,
+      }),
+      // Distribución por hora del día (0-23): a qué hora entra la gente.
+      client.runReport({
+        property, dateRanges,
+        dimensions: [{ name: 'hour' }],
+        metrics: [{ name: 'sessions' }],
+        orderBys: [{ dimension: { dimensionName: 'hour' } }],
+        limit: 24,
       }),
       client.runReport({
         property, dateRanges,
@@ -173,20 +212,33 @@ exports.handler = async (event) => {
       getRealtime(client, property),
     ]);
 
-    const s = rows(summary[0])[0]?.mets || [0, 0, 0, 0, 0];
+    const toSummary = (m = []) => ({
+      totalUsers: m[0] || 0,
+      newUsers: m[1] || 0,
+      sessions: m[2] || 0,
+      pageViews: m[3] || 0,
+      avgSessionSec: Math.round(m[4] || 0),
+    });
 
     const payload = {
       range,
       start: startDate,
       end: endDate,
-      summary: {
-        totalUsers: s[0],
-        newUsers: s[1],
-        sessions: s[2],
-        pageViews: s[3],
-        avgSessionSec: Math.round(s[4]),
+      summary: toSummary(rows(summary[0])[0]?.mets),
+      previous: {
+        ...toSummary(rows(prevSummary[0])[0]?.mets),
+        start: prev.startDate,
+        end: prev.endDate,
       },
-      timeseries: rows(timeseries[0]).map((r) => ({ date: r.dims[0], users: r.mets[0] })),
+      timeseries: rows(timeseries[0]).map((r) => ({
+        date: r.dims[0],
+        users: r.mets[0],
+        newUsers: r.mets[1],
+        sessions: r.mets[2],
+        pageViews: r.mets[3],
+        avgSessionSec: Math.round(r.mets[4] || 0),
+      })),
+      hourly: rows(hourly[0]).map((r) => ({ hour: Number(r.dims[0]), sessions: r.mets[0] })),
       topPages: rows(topPages[0]).map((r) => ({ title: r.dims[0], views: r.mets[0] })),
       countries: rows(countries[0]).map((r) => ({ country: r.dims[0], users: r.mets[0] })),
       devices: rows(devices[0]).map((r) => ({ device: r.dims[0], users: r.mets[0] })),

@@ -12,18 +12,30 @@ export interface RealtimeData {
   liveCountries: LiveCountry[];
 }
 
+export interface Summary {
+  totalUsers: number;
+  newUsers: number;
+  sessions: number;
+  pageViews: number;
+  avgSessionSec: number;
+}
+
+/** Un día de la serie: todas las métricas, no solo visitantes. */
+export interface DayPoint extends Summary {
+  date: string;
+  users: number;
+}
+
 export interface WebAnalytics extends RealtimeData {
   range: number | 'custom';
   start: string;
   end: string;
-  summary: {
-    totalUsers: number;
-    newUsers: number;
-    sessions: number;
-    pageViews: number;
-    avgSessionSec: number;
-  };
-  timeseries: { date: string; users: number }[];
+  summary: Summary;
+  /** Mismo bloque sobre el período anterior de igual largo (para los deltas). */
+  previous: Summary & { start: string; end: string };
+  timeseries: DayPoint[];
+  /** Sesiones por hora del día (0-23). */
+  hourly: { hour: number; sessions: number }[];
   topPages: { title: string; views: number }[];
   countries: { country: string; users: number }[];
   devices: { device: string; users: number }[];
