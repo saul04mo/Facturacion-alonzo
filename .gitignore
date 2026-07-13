@@ -15,3 +15,6 @@ serviceAccountKey.json
 # Logs de errores temporales de TypeScript
 errors.txt
 errors_utf8.txt
+
+# Deno no se usa en este proyecto; el lock lo genera alguna herramienta suelta
+deno.lock
