@@ -4,11 +4,11 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
-import { saveProduct, deleteProduct, toggleProductActive } from './inventoryService';
+import { saveProduct, deleteProduct, toggleProductActive, toggleProductPosVisible } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
 import { getStockBreakdown, getProductStockBreakdown, NO_SIZE_LABEL, isNoSize, sizeLabel } from '@/utils/branchUtils';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy, Store, Warehouse, Truck as TruckIcon, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy, Store, Warehouse, Truck as TruckIcon, FileSpreadsheet, Globe, Monitor } from 'lucide-react';
 
 /** Vista de stock por sucursal en el inventario. */
 type StockView = 'total' | 'store' | 'warehouse' | 'transit';
@@ -840,8 +840,15 @@ export function InventoryPage() {
     const newState = !(p.active !== false); // default is true if undefined
     try {
       await toggleProductActive(p.id, newState);
-      toast.success(`${p.name}: ${newState ? 'Visible' : 'Oculto'} en web y app.`);
-    } catch { toast.error('Error al cambiar visibilidad.'); }
+      toast.success(`${p.name}: ${newState ? 'Visible' : 'Oculto'} en la web.`);
+    } catch { toast.error('Error al cambiar visibilidad en la web.'); }
+  }
+  async function handleTogglePosVisible(p: Product) {
+    const newState = !(p.posVisible !== false); // default is true if undefined
+    try {
+      await toggleProductPosVisible(p.id, newState);
+      toast.success(`${p.name}: ${newState ? 'Visible' : 'Oculto'} en el POS.`);
+    } catch { toast.error('Error al cambiar visibilidad en el POS.'); }
   }
 
   return (
@@ -1065,9 +1072,20 @@ export function InventoryPage() {
                               <Package size={32} className="text-navy-200" />
                             </div>
                           )}
-                          {product.active === false && (
-                            <span className="absolute top-1.5 left-1.5 badge text-[8px] px-1.5 py-0.5 bg-red-500/90 text-white">Oculto</span>
-                          )}
+                          {/* Badges de visibilidad — web y POS son independientes,
+                              así que cada canal oculto se marca por separado. */}
+                          <div className="absolute top-1.5 left-1.5 flex flex-col items-start gap-1">
+                            {product.active === false && (
+                              <span className="badge text-[8px] px-1.5 py-0.5 bg-red-500/90 text-white flex items-center gap-0.5">
+                                <Globe size={8} /> Oculto web
+                              </span>
+                            )}
+                            {product.posVisible === false && (
+                              <span className="badge text-[8px] px-1.5 py-0.5 bg-orange-500/90 text-white flex items-center gap-0.5">
+                                <Monitor size={8} /> Oculto POS
+                              </span>
+                            )}
+                          </div>
 
                           {/* Chips de stock total por sucursal — siempre visibles
                               en la esquina inferior izquierda, mismo patrón visual
@@ -1104,10 +1122,19 @@ export function InventoryPage() {
                             {can('canEditProducts') && (
                               <button
                                 onClick={() => handleToggleActive(product)}
-                                title={product.active !== false ? 'Ocultar' : 'Mostrar'}
+                                title={product.active !== false ? 'Visible en la web — click para ocultar' : 'Oculto en la web — click para mostrar'}
                                 className={`w-7 h-7 rounded-md flex items-center justify-center bg-white/95 backdrop-blur shadow-sm transition-colors ${product.active !== false ? 'text-emerald-600 hover:bg-emerald-50' : 'text-amber-600 hover:bg-amber-50'}`}
                               >
-                                {product.active !== false ? <Eye size={13} /> : <EyeOff size={13} />}
+                                {product.active !== false ? <Globe size={13} /> : <EyeOff size={13} />}
+                              </button>
+                            )}
+                            {can('canEditProducts') && (
+                              <button
+                                onClick={() => handleTogglePosVisible(product)}
+                                title={product.posVisible !== false ? 'Visible en el POS — click para ocultar' : 'Oculto en el POS — click para mostrar'}
+                                className={`w-7 h-7 rounded-md flex items-center justify-center bg-white/95 backdrop-blur shadow-sm transition-colors ${product.posVisible !== false ? 'text-emerald-600 hover:bg-emerald-50' : 'text-amber-600 hover:bg-amber-50'}`}
+                              >
+                                {product.posVisible !== false ? <Monitor size={13} /> : <EyeOff size={13} />}
                               </button>
                             )}
                             {can('canEditProducts') && (

@@ -121,8 +121,10 @@ export interface Product {
     type: 'percentage' | 'fixed';
     value: number;
   };
-  /** Controls visibility on web store and app. Default: true */
+  /** Controls visibility on the public web store. Default: true */
   active?: boolean;
+  /** Controls whether the product can be sold from the POS. Default: true */
+  posVisible?: boolean;
 }
 
 // ================================

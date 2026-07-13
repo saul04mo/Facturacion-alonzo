@@ -9,6 +9,15 @@
   external_node_modules = ["firebase-admin", "@google-analytics/data"]
   node_bundler = "esbuild"
 
+# Las funciones se resuelven ANTES del catch-all del SPA. Sin esta regla, una
+# función que no despliegue cae en el /* de abajo y devuelve index.html con
+# status 200, lo que el front interpreta como JSON corrupto en vez de un 404.
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = false
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

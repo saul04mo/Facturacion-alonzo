@@ -71,8 +71,12 @@ export function useFirestoreListeners() {
       )
     );
 
-    // Users (admin only)
-    if (currentUser.rol === 'administrador') {
+    // Users: admins, o quien pueda reasignar el vendedor de una factura
+    // (necesita la lista de nombres para poblar el selector).
+    const needsUsers =
+      currentUser.rol === 'administrador' ||
+      currentUser.permissions?.canReassignSeller === true;
+    if (needsUsers) {
       unsubs.push(
         onSnapshot(collection(db, 'users'), (snap) => {
           setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as AppUser[]);

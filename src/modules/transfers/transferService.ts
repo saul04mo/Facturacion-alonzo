@@ -400,12 +400,12 @@ interface MarkPrintedOptions {
 }
 
 /**
- * Marca una transferencia como impresa. Si ya tiene printedBy seteado,
- * lanza error — la comanda solo se puede imprimir UNA vez por seguridad
- * (queda registrado quién la imprimió y cuándo).
+ * Marca una transferencia como impresa, registrando quién la imprimió por
+ * última vez y cuándo. Se permite imprimir/reimprimir las veces que sea
+ * necesario; cada impresión sobrescribe el registro anterior.
  *
- * Usa runTransaction para garantizar que si dos personas intentan
- * imprimir simultáneamente, solo una gana y la otra recibe el error.
+ * Usa runTransaction para garantizar una escritura atómica del registro
+ * de impresión.
  *
  * Devuelve los datos del print (printedByName + printedAt como Date)
  * para que el cliente los muestre sin tener que hacer otro fetch.
@@ -419,17 +419,6 @@ export async function markTransferPrinted(
     const transferRef = doc(db, 'inventoryTransfers', transferId);
     const snap = await tx.get(transferRef);
     if (!snap.exists()) throw new Error('Transferencia no encontrada.');
-
-    const data = snap.data() as InventoryTransfer;
-
-    // Bloqueo de doble impresión
-    if (data.printedBy) {
-      const who = data.printedByName || 'usuario desconocido';
-      const when = data.printedAt?.toDate
-        ? data.printedAt.toDate().toLocaleString('es-VE')
-        : 'fecha desconocida';
-      throw new Error(`Esta comanda ya fue impresa por ${who} el ${when}. Solo se permite imprimir una vez.`);
-    }
 
     const now = Timestamp.now();
     const printedByName = `${currentUser.nombre} ${currentUser.apellido}`;

@@ -4,6 +4,8 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { CartPanel } from './CartPanel';
 import { VariantSelector } from './VariantSelector';
+import { ValidatePaymentButton } from './ValidatePaymentButton';
+import { ExchangeRateButton, ExchangeRateCard } from './ExchangeRateButton';
 import { getAvailableStock, sizeLabel, isNoSize } from '@/utils/branchUtils';
 import type { Product, Discount } from '@/types';
 import {
@@ -37,14 +39,19 @@ export function POSPage() {
     return sum + price * i.quantity;
   }, 0);
 
+  // Visibilidad en el POS es independiente de la web: `posVisible` controla el POS
+  // y `active` controla la tienda web. Un producto oculto en la web se sigue
+  // pudiendo vender en tienda si posVisible no es false.
+  const sellableProducts = useMemo(() => products.filter((p) => p.posVisible !== false), [products]);
+
   const categories = useMemo(() => {
     if (!activeGender) return [];
-    const genderProducts = products.filter((p) => p.gender === activeGender);
+    const genderProducts = sellableProducts.filter((p) => p.gender === activeGender);
     return ['Todos', ...new Set(genderProducts.map((p) => p.category || 'Sin Categoría').filter(Boolean))];
-  }, [products, activeGender]);
+  }, [sellableProducts, activeGender]);
 
   const displayProducts = useMemo(() => {
-    let filtered = products;
+    let filtered = sellableProducts;
     if (activeGender) filtered = filtered.filter((p) => p.gender === activeGender);
     if (activeCategory !== 'Todos') filtered = filtered.filter((p) => (p.category || 'Sin Categoría') === activeCategory);
     const unique = [...new Map(filtered.map((p) => [p.name, p])).values()];
@@ -53,7 +60,7 @@ export function POSPage() {
       return unique.filter((p) => p.name.toLowerCase().includes(s));
     }
     return unique.sort((a, b) => a.name.localeCompare(b.name));
-  }, [products, activeGender, activeCategory, searchFilter]);
+  }, [sellableProducts, activeGender, activeCategory, searchFilter]);
 
   function selectGender(gender: string) {
     setActiveGender(gender);
@@ -160,6 +167,12 @@ export function POSPage() {
                 <span className="hidden md:inline">Vendiendo desde</span>
                 <span>{currentSale.branch === 'store' ? 'Tienda' : 'Almacén'}</span>
               </div>
+              {/* Tasa de cambio — visible siempre y editable acá mismo, sin
+                  tener que ir a Configuración durante una venta. */}
+              <ExchangeRateButton />
+              {/* Validar pago en Banesco — herramienta de consulta independiente
+                  del cobro (no se integra al checkout para no agregar latencia). */}
+              <ValidatePaymentButton />
               {/* Calculator */}
               <div className="hidden md:flex items-center gap-2 bg-surface-50 border border-surface-200 rounded-lg p-2">
                 <Calculator size={14} className="text-navy-400" />
@@ -190,20 +203,27 @@ export function POSPage() {
           <div className="flex-1 overflow-y-auto min-h-0">
             {/* Gender selection */}
             {view === 'gender' && (
-              <div className="grid grid-cols-2 gap-3 stagger">
-                {['Hombre', 'Mujer'].map((gender) => (
-                  <button key={gender} onClick={() => selectGender(gender)}
-                    className="card-hover p-4 sm:p-8 text-center animate-fade-up transition-all hover:scale-[1.02]">
-                    <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-2xl mx-auto mb-2 sm:mb-4 flex items-center justify-center ${gender === 'Hombre' ? 'bg-blue-50' : 'bg-rose-50'}`}>
-                      <span className="text-2xl sm:text-3xl">{gender === 'Hombre' ? '👔' : '👗'}</span>
-                    </div>
-                    <h2 className="text-base sm:text-lg font-display font-bold text-navy-900">{gender}</h2>
-                    <p className="text-xs sm:text-sm text-navy-400 mt-0.5">
-                      {products.filter((p) => p.gender === gender).length} productos
-                    </p>
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-2 gap-3 stagger">
+                  {['Hombre', 'Mujer'].map((gender) => (
+                    <button key={gender} onClick={() => selectGender(gender)}
+                      className="card-hover p-4 sm:p-8 text-center animate-fade-up transition-all hover:scale-[1.02]">
+                      <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-2xl mx-auto mb-2 sm:mb-4 flex items-center justify-center ${gender === 'Hombre' ? 'bg-blue-50' : 'bg-rose-50'}`}>
+                        <span className="text-2xl sm:text-3xl">{gender === 'Hombre' ? '👔' : '👗'}</span>
+                      </div>
+                      <h2 className="text-base sm:text-lg font-display font-bold text-navy-900">{gender}</h2>
+                      <p className="text-xs sm:text-sm text-navy-400 mt-0.5">
+                        {sellableProducts.filter((p) => p.gender === gender).length} productos
+                      </p>
+                    </button>
+                  ))}
+                </div>
+                {/* Tasa de cambio — en el espacio libre de la pantalla inicial,
+                    donde el cajero la ve grande y la corrige de un toque. */}
+                <div className="mt-4">
+                  <ExchangeRateCard />
+                </div>
+              </>
             )}
 
             {/* Category selection */}
@@ -218,7 +238,7 @@ export function POSPage() {
                     </div>
                     <h3 className="font-display font-semibold text-navy-900 text-xs sm:text-sm">{cat}</h3>
                     <p className="text-[9px] sm:text-[10px] text-navy-400 mt-0.5">
-                      {products.filter((p) => p.gender === activeGender && (cat === 'Todos' || (p.category || 'Sin Categoría') === cat)).length} productos
+                      {sellableProducts.filter((p) => p.gender === activeGender && (cat === 'Todos' || (p.category || 'Sin Categoría') === cat)).length} productos
                     </p>
                   </button>
                 ))}

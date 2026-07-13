@@ -83,8 +83,14 @@ export async function saveProduct(id: string | null, data: ProductInput): Promis
   }
 }
 
+/** Visibilidad en la tienda web pública (campo `active`, el que lee alonzo-store-web). */
 export async function toggleProductActive(id: string, active: boolean): Promise<void> {
   await setDoc(doc(db, 'products', id), { active }, { merge: true });
+}
+
+/** Visibilidad en el POS. Independiente de la web. */
+export async function toggleProductPosVisible(id: string, posVisible: boolean): Promise<void> {
+  await setDoc(doc(db, 'products', id), { posVisible }, { merge: true });
 }
 
 export async function deleteProduct(id: string, imageUrl?: string, imageUrls?: string[]): Promise<void> {

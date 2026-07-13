@@ -3,7 +3,7 @@ import {
   Users, UserPlus, MousePointerClick, Eye, Clock, Globe,
   Smartphone, Monitor, Tablet, RefreshCw, TrendingUp, Radio, AlertTriangle,
 } from 'lucide-react';
-import { fetchWebAnalytics, type WebAnalytics } from './analyticsService';
+import { fetchWebAnalytics, fetchLive, type WebAnalytics, type RealtimeData, type Range } from './analyticsService';
 
 // ════════════════════════════════════════
 // Helpers
@@ -22,6 +22,14 @@ function fmtDate(d: string): string {
   if (!d || d.length !== 8) return d;
   const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   return `${Number(d.slice(6, 8))} ${months[Number(d.slice(4, 6)) - 1]}`;
+}
+function isoToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function isoDaysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
 }
 function deviceIcon(d: string) {
   if (/mobile/i.test(d)) return <Smartphone size={16} />;
@@ -74,7 +82,7 @@ function AreaChart({ data }: { data: { date: string; users: number }[] }) {
 // ════════════════════════════════════════
 // Lista con barras de proporción
 // ════════════════════════════════════════
-function BarList({ items }: { items: { label: React.ReactNode; value: number; sub?: string }[] }) {
+function BarList({ items }: { items: { label: React.ReactNode; value: number }[] }) {
   const max = Math.max(...items.map((i) => i.value), 1);
   if (items.length === 0) {
     return <div className="py-8 text-center text-navy-300 text-sm">Sin datos en este período.</div>;
@@ -113,7 +121,58 @@ function StatCard({ icon, label, value, accent }: { icon: React.ReactNode; label
   );
 }
 
-const RANGES: { v: 7 | 28 | 90; label: string }[] = [
+// ════════════════════════════════════════
+// Sección EN VIVO (tiempo real, últimos 30 min)
+// ════════════════════════════════════════
+function LiveSection({ live }: { live: RealtimeData | null }) {
+  return (
+    <div className="bg-gradient-to-br from-green-50 to-white border border-green-200 rounded-2xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-display font-semibold text-green-800 flex items-center gap-2">
+          <Radio size={16} className="animate-pulse" /> En vivo · últimos 30 min
+        </h2>
+        <span className="text-[10px] text-green-600">se actualiza solo</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* Usuarios ahora */}
+        <div className="flex flex-col items-center justify-center py-2">
+          <span className="text-5xl font-bold text-green-600 leading-none">{fmt(live?.activeNow || 0)}</span>
+          <span className="text-xs text-navy-500 mt-2">usuarios navegando ahora</span>
+        </div>
+        {/* Qué ven ahora */}
+        <div>
+          <p className="text-xs font-semibold text-navy-500 mb-2 flex items-center gap-1.5"><Eye size={13} /> Viendo ahora</p>
+          {live && live.livePages.length > 0 ? (
+            <ul className="flex flex-col gap-1.5">
+              {live.livePages.slice(0, 5).map((p, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-navy-700 truncate">{p.title || '(sin título)'}</span>
+                  <span className="font-semibold text-navy-900 flex-shrink-0">{fmt(p.users)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-navy-300">Nadie navegando ahora mismo.</p>}
+        </div>
+        {/* Países ahora */}
+        <div>
+          <p className="text-xs font-semibold text-navy-500 mb-2 flex items-center gap-1.5"><Globe size={13} /> Desde dónde</p>
+          {live && live.liveCountries.length > 0 ? (
+            <ul className="flex flex-col gap-1.5">
+              {live.liveCountries.slice(0, 5).map((c, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-navy-700 truncate">{c.country || '(desconocido)'}</span>
+                  <span className="font-semibold text-navy-900 flex-shrink-0">{fmt(c.users)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-navy-300">—</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PRESETS: { v: 7 | 28 | 90; label: string }[] = [
   { v: 7, label: '7 días' },
   { v: 28, label: '28 días' },
   { v: 90, label: '90 días' },
@@ -123,21 +182,40 @@ const RANGES: { v: 7 | 28 | 90; label: string }[] = [
 // Página
 // ════════════════════════════════════════
 export function AnalyticsPage() {
-  const [days, setDays] = useState<7 | 28 | 90>(28);
+  const [preset, setPreset] = useState<7 | 28 | 90 | 'custom'>(28);
+  const [customStart, setCustomStart] = useState(isoDaysAgo(28));
+  const [customEnd, setCustomEnd] = useState(isoToday());
   const [data, setData] = useState<WebAnalytics | null>(null);
+  const [live, setLive] = useState<RealtimeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const load = useCallback((d: 7 | 28 | 90) => {
+  const load = useCallback(() => {
     setLoading(true);
     setError('');
-    fetchWebAnalytics(d)
-      .then(setData)
+    const range: Range = preset === 'custom' ? { start: customStart, end: customEnd } : preset;
+    fetchWebAnalytics(range)
+      .then((d) => {
+        setData(d);
+        setLive({ activeNow: d.activeNow, livePages: d.livePages, liveCountries: d.liveCountries });
+      })
       .catch((e) => setError(e.message || 'Error cargando analíticas'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [preset, customStart, customEnd]);
 
-  useEffect(() => { load(days); }, [days, load]);
+  // Carga inicial + al cambiar de preset (el rango personalizado se aplica con el botón)
+  useEffect(() => {
+    if (preset !== 'custom') load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset]);
+
+  // Polling de tiempo real cada 30s
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchLive().then(setLive).catch(() => { /* ignora fallos transitorios */ });
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
@@ -149,25 +227,26 @@ export function AnalyticsPage() {
           </h1>
           <p className="text-sm text-navy-400">Analíticas de tu tienda online (Google Analytics)</p>
         </div>
-        <div className="flex items-center gap-2">
-          {data && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium">
-              <Radio size={14} className="animate-pulse" /> {fmt(data.activeNow)} ahora
-            </span>
-          )}
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-surface-100 rounded-lg p-1">
-            {RANGES.map((r) => (
+            {PRESETS.map((r) => (
               <button
                 key={r.v}
-                onClick={() => setDays(r.v)}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${days === r.v ? 'bg-white text-navy-900 shadow-sm font-medium' : 'text-navy-500 hover:text-navy-800'}`}
+                onClick={() => setPreset(r.v)}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${preset === r.v ? 'bg-white text-navy-900 shadow-sm font-medium' : 'text-navy-500 hover:text-navy-800'}`}
               >
                 {r.label}
               </button>
             ))}
+            <button
+              onClick={() => setPreset('custom')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${preset === 'custom' ? 'bg-white text-navy-900 shadow-sm font-medium' : 'text-navy-500 hover:text-navy-800'}`}
+            >
+              Personalizado
+            </button>
           </div>
           <button
-            onClick={() => load(days)}
+            onClick={load}
             disabled={loading}
             className="p-2 bg-white border border-surface-200 rounded-lg text-navy-500 hover:text-navy-900 disabled:opacity-50"
             title="Actualizar"
@@ -175,6 +254,36 @@ export function AnalyticsPage() {
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
+      </div>
+
+      {/* Selector de fechas personalizado */}
+      {preset === 'custom' && (
+        <div className="flex flex-wrap items-end gap-3 mb-6 bg-white border border-surface-200 rounded-2xl p-4">
+          <div>
+            <label className="block text-xs text-navy-400 mb-1">Desde</label>
+            <input type="date" value={customStart} max={customEnd}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="border border-surface-200 rounded-lg px-3 py-1.5 text-sm text-navy-800" />
+          </div>
+          <div>
+            <label className="block text-xs text-navy-400 mb-1">Hasta</label>
+            <input type="date" value={customEnd} min={customStart} max={isoToday()}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="border border-surface-200 rounded-lg px-3 py-1.5 text-sm text-navy-800" />
+          </div>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg disabled:opacity-50"
+          >
+            Aplicar
+          </button>
+        </div>
+      )}
+
+      {/* Sección en vivo (siempre visible) */}
+      <div className="mb-6">
+        <LiveSection live={live} />
       </div>
 
       {/* Error */}
@@ -199,10 +308,9 @@ export function AnalyticsPage() {
         </div>
       )}
 
-      {/* Contenido */}
+      {/* Contenido histórico */}
       {data && (
         <div className="flex flex-col gap-6">
-          {/* Tarjetas resumen */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <StatCard icon={<Users size={20} className="text-blue-600" />} accent="bg-blue-50" label="Visitantes" value={fmt(data.summary.totalUsers)} />
             <StatCard icon={<UserPlus size={20} className="text-cyan-600" />} accent="bg-cyan-50" label="Nuevos" value={fmt(data.summary.newUsers)} />
@@ -211,13 +319,11 @@ export function AnalyticsPage() {
             <StatCard icon={<Clock size={20} className="text-teal-600" />} accent="bg-teal-50" label="Sesión prom." value={fmtDuration(data.summary.avgSessionSec)} />
           </div>
 
-          {/* Tendencia */}
           <div className="bg-white border border-surface-200 rounded-2xl p-5">
             <h2 className="text-sm font-display font-semibold text-navy-700 mb-3">Visitantes por día</h2>
             <AreaChart data={data.timeseries} />
           </div>
 
-          {/* Páginas + Países */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white border border-surface-200 rounded-2xl p-5">
               <h2 className="text-sm font-display font-semibold text-navy-700 mb-4 flex items-center gap-2">
@@ -233,7 +339,6 @@ export function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Dispositivos + Canales */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white border border-surface-200 rounded-2xl p-5">
               <h2 className="text-sm font-display font-semibold text-navy-700 mb-4 flex items-center gap-2">
@@ -253,7 +358,8 @@ export function AnalyticsPage() {
           </div>
 
           <p className="text-xs text-navy-300 text-center">
-            Datos de Google Analytics · los informes históricos pueden tardar hasta 24-48h en reflejar todo.
+            Los totales históricos pueden tardar hasta 24-48h en reflejar los días más recientes (es así también dentro
+            de Google Analytics). La sección "En vivo" es instantánea.
           </p>
         </div>
       )}

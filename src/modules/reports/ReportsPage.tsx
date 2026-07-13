@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import { isCountableSale } from '@/utils/invoiceStatus';
-import { sizeLabel } from '@/utils/branchUtils';
+import { sizeLabel, getTotalStock } from '@/utils/branchUtils';
 import { AdSpendReport } from './AdSpendReport';
 import { ChannelReport } from './ChannelReport';
 
@@ -149,7 +149,7 @@ export function ReportsPage() {
     type VariantSold = { label: string; size: string; color: string; quantity: number; totalUsd: number };
     type ProductSold = {
       productId: string; name: string; imageUrl?: string;
-      quantity: number; totalUsd: number;
+      quantity: number; totalUsd: number; remainingStock: number;
       variants: Record<string, VariantSold>;
     };
     const byProduct: Record<string, ProductSold> = {};
@@ -182,9 +182,12 @@ export function ReportsPage() {
         if (!byProduct[p.id]) {
           byProduct[p.id] = {
             productId: p.id,
-            name: item.productName || p.name,
+            name: p.name || item.productName,
             imageUrl: p.imageUrl || p.imageUrls?.[0],
-            quantity: 0, totalUsd: 0, variants: {},
+            quantity: 0, totalUsd: 0,
+            // Stock que aún queda por vender (suma de todas las variantes del producto)
+            remainingStock: (p.variants || []).reduce((s: number, vr: any) => s + getTotalStock(vr), 0),
+            variants: {},
           };
         }
         const grp = byProduct[p.id];
@@ -201,7 +204,9 @@ export function ReportsPage() {
         variants: Object.values(g.variants).sort((a, b) => b.quantity - a.quantity),
       }))
       .sort((a, b) => b.quantity !== a.quantity ? b.quantity - a.quantity : b.totalUsd - a.totalUsd);
-    return { items, grandTotal: gt, totalQty: tq, totalDiscount: td, orderCount: oc };
+    // Total de unidades que quedan por vender (stock actual de los productos del informe)
+    const remainingTotal = items.reduce((s, g) => s + g.remainingStock, 0);
+    return { items, grandTotal: gt, totalQty: tq, totalDiscount: td, orderCount: oc, remainingTotal };
   }, [filtered, products, genderFilter, categoryFilter]);
 
   return (
@@ -352,10 +357,11 @@ export function ReportsPage() {
       {/* PRODUCTS */}
       {tab === 'products' && (
         <div className="space-y-4 animate-fade-up">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[{ l: 'Total Neto', v: format(productsSummary.grandTotal), c: 'text-emerald-600' },
               { l: 'Descuentos', v: format(productsSummary.totalDiscount), c: 'text-accent-red' },
               { l: 'Ítems', v: String(productsSummary.totalQty), c: 'text-blue-600' },
+              { l: 'Por Vender', v: String(productsSummary.remainingTotal), c: 'text-rose-600' },
               { l: 'Pedidos', v: String(productsSummary.orderCount), c: 'text-amber-600' }].map((c) => (
               <div key={c.l} className="card p-4 text-center hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">{c.l}</p>
                 <p className={`text-xl font-mono font-bold mt-1 ${c.c}`}>{c.v}</p></div>
@@ -409,12 +415,21 @@ export function ReportsPage() {
                     </div>
 
                     {/* Total del producto */}
-                    <div className="px-2.5 py-2 border-t border-surface-200 bg-surface-50 dark:bg-surface-100/30 flex items-center justify-between">
-                      <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-500">Total</span>
-                      <span className="flex items-baseline gap-1.5 font-mono">
-                        <span className="text-xs font-bold tabular-nums text-navy-700 dark:text-gray-300">{item.quantity} u.</span>
-                        <span className="text-sm font-bold tabular-nums text-emerald-600">{format(item.totalUsd)}</span>
-                      </span>
+                    <div className="px-2.5 py-2 border-t border-surface-200 bg-surface-50 dark:bg-surface-100/30 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-500">Total</span>
+                        <span className="flex items-baseline gap-1.5 font-mono">
+                          <span className="text-xs font-bold tabular-nums text-navy-700 dark:text-gray-300">{item.quantity} u.</span>
+                          <span className="text-sm font-bold tabular-nums text-emerald-600">{format(item.totalUsd)}</span>
+                        </span>
+                      </div>
+                      {/* Items que quedan por vender (stock disponible) */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-400">Por vender</span>
+                        <span className={`text-xs font-bold tabular-nums font-mono ${item.remainingStock <= 0 ? 'text-accent-red' : 'text-blue-600'}`}>
+                          {item.remainingStock} u.
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}

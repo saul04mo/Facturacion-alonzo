@@ -6,9 +6,11 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { DELIVERY_TYPES } from '@/config/constants';
 import { Modal } from '@/components/Modal';
-import { processReturn, processExchange, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData, updatePaymentRef, updateInvoiceStatus } from './invoiceService';
+import { processReturn, processExchange, cancelInvoice, approveWebOrder, confirmDeliveryPayment, addAbono, PAYMENT_METHODS, fetchInvoicesByDateRange, fetchInvoiceByNumericId, updateInvoiceCustomerData, updatePaymentRef, updateInvoiceStatus, updateInvoiceSeller } from './invoiceService';
 import { ExchangeModal } from './ExchangeModal';
 import type { ExchangeConfirmData } from './ExchangeModal';
+import { VerifyPagoMovilButton } from './VerifyPagoMovilButton';
+import { validarPagoMovil, type BanescoTransaction } from '@/services/banescoService';
 import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
@@ -17,8 +19,38 @@ import { sizeLabel } from '@/utils/branchUtils';
 import type { Product, Invoice, InvoiceStatus } from '@/types';
 import {
   FileText, RotateCcw, XCircle, CheckCircle, DollarSign,
-  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2, ChevronDown, ArrowLeftRight,
+  Eye, Check, X as XIcon, Printer, Download, ImageIcon, Hash, Edit2, ChevronDown, ArrowLeftRight, ShieldCheck, Loader2,
 } from 'lucide-react';
+
+// Estilos de los botones de acción de cada factura. Cada acción tiene su
+// propio color de fondo + ícono para que sean fáciles de distinguir de un
+// vistazo (antes eran todos gris y solo se coloreaban al hover). Las clases
+// están escritas como literales completos para que Tailwind no las purgue.
+const ACTION_BTN: Record<string, string> = {
+  blue: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:border-blue-800/40 dark:text-blue-300 transition-colors',
+  purple: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100 dark:bg-purple-900/20 dark:border-purple-800/40 dark:text-purple-300 transition-colors',
+  slate: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-surface-200 bg-surface-100 text-navy-600 hover:bg-surface-200 dark:bg-dark-300/60 dark:border-dark-400 dark:text-gray-300 transition-colors',
+  cyan: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:border-cyan-800/40 dark:text-cyan-300 transition-colors',
+  indigo: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800/40 dark:text-indigo-300 transition-colors',
+  amber: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-800/40 dark:text-amber-300 transition-colors',
+  teal: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-teal-200 bg-teal-50 text-teal-600 hover:bg-teal-100 dark:bg-teal-900/20 dark:border-teal-800/40 dark:text-teal-300 transition-colors',
+  red: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-red-200 bg-red-50 text-accent-red hover:bg-red-100 dark:bg-red-900/20 dark:border-red-800/40 dark:text-red-300 transition-colors',
+  emerald: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800/40 dark:text-emerald-300 transition-colors',
+  green: 'inline-flex items-center justify-center p-1.5 rounded-lg border border-green-200 bg-green-50 text-green-600 hover:bg-green-100 dark:bg-green-900/20 dark:border-green-800/40 dark:text-green-300 transition-colors',
+};
+const ACTION_ICON = 12;
+
+// Devuelve los pagos por Pago Móvil de una factura junto con su índice en el
+// array `payments` (necesario para guardar/atar la referencia con
+// updatePaymentRef). Se usa para mostrar el botón de "Verificar en Banesco"
+// directo en la lista, sin abrir el detalle. Incluye también los pagos móviles
+// SIN referencia aún, para que el cajero pueda ingresarla y atarla al pedido.
+function getPagoMovilPayments(inv: any): { payment: any; idx: number }[] {
+  if (!Array.isArray(inv?.payments)) return [];
+  return inv.payments
+    .map((payment: any, idx: number) => ({ payment, idx }))
+    .filter(({ payment }: any) => /m[oó]vil/i.test(String(payment.method || '')));
+}
 
 // ════════════════════════════════════════════════
 // DROPDOWN CUSTOM PARA ESTADO DEL FLUJO
@@ -255,6 +287,8 @@ export function InvoicesPage() {
   // los filtros activos (fechas, vendedor, estado, etc.) así que el
   // tamaño es manejable para uso típico de POS.
   const [detailInvoice, setDetailInvoice] = useState<any>(null);
+  // Factura cuyo pago móvil se está verificando contra Banesco desde la lista
+  const [verifyInvoice, setVerifyInvoice] = useState<any>(null);
   const [returnInvoice, setReturnInvoice] = useState<any>(null);
   const [returnReason, setReturnReason] = useState(RETURN_REASONS[0]);
   const [returnDetails, setReturnDetails] = useState('');
@@ -696,14 +730,17 @@ export function InvoicesPage() {
                         <span className="mx-1">·</span>
                         {inv.payments?.map((p: any) => p.method).join(', ') || 'N/A'}
                       </div>
-                      <div className="flex gap-1">
-                        <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1.5 text-navy-400 hover:text-blue-600"><Eye size={14} /></button>
+                      <div className="flex gap-1.5 flex-wrap justify-end">
+                        <button onClick={() => setDetailInvoice(inv)} className={ACTION_BTN.blue} title="Ver detalle"><Eye size={ACTION_ICON} /></button>
                         {paymentImgUrl && (
-                          <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1.5 text-navy-400 hover:text-purple-600"><ImageIcon size={14} /></a>
+                          <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className={ACTION_BTN.purple} title="Ver comprobante"><ImageIcon size={ACTION_ICON} /></a>
                         )}
-                        <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1.5 text-navy-400 hover:text-navy-800"><Printer size={14} /></button>
+                        <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className={ACTION_BTN.slate} title="Imprimir recibo"><Printer size={ACTION_ICON} /></button>
+                        {getPagoMovilPayments(inv).length > 0 && (
+                          <button onClick={() => setVerifyInvoice(inv)} className={ACTION_BTN.cyan} title="Verificar pago móvil en Banesco"><ShieldCheck size={ACTION_ICON} /></button>
+                        )}
                         {(isCountableSale(inv.status)) && can('canEditInvoices') && (
-                          <button onClick={() => openEditModal(inv)} className="btn-ghost p-1.5 text-navy-400 hover:text-blue-600" title="Editar datos"><Edit2 size={14} /></button>
+                          <button onClick={() => openEditModal(inv)} className={ACTION_BTN.indigo} title="Editar datos"><Edit2 size={ACTION_ICON} /></button>
                         )}
                       </div>
                     </div>
@@ -717,12 +754,12 @@ export function InvoicesPage() {
             <table className="w-full table-fixed">
               <thead><tr className="border-b border-surface-200 bg-surface-50">
                 {[
-                  { h: 'Factura', w: 'w-[6%]' }, { h: 'Vendedor', w: 'w-[7%]' }, { h: 'Cliente', w: 'w-[8%]' },
-                  { h: 'Dirección', w: 'w-[12%]' }, { h: 'Obs.', w: 'w-[7%]' },
+                  { h: 'Factura', w: 'w-[6%]' }, { h: 'Vendedor', w: 'w-[11%]' }, { h: 'Cliente', w: 'w-[8%]' },
+                  { h: 'Dirección', w: 'w-[8%]' }, { h: 'Obs.', w: 'w-[5%]' },
                   { h: 'Entrega', w: 'w-[6%]' }, { h: 'Envío', w: 'w-[5%]' },
                   { h: 'Pago', w: 'w-[6%]' }, { h: 'REF', w: 'w-[5%]' },
                   { h: 'Total $', w: 'w-[6%]' }, { h: 'Total Bs', w: 'w-[8%]' },
-                  { h: 'Fecha', w: 'w-[8%]' }, { h: 'Estado', w: 'w-[7%]' }, { h: '', w: 'w-[9%]' },
+                  { h: 'Fecha', w: 'w-[8%]' }, { h: 'Estado', w: 'w-[7%]' }, { h: 'Acciones', w: 'w-[11%]' },
                 ].map((c) => (
                   <th key={c.h || 'actions'} className={`text-left text-[11px] font-display font-semibold text-navy-400 uppercase tracking-wide px-3 py-3 ${c.w}`}>{c.h}</th>
                 ))}</tr></thead>
@@ -736,7 +773,7 @@ export function InvoicesPage() {
                   return (
                     <tr key={inv.id} className="hover:bg-surface-50 transition-colors">
                       <td className="px-3 py-3 font-mono font-semibold text-[12px] text-navy-900 break-all leading-tight">{label(inv)}</td>
-                      <td className="px-3 py-3 text-[12px] text-navy-500 break-words leading-tight" title={inv.sellerName}>{inv.sellerName || 'N/A'}</td>
+                      <SellerCell invoice={inv} onUpdated={refetchIfServer} />
                       <td className="px-3 py-3 text-[12px] text-navy-600 break-words leading-tight" title={inv.clientSnapshot?.name}>{inv.clientSnapshot?.name || 'General'}</td>
                       <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight" title={inv.clientSnapshot?.address}>{inv.clientSnapshot?.address || 'N/A'}</td>
                       <td className="px-3 py-3 text-[12px] text-navy-400 break-words leading-tight" title={inv.observation || inv.notes}>{inv.observation || inv.notes || 'N/A'}</td>
@@ -762,24 +799,27 @@ export function InvoicesPage() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <div className="flex gap-1 flex-wrap">
-                          <button onClick={() => setDetailInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600"><Eye size={14} /></button>
+                        <div className="flex gap-1.5 flex-wrap">
+                          <button onClick={() => setDetailInvoice(inv)} className={ACTION_BTN.blue} title="Ver detalle"><Eye size={ACTION_ICON} /></button>
                           {paymentImgUrl && (
-                            <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1 text-navy-400 hover:text-purple-600" title="Ver comprobante de pago">
-                              <ImageIcon size={12} />
+                            <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className={ACTION_BTN.purple} title="Ver comprobante de pago">
+                              <ImageIcon size={ACTION_ICON} />
                             </a>
                           )}
-                          <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className="btn-ghost p-1 text-navy-400 hover:text-navy-800"><Printer size={12} /></button>
-                          {(isCountableSale(inv.status)) && can('canEditInvoices') && (
-                            <button onClick={() => openEditModal(inv)} className="btn-ghost p-1 text-navy-400 hover:text-blue-600" title="Editar datos del cliente / observación"><Edit2 size={12} /></button>
+                          <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className={ACTION_BTN.slate} title="Imprimir recibo"><Printer size={ACTION_ICON} /></button>
+                          {getPagoMovilPayments(inv).length > 0 && (
+                            <button onClick={() => setVerifyInvoice(inv)} className={ACTION_BTN.cyan} title="Verificar pago móvil en Banesco"><ShieldCheck size={ACTION_ICON} /></button>
                           )}
-                          {(inv.status === 'Finalizado' || inv.status === 'Cambio') && can('canProcessReturns') && <button onClick={() => setReturnInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-amber-600" title="Devolución"><RotateCcw size={12} /></button>}
-                          {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setExchangeInvoice(inv)} className="btn-ghost p-1 text-navy-400 hover:text-teal-600" title="Cambio de prenda"><ArrowLeftRight size={12} /></button>}
+                          {(isCountableSale(inv.status)) && can('canEditInvoices') && (
+                            <button onClick={() => openEditModal(inv)} className={ACTION_BTN.indigo} title="Editar datos del cliente / observación"><Edit2 size={ACTION_ICON} /></button>
+                          )}
+                          {(inv.status === 'Finalizado' || inv.status === 'Cambio') && can('canProcessReturns') && <button onClick={() => setReturnInvoice(inv)} className={ACTION_BTN.amber} title="Devolución"><RotateCcw size={ACTION_ICON} /></button>}
+                          {inv.status === 'Finalizado' && can('canProcessReturns') && <button onClick={() => setExchangeInvoice(inv)} className={ACTION_BTN.teal} title="Cambio de prenda"><ArrowLeftRight size={ACTION_ICON} /></button>}
                           {/* Cancelar disponible en cualquiera de los tres estados del flujo */}
-                          {(inv.status === 'Por Preparar' || inv.status === 'Preparado' || inv.status === 'Finalizado' || inv.status === 'Cambio') && can('canEditInvoices') && <button onClick={() => handleCancel(inv)} className="btn-ghost p-1 text-navy-400 hover:text-accent-red" title="Cancelar venta"><XCircle size={12} /></button>}
-                          {inv.status === 'Creada' && <button onClick={() => handleApproveWeb(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600"><CheckCircle size={12} /></button>}
-                          {inv.status === 'Pendiente de pago' && <button onClick={() => handleMarkAsPaid(inv)} className="btn-ghost p-1 text-navy-400 hover:text-emerald-600" title="Finalizar Pago"><CheckCircle size={12} /></button>}
-                          {inv.status === 'Pendiente de pago' && can('canAddAbono') && <button onClick={() => { setAbonoInvoice(inv); setAbonoAmount(''); setAbonoRef(''); }} className="btn-ghost p-1 text-navy-400 hover:text-green-600"><DollarSign size={12} /></button>}
+                          {(inv.status === 'Por Preparar' || inv.status === 'Preparado' || inv.status === 'Finalizado' || inv.status === 'Cambio') && can('canEditInvoices') && <button onClick={() => handleCancel(inv)} className={ACTION_BTN.red} title="Cancelar venta"><XCircle size={ACTION_ICON} /></button>}
+                          {inv.status === 'Creada' && <button onClick={() => handleApproveWeb(inv)} className={ACTION_BTN.emerald} title="Aprobar pedido web"><CheckCircle size={ACTION_ICON} /></button>}
+                          {inv.status === 'Pendiente de pago' && <button onClick={() => handleMarkAsPaid(inv)} className={ACTION_BTN.emerald} title="Finalizar Pago"><CheckCircle size={ACTION_ICON} /></button>}
+                          {inv.status === 'Pendiente de pago' && can('canAddAbono') && <button onClick={() => { setAbonoInvoice(inv); setAbonoAmount(''); setAbonoRef(''); }} className={ACTION_BTN.green} title="Registrar abono"><DollarSign size={ACTION_ICON} /></button>}
                         </div>
                       </td>
                     </tr>);
@@ -839,7 +879,7 @@ export function InvoicesPage() {
               <div className="space-y-1.5">{detailInvoice.items?.map((item: any, i: number) => {
                 const p = products.find((pr: Product) => pr.id === item.productId); const v = p?.variants?.[item.variantIndex];
                 const price = item.priceAtSale ?? v?.price ?? 0;
-                const itemName = item.productName || p?.name || 'Eliminado';
+                const itemName = p?.name || item.productName || 'Eliminado';
                 const itemLabel = item.variantLabel || (v ? `${sizeLabel(v.size)}, ${v.color}` : '');
                 const imgSrc = p?.imageUrl || p?.imageUrls?.[0];
                 return (<div key={i} className="flex justify-between items-center text-sm p-2 bg-surface-50 rounded-lg hover-lift gap-3">
@@ -956,28 +996,38 @@ export function InvoicesPage() {
                       // vino en bolívares.
                       const usdEquiv = (Number(p.amountUsd) || 0) + (Number(p.amountVes) || 0) / rate;
                       const hasVes = Number(p.amountVes) > 0;
+                      // Pago móvil con referencia → permitir verificar contra Banesco.
+                      const isPagoMovil = /m[oó]vil/i.test(String(p.method || ''));
                       return (
-                        <div key={i} className="flex justify-between items-start py-1.5 first:pt-0 last:pb-0">
-                          <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
-                            <span className="text-sm font-display font-medium text-navy-800 dark:text-gray-200">
-                              {p.method || 'N/A'}
-                            </span>
-                            {p.ref && (
-                              <span className="font-mono text-[10px] text-navy-500 dark:text-gray-400 bg-surface-100 dark:bg-dark-300/60 px-1.5 py-0.5 rounded">
-                                Ref: {p.ref}
+                        <div key={i} className="py-1.5 first:pt-0 last:pb-0">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                              <span className="text-sm font-display font-medium text-navy-800 dark:text-gray-200">
+                                {p.method || 'N/A'}
                               </span>
-                            )}
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="font-mono font-semibold text-sm text-navy-800 dark:text-gray-200">
-                              {format(usdEquiv)}
-                            </p>
-                            {hasVes && (
-                              <p className="font-mono text-[10px] text-navy-400 dark:text-gray-500">
-                                Bs. {Number(p.amountVes).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                              {p.ref && (
+                                <span className="font-mono text-[10px] text-navy-500 dark:text-gray-400 bg-surface-100 dark:bg-dark-300/60 px-1.5 py-0.5 rounded">
+                                  Ref: {p.ref}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-mono font-semibold text-sm text-navy-800 dark:text-gray-200">
+                                {format(usdEquiv)}
                               </p>
-                            )}
+                              {hasVes && (
+                                <p className="font-mono text-[10px] text-navy-400 dark:text-gray-500">
+                                  Bs. {Number(p.amountVes).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                                </p>
+                              )}
+                            </div>
                           </div>
+                          {isPagoMovil && p.ref && (
+                            <VerifyPagoMovilButton
+                              referenceNumber={String(p.ref)}
+                              date={toDate(detailInvoice.date) || new Date()}
+                            />
+                          )}
                         </div>
                       );
                     })}
@@ -1149,6 +1199,41 @@ export function InvoicesPage() {
         </Modal>
       )}
 
+      {/* VERIFY PAGO MÓVIL MODAL — ingresar referencia, atarla al pedido y verificar */}
+      {verifyInvoice && (
+        <Modal open={true} onClose={() => setVerifyInvoice(null)} title={`Verificar pago móvil — ${label(verifyInvoice)}`} size="sm">
+          <div className="space-y-3">
+            <p className="text-sm text-navy-500 dark:text-gray-400">
+              Ingresá la referencia del pago móvil: se guarda en el pedido y se busca
+              contra Banesco por esa referencia (no por monto) en la fecha de la factura.
+            </p>
+            {getPagoMovilPayments(verifyInvoice).map(({ payment, idx }) => {
+              const rate = verifyInvoice.exchangeRate || exchangeRate || 1;
+              const ves = (Number(payment.amountVes) || 0) || ((Number(payment.amountUsd) || 0) * rate);
+              return (
+                <div key={idx} className="bg-surface-50 dark:bg-dark-200/40 border border-surface-200 dark:border-dark-300 rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-display font-medium text-navy-800 dark:text-gray-200">{payment.method}</span>
+                    {ves > 0 && (
+                      <span className="font-mono text-[11px] text-navy-400 dark:text-gray-500">
+                        Bs. {Number(ves).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </div>
+                  <PagoMovilVerifyRow
+                    invoiceId={verifyInvoice.id}
+                    paymentIndex={idx}
+                    initialRef={payment.ref ? String(payment.ref) : ''}
+                    date={toDate(verifyInvoice.date) || new Date()}
+                    onRefSaved={refetchIfServer}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
+
       {/* EXCHANGE MODAL */}
       {exchangeInvoice && (
         <ExchangeModal
@@ -1259,8 +1344,205 @@ export function InvoicesPage() {
 }
 
 // ════════════════════════════════════════════
+// Fila de verificación de un pago móvil
+// ════════════════════════════════════════════
+// Permite ingresar/editar la referencia del pago, GUARDARLA en el pedido
+// (updatePaymentRef) y verificarla contra Banesco. La búsqueda es siempre por
+// referencia — nunca por monto — porque muchos pagos tienen montos iguales.
+type VerifyState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'found'; match: BanescoTransaction; reviewed: number }
+  | { status: 'notfound'; reviewed: number }
+  | { status: 'error'; message: string };
+
+function PagoMovilVerifyRow({
+  invoiceId,
+  paymentIndex,
+  initialRef,
+  date,
+  onRefSaved,
+}: {
+  invoiceId: string;
+  paymentIndex: number;
+  initialRef: string;
+  date: Date;
+  onRefSaved: () => void;
+}) {
+  const toast = useToast();
+  const [ref, setRef] = useState(initialRef);
+  const [savedRef, setSavedRef] = useState(initialRef);
+  const [state, setState] = useState<VerifyState>({ status: 'idle' });
+
+  async function saveAndVerify() {
+    const r = ref.trim();
+    if (!r) {
+      setState({ status: 'error', message: 'Ingresá la referencia del pago.' });
+      return;
+    }
+    setState({ status: 'loading' });
+    try {
+      // Atar la referencia al pedido si cambió respecto a la guardada
+      if (r !== savedRef) {
+        await updatePaymentRef(invoiceId, paymentIndex, r);
+        setSavedRef(r);
+        onRefSaved();
+        toast.success('Referencia guardada en el pedido.');
+      }
+      // Buscar contra Banesco SOLO por referencia (no por monto)
+      const result = await validarPagoMovil({ referenceNumber: r, date });
+      if (result.found && result.match) {
+        setState({ status: 'found', match: result.match, reviewed: result.reviewed });
+      } else {
+        setState({ status: 'notfound', reviewed: result.reviewed });
+      }
+    } catch (err: any) {
+      setState({ status: 'error', message: err?.message || 'No se pudo verificar.' });
+    }
+  }
+
+  const dirty = ref.trim() !== savedRef;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-1.5">
+        <input
+          value={ref}
+          onChange={(e) => { setRef(e.target.value); if (state.status !== 'idle') setState({ status: 'idle' }); }}
+          onKeyDown={(e) => e.key === 'Enter' && saveAndVerify()}
+          placeholder="N° de referencia..."
+          className="input-field text-sm font-mono flex-1 py-1.5"
+        />
+        <button
+          type="button"
+          onClick={saveAndVerify}
+          disabled={state.status === 'loading' || !ref.trim()}
+          className="flex items-center gap-1.5 text-[11px] font-display font-semibold px-2.5 rounded-md border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 transition-colors dark:bg-blue-900/20 dark:border-blue-800/40 dark:text-blue-300 whitespace-nowrap"
+        >
+          {state.status === 'loading'
+            ? (<><Loader2 size={12} className="animate-spin" /> Verificando…</>)
+            : (<><ShieldCheck size={12} /> {dirty ? 'Guardar y verificar' : 'Verificar'}</>)}
+        </button>
+      </div>
+
+      {state.status === 'found' && (
+        <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5">
+          <div className="flex items-center gap-1.5 font-display font-semibold mb-1">
+            <CheckCircle size={13} className="shrink-0" /> Pago encontrado
+          </div>
+          <dl className="space-y-0.5 text-[11px] text-navy-700">
+            <div className="flex justify-between gap-2">
+              <dt className="text-navy-500">Referencia</dt>
+              <dd className="font-mono font-semibold break-all text-right">{state.match.referenceNumber}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-navy-500">Monto</dt>
+              <dd className="font-mono font-semibold">Bs {state.match.amount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-navy-500">Fecha</dt>
+              <dd className="font-mono">{state.match.trnDate} {state.match.trnTime?.trim()}</dd>
+            </div>
+            {state.match.concept?.trim() && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-navy-500">Concepto</dt>
+                <dd className="text-right break-words">{state.match.concept.trim()}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
+      {state.status === 'notfound' && (
+        <div className="flex items-start gap-1.5 text-[11px] text-accent-red bg-red-50 border border-red-200 rounded-md px-2 py-1.5">
+          <XCircle size={13} className="mt-0.5 shrink-0" />
+          <span>No se encontró un crédito con esa referencia en la fecha (se revisaron {state.reviewed}). Verificá la fecha o la referencia.</span>
+        </div>
+      )}
+      {state.status === 'error' && (
+        <div className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+          <XCircle size={13} className="mt-0.5 shrink-0" />
+          <span>{state.message}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════
 // Celda REF editable
 // ════════════════════════════════════════════
+/**
+ * Celda de Vendedor con selector de usuarios. Permite reasignar la factura a
+ * otro vendedor cuando la venta se registró con la sesión equivocada.
+ *
+ * Requiere el permiso `canReassignSeller`. La lista de usuarios solo se
+ * sincroniza para quien tiene ese permiso (ver useFirestoreListeners), así que
+ * si viene vacía caemos a texto plano en vez de mostrar un selector vacío.
+ */
+function SellerCell({ invoice, onUpdated }: { invoice: any; onUpdated: () => void }) {
+  const users = useAppStore((s) => s.users);
+  const { can } = usePermissions();
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+
+  const current = invoice.sellerName || '';
+
+  const options = useMemo(() => {
+    const names = users
+      .map((u: any) => `${u.nombre || ''} ${u.apellido || ''}`.trim())
+      .filter(Boolean);
+    // El vendedor actual puede ser un usuario ya eliminado; lo conservamos como
+    // opción para no perderlo silenciosamente al abrir el selector.
+    if (current && !names.includes(current)) names.unshift(current);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [users, current]);
+
+  const editable = can('canReassignSeller') && options.length > 0;
+
+  if (!editable) {
+    return (
+      <td className="px-3 py-3 text-[12px] text-navy-500 break-words leading-tight" title={current}>
+        {current || 'N/A'}
+      </td>
+    );
+  }
+
+  async function handleChange(next: string) {
+    if (!next || next === current || saving) return;
+    setSaving(true);
+    try {
+      await updateInvoiceSeller(invoice.id, next);
+      toast.success(`Vendedor cambiado a ${next}.`);
+      onUpdated();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Error al cambiar el vendedor.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <td className="px-3 py-3">
+      <select
+        value={current}
+        disabled={saving}
+        onChange={(e) => handleChange(e.target.value)}
+        title={current ? `Vendedor: ${current} — click para reasignar` : 'Asignar vendedor'}
+        className="w-full appearance-none bg-transparent bg-none text-[12px] text-navy-500 leading-tight rounded-md px-1 py-0.5 -ml-1
+                   border border-transparent hover:border-surface-200 hover:bg-surface-50
+                   focus:border-amber-400 focus:bg-white focus:outline-none
+                   cursor-pointer disabled:opacity-50 disabled:cursor-wait transition-colors"
+      >
+        {!current && <option value="">N/A</option>}
+        {options.map((name) => (
+          <option key={name} value={name}>{name}</option>
+        ))}
+      </select>
+    </td>
+  );
+}
+
 function RefCell({ invoice, onUpdated }: { invoice: any; onUpdated: () => void }) {
   const toast = useToast();
   const payments = Array.isArray(invoice.payments) ? invoice.payments : [];

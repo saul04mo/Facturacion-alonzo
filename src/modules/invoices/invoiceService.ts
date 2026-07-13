@@ -581,3 +581,19 @@ export async function updateInvoiceStatus(
   await updateDoc(doc(db, 'invoices', invoiceId), { status: newStatus });
 }
 
+/**
+ * Reasigna el vendedor de una factura. Se usa cuando la venta se registró
+ * con el usuario equivocado (p.ej. la caja quedó abierta con otra sesión) y
+ * hay que corregirla para que las comisiones y los reportes por vendedor
+ * cuadren.
+ */
+export async function updateInvoiceSeller(
+  invoiceId: string,
+  sellerName: string,
+): Promise<void> {
+  if (!invoiceId) throw new Error('Falta el id de la factura.');
+  const name = sellerName.trim();
+  if (!name) throw new Error('El vendedor no puede quedar vacío.');
+  await updateDoc(doc(db, 'invoices', invoiceId), { sellerName: name });
+}
+

@@ -154,7 +154,6 @@ export function generateTransferTicketHTML(transfer: InventoryTransfer): string 
 
     <div class="footer">
       Impresa: ${printedAt}<br>
-      Esta comanda solo se imprime UNA vez.<br>
       Conserve este documento para auditoría.
     </div>
   </div>
