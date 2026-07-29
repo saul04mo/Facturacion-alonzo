@@ -39,8 +39,22 @@ export const app = initializeApp(firebaseConfig);
  * puede volver a persistentLocalCache (con su single-tab manager para
  * evitar la pelea de leases).
  */
+/**
+ * Transporte: por defecto el SDK auto-detecta si debe usar long-polling en vez
+ * de streaming WebChannel. En redes que bloquean/rompen el streaming (algunos
+ * proxies, antivirus con inspección TLS, VPNs y ciertos ISP móviles) la
+ * auto-detección a veces no alcanza y el canal muere con
+ * ERR_CONNECTION_TIMED_OUT en /Listen/channel. En ese caso se puede forzar
+ * long-polling poniendo VITE_FIREBASE_FORCE_LONG_POLLING=true en el .env /
+ * variables de entorno de Netlify (más lento, pero mucho más compatible).
+ */
+const forceLongPolling = import.meta.env.VITE_FIREBASE_FORCE_LONG_POLLING === 'true';
+
 export const db = initializeFirestore(app, {
   localCache: memoryLocalCache(),
+  ...(forceLongPolling
+    ? { experimentalForceLongPolling: true }
+    : { experimentalAutoDetectLongPolling: true }),
 });
 
 // Use browserLocalPersistence (localStorage) instead of the default IndexedDB
