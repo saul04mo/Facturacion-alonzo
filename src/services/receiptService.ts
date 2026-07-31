@@ -21,6 +21,11 @@ interface ReceiptOptions {
     phone?: string;
     logoUrl?: string;
   };
+  /**
+   * Ancho del papel. '55mm' = ticket de oficina (default, no cambia el
+   * comportamiento existente). '80mm' = etiquetadora MAJET.
+   */
+  paperWidth?: '55mm' | '80mm';
 }
 
 const DEFAULT_BUSINESS = {
@@ -69,6 +74,11 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   const biz = opts.businessInfo || DEFAULT_BUSINESS;
   const rate = invoice.exchangeRate || currentExchangeRate;
 
+  // Modo compacto SOLO para la etiqueta de 80mm: oculta Observación,
+  // SubTotal y Descuento para que quepa en la etiqueta corta. El recibo
+  // estándar (55mm) queda intacto y completo, como siempre.
+  const compact = opts.paperWidth === '80mm';
+
   // Client (use snapshot stored in invoice)
   const clientName = invoice.clientSnapshot?.name || 'Cliente General';
   const clientRif = invoice.clientSnapshot?.rif_ci || 'N/A';
@@ -89,7 +99,12 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
     const itemDiscount = calcDiscountAmount(itemTotal, item.discount);
     totalDiscountAmount += itemDiscount;
 
-    itemsHtml += `
+    if (compact) {
+      // Etiqueta: solo nombre y cantidad, SIN precio. Se renderiza como
+      // bloques que fluyen en 2 columnas (ver .prod-cols en los estilos).
+      itemsHtml += `<div class="prod-item">${label.name} (${label.size}, ${label.color}) <b>x${item.quantity}</b></div>`;
+    } else {
+      itemsHtml += `
       <tr>
         <td class="py-1" colspan="2">${label.name} (${label.size}, ${label.color})</td>
       </tr>
@@ -97,8 +112,9 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
         <td class="py-1 text-right">${item.quantity} x ${(price * rate).toFixed(2)}</td>
         <td class="py-1 text-right">${(itemTotal * rate).toFixed(2)}</td>
       </tr>`;
+    }
 
-    if (itemDiscount > 0) {
+    if (!compact && itemDiscount > 0) {
       itemsHtml += `
         <tr>
           <td colspan="2" class="py-1 text-right text-xs">Desc: -${(itemDiscount * rate).toFixed(2)}</td>
@@ -142,9 +158,15 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
     paymentsHtml = '<p>No especificado</p>';
   }
 
-  // Pago movil reference
-  const pagoMovil = invoice.payments?.find((p: any) => p.method === 'Pago movil' && p.ref);
-  const refHtml = pagoMovil ? `<tr><td class="label">Ref. Pago Móvil:</td><td class="value">${pagoMovil.ref}</td></tr>` : '';
+  // Referencia bancaria (pago móvil o transferencia): se imprime la del
+  // primer pago que la tenga, con el nombre del método para que el cliente
+  // sepa a cuál corresponde.
+  const bankPayment = invoice.payments?.find(
+    (p: any) => p.ref && /m[oó]vil|transferencia/i.test(String(p.method || '')),
+  );
+  const refHtml = bankPayment
+    ? `<tr><td class="label">Ref. ${bankPayment.method}:</td><td class="value">${bankPayment.ref}</td></tr>`
+    : '';
 
   // Abonos
   const totalAbonos = (invoice.abonos || []).reduce((acc: number, a: any) => acc + (a.amountVes || 0), 0);
@@ -165,7 +187,9 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   }
 
   let saldoHtml = '';
-  if (saldoPendiente > 0) {
+  // Solo mostrar saldo si realmente queda algo por pagar (> 1 Bs).
+  // Antes valores casi-cero (0.00 por redondeo) igual imprimían la línea.
+  if (saldoPendiente > 1) {
     saldoHtml = `<div style="text-align:center;font-weight:bold;color:#c00;">Saldo Pendiente: Bs. ${saldoPendiente.toFixed(2)}</div>
       <div style="text-align:center;font-size:9px;color:#666;">Total: Bs. ${grandTotalVES.toFixed(2)} • Pagado: Bs. ${totalPaid.toFixed(2)}</div>`;
   }
@@ -239,45 +263,105 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
           : `<div class="business-name">${biz.name}</div>`
         }
       </div>
-      <div class="subtitle">RIF: ${biz.rif}</div>
-      ${(biz.address || []).map((l) => `<div class="subtitle">${l}</div>`).join('')}
+      ${compact ? '' : `<div class="subtitle">RIF: ${biz.rif}</div>`}
+      ${compact
+        ? `<div class="subtitle">${(biz.address || []).join(', ')}</div>`
+        : (biz.address || []).map((l) => `<div class="subtitle">${l}</div>`).join('')}
       <div class="subtitle">Telf. ${biz.phone}</div>
       <hr>
       <div class="datos-cliente">
-        <span class="label">Cliente:</span> ${clientName}<br>
+        ${compact
+          ? `<span class="label">Cliente:</span> ${clientName} &nbsp;<span class="label">Tel:</span> ${clientPhone}<br>
+        <span class="label">RIF/C.I.:</span> ${clientRif}<br>
+        <span class="label">Dirección:</span> ${clientAddress}`
+          : `<span class="label">Cliente:</span> ${clientName}<br>
         <span class="label">RIF/C.I.:</span> ${clientRif}<br>
         <span class="label">Dirección:</span> ${clientAddress}<br>
         <span class="label">Teléfono:</span> ${clientPhone}<br>
         <span class="label">Vendedor:</span> ${invoice.sellerName || 'GENERICO'}<br>
-        <span class="subtitle">Observación: ${invoice.observation || 'N/A'}</span>
+        <span class="subtitle">Observación: ${invoice.observation || 'N/A'}</span>`}
       </div>
       <hr>
-      <div class="subtitle">Ingreso No: ${String(invoice.numericId).padStart(8, '0')} - ${invoiceDate.toLocaleTimeString('es-VE')}</div>
-      <div class="subtitle">Emitida el: ${invoiceDate.toLocaleDateString('es-VE')} Expira: ${expirationDate.toLocaleDateString('es-VE')}</div>
+      ${compact
+        ? `<div class="subtitle">Ingreso No: ${String(invoice.numericId).padStart(8, '0')} - ${invoiceDate.toLocaleDateString('es-VE')} ${invoiceDate.toLocaleTimeString('es-VE')}</div>`
+        : `<div class="subtitle">Ingreso No: ${String(invoice.numericId).padStart(8, '0')} - ${invoiceDate.toLocaleTimeString('es-VE')}</div>
+      <div class="subtitle">Emitida el: ${invoiceDate.toLocaleDateString('es-VE')} Expira: ${expirationDate.toLocaleDateString('es-VE')}</div>`}
       <hr>
-      <table>
+      ${compact
+        ? `<div class="prod-header"><span>Descripción</span></div>
+      <div class="prod-cols">${itemsHtml}</div>`
+        : `<table>
         <thead><tr><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
-      </table>
+      </table>`}
       <hr>
       <table class="totals-table">
-        <tr><td class="label">SubTotal:</td><td class="value">${(subtotal * rate).toFixed(2)}</td></tr>
-        <tr><td class="label">Descuento:</td><td class="value">${(totalDiscountAmount * rate).toFixed(2)}</td></tr>
-        ${promoHtml}
-        ${deliveryRowHtml}
+        ${compact ? '' : `<tr><td class="label">SubTotal:</td><td class="value">${(subtotal * rate).toFixed(2)}</td></tr>
+        <tr><td class="label">Descuento:</td><td class="value">${(totalDiscountAmount * rate).toFixed(2)}</td></tr>`}
+        ${compact ? '' : promoHtml}
+        ${compact ? '' : deliveryRowHtml}
         <tr class="total-row"><td class="label">Total Bs:</td><td class="value">${grandTotalVES.toFixed(2)}</td></tr>
-        <tr class="total-row"><td class="label">REF:</td><td class="value">${grandTotalUSD.toFixed(2)}</td></tr>
-        ${refHtml}
+        <tr class="total-row"><td class="label">Total $:</td><td class="value">${grandTotalUSD.toFixed(2)}</td></tr>
+        ${compact ? '' : refHtml}
       </table>
-      <hr>
+      ${compact ? '' : `<hr>
       <div class="label">Forma de Pago:</div>
       <div>${paymentsHtml}</div>
       ${changeHtml}
-      ${abonosHtml}
+      ${abonosHtml}`}
       <hr>
       <div class="footer">¡Gracias por su compra!</div>
-      ${saldoHtml ? `<hr><div class="footer">${saldoHtml}</div>` : ''}
+      ${!compact && saldoHtml ? `<hr><div class="footer">${saldoHtml}</div>` : ''}
     </div>`;
+}
+
+/**
+ * Genera los estilos del recibo para un ancho de papel dado.
+ *
+ * @param paperWidth '55mm' (oficina) u '80mm' (etiquetadora MAJET).
+ *   - contentWidth: ancho del área imprimible (papel menos un pequeño margen).
+ *   - pageSize: valor de `@page size` para que el navegador use el rollo
+ *     correcto y no una hoja A4.
+ */
+function buildReceiptStyles(paperWidth: '55mm' | '80mm'): string {
+  const is80 = paperWidth === '80mm';
+
+  if (is80) {
+    // Impresora POS-80 en modo CONTINUO (driver: Thermal Paper 80 x 3276).
+    // - Alto 'auto': el navegador hace la página tan alta como el contenido y el
+    //   driver continuo corta justo al final del recibo. Así NO arrastra
+    //   etiquetas/hojas de más (el fijo a 210mm causaba 2-3 etiquetas).
+    // - Márgenes mínimos y tipografía apretada para que ocupe lo mínimo.
+    return `
+  @page { size: 80mm auto; margin: 0 2mm 2mm 2mm; }
+  .invoice-print-area { width: 76mm; max-width: 76mm; }
+  ${RECEIPT_STYLES}
+  /* ---- Overrides solo para 80mm (con aire para que no se vea apretado) ---- */
+  body { font-size: 9.5px; line-height: 1.45; }
+  .invoice-print-area { line-height: 1.45; font-size: 9.5px; }
+  .invoice-print-area hr { margin: 5px 0; }
+  /* Logo de ALONZO (imagen). Con el driver correcto (MJ-DP30) ya imprime
+     bien en la etiqueta. Tamaño moderado y centrado. */
+  .invoice-print-area .title img { display: block !important; height: 28px !important; margin: 0 auto 3px auto !important; }
+  .invoice-print-area .title { margin-top: 0 !important; }
+  .invoice-print-area .title, .invoice-print-area .business-name { font-size: 14px; margin-bottom: 2px; margin-top: 0; }
+  .invoice-print-area .subtitle { font-size: 8.5px; margin-bottom: 1px; }
+  .invoice-print-area .datos-cliente { font-size: 9px; margin-bottom: 3px; line-height: 1.5; }
+  .invoice-print-area table { font-size: 9px; margin-bottom: 3px; }
+  .invoice-print-area th, .invoice-print-area td { font-size: 9px; padding: 2px 0; }
+  .invoice-print-area .totals-table td { padding: 2px 0; }
+  .invoice-print-area .footer { font-size: 8.5px; margin-top: 6px; }
+  .invoice-print-area .py-1 { padding-top: 2px; padding-bottom: 2px; }
+  /* Productos en 2 columnas: se llenan solos, cuando no cabe pasa a la 2da. */
+  .invoice-print-area .prod-header { display: flex; justify-content: space-between; font-weight: 700; font-size: 9px; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 3px; }
+  .invoice-print-area .prod-cols { column-count: 2; column-gap: 4mm; font-size: 8.5px; }
+  .invoice-print-area .prod-item { break-inside: avoid; -webkit-column-break-inside: avoid; margin-bottom: 3px; line-height: 1.3; }`;
+  }
+
+  return `
+  @page { size: auto; margin-top: 5mm; margin-bottom: 4mm; margin-left: 0mm; margin-right: 0mm; }
+  .invoice-print-area { width: 5.5cm; max-width: 5.5cm; }
+  ${RECEIPT_STYLES}`;
 }
 
 const RECEIPT_STYLES = `
@@ -297,8 +381,9 @@ const RECEIPT_STYLES = `
     line-height: 1.4;
     -webkit-font-smoothing: antialiased;
   }
-  @page { margin-top: 5mm; margin-bottom: 4mm; margin-left: 0mm; margin-right: 0mm; }
-  .invoice-print-area { width: 5.5cm; max-width: 5.5cm; margin: auto; padding: 0; line-height: 1.4; font-size: 12px; font-weight: 500; }
+  /* El @page y el width del área se inyectan en buildReceiptStyles según
+     el ancho de papel (55mm oficina / 80mm etiquetadora). */
+  .invoice-print-area { margin: auto; padding: 0; line-height: 1.4; font-size: 12px; font-weight: 500; }
   .invoice-print-area hr { border: none; border-top: 1px solid #000; margin: 4px 0; }
   .invoice-print-area .title { font-size: 14px; font-weight: 700; text-align: center; margin-bottom: 2px; }
   .invoice-print-area .business-name { font-size: 14px; font-weight: 700; margin-top: 4px; }
@@ -324,8 +409,12 @@ function openReceiptWindow(opts: ReceiptOptions): Window | null {
   const printWindow = window.open('', '', 'height=800,width=600');
   if (!printWindow) return null;
 
+  // Default 55mm: el botón normal de "Imprimir" mantiene el recibo estándar
+  // de oficina, como siempre. El modo 80mm (etiqueta compacta) solo se usa
+  // cuando se pide explícitamente vía printReceiptLabel.
+  const styles = buildReceiptStyles(opts.paperWidth ?? '55mm');
   printWindow.document.write(`<html><head><title>Factura FACT-${String(opts.invoice.numericId).padStart(4, '0')}</title>
-    <style>${RECEIPT_STYLES}</style>
+    <style>${styles}</style>
   </head><body>`);
   printWindow.document.write(content);
   printWindow.document.write('</body></html>');
@@ -338,6 +427,23 @@ function openReceiptWindow(opts: ReceiptOptions): Window | null {
  */
 export function printReceipt(opts: ReceiptOptions): void {
   const printWindow = openReceiptWindow(opts);
+  if (!printWindow) {
+    alert('No se pudo abrir la ventana de impresión. Verifica que no esté bloqueada por el navegador.');
+    return;
+  }
+  setTimeout(() => printWindow.print(), 600);
+}
+
+/**
+ * Imprime el recibo en formato 80mm para la etiquetadora MAJET.
+ *
+ * Es una vía SEPARADA de printReceipt: abre su propio diálogo de impresión
+ * para que el usuario elija manualmente la MAJET (u otra impresora), sin
+ * tocar la impresora de oficina de 55mm. El navegador no puede seleccionar
+ * la impresora por código; solo se controla el tamaño del papel (80mm).
+ */
+export function printReceiptLabel(opts: ReceiptOptions): void {
+  const printWindow = openReceiptWindow({ ...opts, paperWidth: '80mm' });
   if (!printWindow) {
     alert('No se pudo abrir la ventana de impresión. Verifica que no esté bloqueada por el navegador.');
     return;

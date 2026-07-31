@@ -16,6 +16,7 @@ export const ROUTES = {
   PAYROLL_DRAFT: '/cierre-nomina',
   CRM: '/crm',
   PAYMENTS: '/pagos',
+  CASH: '/caja',
   ANALYTICS: '/trafico-web',
   // Ruta PÚBLICA (sin login) — formulario de registro de envío para clientes
   CLIENT_REGISTRATION: '/registro-envio',
@@ -50,6 +51,7 @@ export const ALL_PERMISSIONS = {
   canAccessCierreNomina: 'Acceder a Cierre de Nómina',
   canAccessSettings: 'Acceder a Configuración',
   canAccessPagos: 'Acceder a Pagos Banesco',
+  canAccessCaja: 'Acceder a Cierre de Caja',
 } as const;
 
 export type PermissionKey = keyof typeof ALL_PERMISSIONS;
@@ -66,6 +68,9 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<PermissionKey, boolean>>
     canUpdateExchangeRate: false, canConfirmDeliveryPayment: false, canAddAbono: false,
     canAccessInformes: false, canManageOffers: false, canAccessNomina: false,
     canAccessCierreNomina: false, canAccessSettings: false, canAccessPagos: false,
+    // El cierre de caja lo hace quien tiene la responsabilidad del efectivo.
+    // Arranca cerrado para vendedores: se habilita por usuario si hace falta.
+    canAccessCaja: false,
   },
   administrador: Object.keys(ALL_PERMISSIONS).reduce(
     (acc, key) => ({ ...acc, [key]: true }), {} as Record<PermissionKey, boolean>,

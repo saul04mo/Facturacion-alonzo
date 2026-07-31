@@ -25,11 +25,27 @@ interface ConsultaResponse {
   dataResponse?: { transactionDetail?: BanescoTransaction[] } | null;
 }
 
-export interface ValidacionPagoMovil {
+export interface ValidacionCredito {
   found: boolean;
   match?: BanescoTransaction;
   /** Total de créditos revisados en el rango (para diagnóstico). */
   reviewed: number;
+}
+
+/**
+ * Métodos de pago que caen en la cuenta Banesco y por lo tanto se pueden
+ * verificar contra el estado de cuenta. Tanto el pago móvil como la
+ * transferencia bancaria llegan como crédito (trnType 'CR') con su
+ * referencia, así que se validan con la misma consulta.
+ *
+ * Zelle/Binance/Paypal NO están acá: son cuentas externas que Banesco no ve.
+ */
+export const BANESCO_VALIDATABLE_METHODS = ['Pago movil', 'Transferencia bancaria'] as const;
+
+/** ¿Este método de pago se puede verificar contra Banesco? */
+export function isBanescoValidatable(methodName: string | null | undefined): boolean {
+  const name = String(methodName ?? '');
+  return /m[oó]vil/i.test(name) || /transferencia/i.test(name);
 }
 
 /** Formatea una fecha a 'YYYY-MM-DD' en hora local. */
@@ -70,6 +86,24 @@ export async function consultarPagosPorFecha(opts: {
 export interface Banco {
   code: string;
   name: string;
+}
+
+/**
+ * Catálogo cacheado en memoria. El listado de bancos no cambia durante la
+ * sesión y se usa para traducir el código del banco emisor ('0102') a un
+ * nombre legible en cada resultado de validación — sin esto el cajero ve
+ * solo el número. Si la consulta falla se limpia la caché para reintentar.
+ */
+let bancosCache: Promise<Banco[]> | null = null;
+
+export function getBancosCached(): Promise<Banco[]> {
+  if (!bancosCache) {
+    bancosCache = getBancos().catch((err) => {
+      bancosCache = null;
+      throw err;
+    });
+  }
+  return bancosCache;
 }
 
 /** Catálogo de bancos venezolanos (GET /api/bancos). */
@@ -145,18 +179,22 @@ export function refMatches(entered: string, fromBank: string): boolean {
 }
 
 /**
- * Valida un pago móvil buscando en las transacciones de Banesco del día
- * un crédito (CR) cuya referencia y monto coincidan con lo cargado en el POS.
+ * Valida un pago recibido (pago móvil o transferencia bancaria) buscando en
+ * las transacciones de Banesco del día un crédito (CR) cuya referencia y
+ * monto coincidan con lo cargado en el POS.
+ *
+ * Sirve para ambos métodos porque el estado de cuenta no distingue el canal:
+ * todo lo que entra a la cuenta aparece como crédito con su referencia.
  *
  * @param referenceNumber Referencia que escribió el cajero.
  * @param amountVes Monto en bolívares (0 = no se valida el monto, solo la referencia).
  * @param date Fecha a consultar (por defecto hoy).
  */
-export async function validarPagoMovil(opts: {
+export async function validarCreditoBancario(opts: {
   referenceNumber: string;
   amountVes?: number;
   date?: Date;
-}): Promise<ValidacionPagoMovil> {
+}): Promise<ValidacionCredito> {
   const { referenceNumber, amountVes = 0, date = new Date() } = opts;
   const startDt = toApiDate(date);
 

@@ -192,6 +192,29 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════
+    // 13. CIERRE DE CAJA
+    // ════════════════════════════════════════
+    // Una sesión por día y sucursal (doc ID = 'YYYY-MM-DD_branch').
+    // Cualquier usuario autenticado puede abrir y cerrar caja — el acceso
+    // real se controla con el permiso canAccessCaja en la UI. No se borran:
+    // un cierre es un documento contable, si está mal se reabre y se corrige.
+    match /cashSessions/{sessionId} {
+      allow read: if isAuth();
+      allow create, update: if isAuth();
+      allow delete: if false;
+    }
+
+    // Movimientos de efectivo (retiros, gastos, abonos, devoluciones).
+    // Delete solo para los cargados a mano: los que genera el sistema a
+    // partir de una devolución o un abono son rastro de auditoría.
+    match /cashMovements/{movementId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if false;
+      allow delete: if isAuth() && resource.data.source == 'manual';
+    }
+
+    // ════════════════════════════════════════
     // DENY EVERYTHING ELSE
     // ════════════════════════════════════════
     match /{document=**} {

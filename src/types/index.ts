@@ -318,6 +318,18 @@ export interface Invoice {
    */
   branch?: Branch;
   abonos: Abono[];
+  /**
+   * Vuelto entregado al cliente, en USD. Solo se persiste si > 0.01.
+   * Para el cierre de caja es una SALIDA de efectivo.
+   */
+  changeGiven?: number;
+  /**
+   * Moneda en la que se entregó físicamente el vuelto. El monto siempre
+   * se guarda en USD (changeGiven), pero la gaveta de la que sale depende
+   * de esto. Facturas anteriores a esta versión no lo tienen: el cierre
+   * de caja las muestra como "vuelto sin asignar" en vez de adivinar.
+   */
+  changeCurrency?: 'ves' | 'usd';
   // ── Promo / Coupon audit trail ──
   appliedCoupon?: AppliedCoupon | null;
   appliedPromotions?: AppliedPromotion[];
@@ -326,6 +338,12 @@ export interface Invoice {
     details: string | null;
     date: Timestamp;
     processedBy: string;
+    /** Método por el que se reembolsó el dinero (nombre de PAYMENT_METHODS). */
+    refundMethod?: string | null;
+    /** Monto reembolsado, en la moneda del método. 0 = no se devolvió dinero. */
+    refundAmount?: number;
+    /** Equivalente en USD del reembolso, para reportes. */
+    refundAmountUsd?: number;
   };
   exchangeDetails?: ExchangeDetails;
 }
@@ -604,4 +622,96 @@ export interface PayrollDraftPeriod {
   createdByName: string;
   updatedAt?: Timestamp;
   updatedByName?: string;
+}
+
+// ================================
+// CIERRE DE CAJA (efectivo)
+// ================================
+
+/** Monedas físicas que se cuentan por separado en la gaveta. */
+export type CashCurrency = 'ves' | 'usd';
+
+/**
+ * Origen de un movimiento de caja registrado explícitamente.
+ *
+ * Las ventas del día NO generan movimientos: se leen directo de las
+ * facturas (que ya son consultables por fecha + sucursal). Los demás
+ * eventos sí, porque ocurren sobre facturas de CUALQUIER fecha —
+ * un abono de hoy sobre una factura de la semana pasada no aparecería
+ * al filtrar facturas por la fecha de hoy.
+ */
+export type CashMovementSource =
+  | 'manual'    // retiro / gasto / ingreso cargado a mano
+  | 'abono'     // abono en efectivo a un crédito
+  | 'return'    // reembolso en efectivo por devolución
+  | 'exchange'; // diferencia de precio en efectivo por cambio de producto
+
+export interface CashMovement {
+  id: string;
+  /** YYYY-MM-DD en horario Venezuela. Agrupa el movimiento a un cierre. */
+  dateKey: string;
+  branch: Branch;
+  /** 'in' = entra a la gaveta, 'out' = sale de la gaveta. */
+  direction: 'in' | 'out';
+  currency: CashCurrency;
+  /** Monto SIEMPRE positivo, en la moneda de `currency`. */
+  amount: number;
+  source: CashMovementSource;
+  concept: string;
+  /** Factura relacionada, si el movimiento nació de una (abono/devolución/cambio). */
+  invoiceId?: string;
+  invoiceNumericId?: number;
+  createdAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+}
+
+/**
+ * Foto de los números al momento de cerrar. Se congela para que el
+ * cierre no cambie si después se edita una factura de ese día.
+ */
+export interface CashSessionSnapshot {
+  salesVes: number;
+  salesUsd: number;
+  changeVes: number;
+  changeUsd: number;
+  /** Vuelto de facturas viejas sin changeCurrency — no se imputa a ninguna gaveta. */
+  changeUnassignedUsd: number;
+  movementsInVes: number;
+  movementsInUsd: number;
+  movementsOutVes: number;
+  movementsOutUsd: number;
+  expectedVes: number;
+  expectedUsd: number;
+  countedVes: number;
+  countedUsd: number;
+  diffVes: number;
+  diffUsd: number;
+  /** Tasa al momento del cierre, para poder expresar el total en una sola moneda. */
+  exchangeRate: number;
+  invoiceCount: number;
+}
+
+/**
+ * Una caja por día y por sucursal. Doc ID = `${dateKey}_${branch}`,
+ * lo que hace imposible abrir dos cajas para el mismo día/sucursal.
+ */
+export interface CashSession {
+  id: string;
+  dateKey: string;
+  branch: Branch;
+  status: 'open' | 'closed';
+  /** Fondo inicial que se dejó en la gaveta al abrir. */
+  openingVes: number;
+  openingUsd: number;
+  openedAt: Timestamp;
+  openedByUid: string;
+  openedByName: string;
+  openingNote?: string;
+  // ── Solo cuando status === 'closed' ──
+  closedAt?: Timestamp;
+  closedByUid?: string;
+  closedByName?: string;
+  closingNote?: string;
+  snapshot?: CashSessionSnapshot;
 }

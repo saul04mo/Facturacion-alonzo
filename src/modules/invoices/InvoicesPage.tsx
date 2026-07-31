@@ -10,8 +10,9 @@ import { processReturn, processExchange, cancelInvoice, approveWebOrder, confirm
 import { ExchangeModal } from './ExchangeModal';
 import type { ExchangeConfirmData } from './ExchangeModal';
 import { VerifyPagoMovilButton } from './VerifyPagoMovilButton';
-import { validarPagoMovil, type BanescoTransaction } from '@/services/banescoService';
-import { printReceipt, downloadReceiptPdf } from '@/services/receiptService';
+import { validarCreditoBancario, isBanescoValidatable, type BanescoTransaction } from '@/services/banescoService';
+import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
+import { printReceipt, printReceiptLabel, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
 import { todayVE, toDate } from '@/utils/dateUtils';
 import { STATUS_CONFIG, isCountableSale } from '@/utils/invoiceStatus';
@@ -40,16 +41,17 @@ const ACTION_BTN: Record<string, string> = {
 };
 const ACTION_ICON = 12;
 
-// Devuelve los pagos por Pago Móvil de una factura junto con su índice en el
-// array `payments` (necesario para guardar/atar la referencia con
-// updatePaymentRef). Se usa para mostrar el botón de "Verificar en Banesco"
-// directo en la lista, sin abrir el detalle. Incluye también los pagos móviles
-// SIN referencia aún, para que el cajero pueda ingresarla y atarla al pedido.
-function getPagoMovilPayments(inv: any): { payment: any; idx: number }[] {
+// Devuelve los pagos verificables contra Banesco (pago móvil y transferencia
+// bancaria) de una factura junto con su índice en el array `payments`
+// (necesario para guardar/atar la referencia con updatePaymentRef). Se usa
+// para mostrar el botón de "Verificar en Banesco" directo en la lista, sin
+// abrir el detalle. Incluye también los pagos SIN referencia aún, para que el
+// cajero pueda ingresarla y atarla al pedido.
+function getVerifiablePayments(inv: any): { payment: any; idx: number }[] {
   if (!Array.isArray(inv?.payments)) return [];
   return inv.payments
     .map((payment: any, idx: number) => ({ payment, idx }))
-    .filter(({ payment }: any) => /m[oó]vil/i.test(String(payment.method || '')));
+    .filter(({ payment }: any) => isBanescoValidatable(payment.method));
 }
 
 // ════════════════════════════════════════════════
@@ -292,6 +294,9 @@ export function InvoicesPage() {
   const [returnInvoice, setReturnInvoice] = useState<any>(null);
   const [returnReason, setReturnReason] = useState(RETURN_REASONS[0]);
   const [returnDetails, setReturnDetails] = useState('');
+  // Reembolso de la devolución: método vacío = no se devolvió dinero.
+  const [refundMethod, setRefundMethod] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
   const [exchangeInvoice, setExchangeInvoice] = useState<any>(null);
   const [exchangeLoading, setExchangeLoading] = useState(false);
   const [abonoInvoice, setAbonoInvoice] = useState<any>(null);
@@ -496,6 +501,9 @@ export function InvoicesPage() {
         ...data,
         currentUser,
         products,
+        // Tasa del día: las diferencias en efectivo se convierten con esta,
+        // no con la tasa vieja de la factura original.
+        exchangeRate,
       });
       setExchangeInvoice(null);
       toast.success('Cambio procesado correctamente.');
@@ -510,9 +518,16 @@ export function InvoicesPage() {
   async function handleReturn() {
     if (!returnInvoice || !currentUser) return; setLoading(true);
     try { 
-      await processReturn({ invoiceId: returnInvoice.id, invoice: returnInvoice, reason: returnReason, details: returnDetails, currentUser, products }); 
-      setReturnInvoice(null); 
-      toast.success('Devolución procesada.'); 
+      await processReturn({
+        invoiceId: returnInvoice.id, invoice: returnInvoice,
+        reason: returnReason, details: returnDetails, currentUser, products,
+        refundMethod: refundMethod || null,
+        refundAmount: parseFloat(refundAmount) || 0,
+        exchangeRate,
+      });
+      setReturnInvoice(null);
+      setRefundMethod(''); setRefundAmount('');
+      toast.success('Devolución procesada.');
       await refetchIfServer();
     }
     catch (err: any) { console.error('processReturn error:', err); toast.error(`Error al procesar devolución: ${err?.message || err}`); } finally { setLoading(false); }
@@ -578,7 +593,7 @@ export function InvoicesPage() {
     if (!abonoInvoice) return; const amt = parseFloat(abonoAmount);
     if (isNaN(amt) || amt <= 0) return toast.warning('Monto inválido.'); setLoading(true);
     try { 
-      await addAbono({ invoiceId: abonoInvoice.id, invoice: abonoInvoice, amount: amt, methodName: abonoMethod, ref: abonoRef || undefined, exchangeRate }); 
+      await addAbono({ invoiceId: abonoInvoice.id, invoice: abonoInvoice, amount: amt, methodName: abonoMethod, ref: abonoRef || undefined, exchangeRate, currentUser: currentUser ?? undefined });
       setAbonoInvoice(null); 
       toast.success('Abono registrado.'); 
       await refetchIfServer();
@@ -736,8 +751,8 @@ export function InvoicesPage() {
                           <a href={paymentImgUrl} target="_blank" rel="noopener noreferrer" className={ACTION_BTN.purple} title="Ver comprobante"><ImageIcon size={ACTION_ICON} /></a>
                         )}
                         <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className={ACTION_BTN.slate} title="Imprimir recibo"><Printer size={ACTION_ICON} /></button>
-                        {getPagoMovilPayments(inv).length > 0 && (
-                          <button onClick={() => setVerifyInvoice(inv)} className={ACTION_BTN.cyan} title="Verificar pago móvil en Banesco"><ShieldCheck size={ACTION_ICON} /></button>
+                        {getVerifiablePayments(inv).length > 0 && (
+                          <button onClick={() => setVerifyInvoice(inv)} className={ACTION_BTN.cyan} title="Verificar pago en Banesco"><ShieldCheck size={ACTION_ICON} /></button>
                         )}
                         {(isCountableSale(inv.status)) && can('canEditInvoices') && (
                           <button onClick={() => openEditModal(inv)} className={ACTION_BTN.indigo} title="Editar datos"><Edit2 size={ACTION_ICON} /></button>
@@ -807,8 +822,8 @@ export function InvoicesPage() {
                             </a>
                           )}
                           <button onClick={() => printReceipt({ invoice: inv, products, clients, currentExchangeRate: exchangeRate })} className={ACTION_BTN.slate} title="Imprimir recibo"><Printer size={ACTION_ICON} /></button>
-                          {getPagoMovilPayments(inv).length > 0 && (
-                            <button onClick={() => setVerifyInvoice(inv)} className={ACTION_BTN.cyan} title="Verificar pago móvil en Banesco"><ShieldCheck size={ACTION_ICON} /></button>
+                          {getVerifiablePayments(inv).length > 0 && (
+                            <button onClick={() => setVerifyInvoice(inv)} className={ACTION_BTN.cyan} title="Verificar pago en Banesco"><ShieldCheck size={ACTION_ICON} /></button>
                           )}
                           {(isCountableSale(inv.status)) && can('canEditInvoices') && (
                             <button onClick={() => openEditModal(inv)} className={ACTION_BTN.indigo} title="Editar datos del cliente / observación"><Edit2 size={ACTION_ICON} /></button>
@@ -846,7 +861,7 @@ export function InvoicesPage() {
         <Modal open={true} onClose={() => setDetailInvoice(null)} title={label(detailInvoice)} size="lg">
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[{ l: 'Cliente', v: detailInvoice.clientSnapshot?.name || 'General' }, { l: 'Fecha', v: toDate(detailInvoice.date)?.toLocaleDateString('es-VE') }, { l: 'Vendedor', v: detailInvoice.sellerName }].map((i) => (
+              {[{ l: 'Cliente', v: detailInvoice.clientSnapshot?.name || 'General' }, { l: 'Teléfono', v: detailInvoice.clientSnapshot?.phone || '—' }, { l: 'Fecha', v: toDate(detailInvoice.date)?.toLocaleDateString('es-VE') }, { l: 'Vendedor', v: detailInvoice.sellerName }].map((i) => (
                 <div key={i.l} className="bg-surface-50 rounded-lg p-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">{i.l}</p>
                   <p className="text-sm font-display font-medium text-navy-900 mt-0.5">{i.v}</p></div>
               ))}
@@ -991,13 +1006,17 @@ export function InvoicesPage() {
                   </p>
                   <div className="divide-y divide-surface-200 dark:divide-dark-300/40">
                     {detailInvoice.payments.map((p: any, i: number) => {
-                      // Monto efectivo en USD del pago: el amountUsd si vino
-                      // expresado en USD, o el amountVes convertido a USD si
-                      // vino en bolívares.
-                      const usdEquiv = (Number(p.amountUsd) || 0) + (Number(p.amountVes) || 0) / rate;
+                      // Monto efectivo en USD del pago. amountUsd y amountVes
+                      // representan EL MISMO pago en dos monedas (no dos pagos
+                      // distintos), así que NO se suman: se prefiere amountUsd
+                      // y solo se convierte desde bolívares cuando no hay USD.
+                      const usdEquiv = Number(p.amountUsd) > 0
+                        ? Number(p.amountUsd)
+                        : (Number(p.amountVes) || 0) / rate;
                       const hasVes = Number(p.amountVes) > 0;
-                      // Pago móvil con referencia → permitir verificar contra Banesco.
-                      const isPagoMovil = /m[oó]vil/i.test(String(p.method || ''));
+                      // Pago móvil o transferencia con referencia → permitir
+                      // verificar contra Banesco.
+                      const isVerifiable = isBanescoValidatable(p.method);
                       return (
                         <div key={i} className="py-1.5 first:pt-0 last:pb-0">
                           <div className="flex justify-between items-start">
@@ -1022,7 +1041,7 @@ export function InvoicesPage() {
                               )}
                             </div>
                           </div>
-                          {isPagoMovil && p.ref && (
+                          {isVerifiable && p.ref && (
                             <VerifyPagoMovilButton
                               referenceNumber={String(p.ref)}
                               date={toDate(detailInvoice.date) || new Date()}
@@ -1052,8 +1071,10 @@ export function InvoicesPage() {
               });
               let cashReceivedUsd = 0;
               cashPayments.forEach((p: any) => {
-                cashReceivedUsd += (Number(p.amountUsd) || 0);
-                cashReceivedUsd += (Number(p.amountVes) || 0) / rate;
+                // amountUsd/amountVes son el mismo pago en dos monedas: no sumar.
+                cashReceivedUsd += Number(p.amountUsd) > 0
+                  ? Number(p.amountUsd)
+                  : (Number(p.amountVes) || 0) / rate;
               });
               // Para vuelto: seguir la misma lógica que antes.
               const stored = (detailInvoice as any).changeGiven;
@@ -1065,8 +1086,9 @@ export function InvoicesPage() {
                 // Fallback: calcular al vuelo
                 let nonCashUsd = 0;
                 (detailInvoice.payments || []).filter((p: any) => !String(p.method || '').toLowerCase().includes('efectivo')).forEach((p: any) => {
-                  nonCashUsd += (Number(p.amountUsd) || 0);
-                  nonCashUsd += (Number(p.amountVes) || 0) / rate;
+                  nonCashUsd += Number(p.amountUsd) > 0
+                    ? Number(p.amountUsd)
+                    : (Number(p.amountVes) || 0) / rate;
                 });
                 const totalCobradoUsd = cashReceivedUsd + nonCashUsd;
                 const totalVentaUsd = Number(detailInvoice.total || 0);
@@ -1195,19 +1217,27 @@ export function InvoicesPage() {
                 <Download size={16} /> Guardar PDF
               </button>
             </div>
+            {/* Vía separada: etiquetadora MAJET (80mm). Abre su propio diálogo
+                para elegir la impresora sin tocar la de oficina. */}
+            <div className="flex gap-2">
+              <button onClick={() => printReceiptLabel({ invoice: detailInvoice, products, clients, currentExchangeRate: exchangeRate })}
+                className="btn-secondary flex-1">
+                <Printer size={16} /> Imprimir en Etiquetadora (80mm)
+              </button>
+            </div>
           </div>
         </Modal>
       )}
 
-      {/* VERIFY PAGO MÓVIL MODAL — ingresar referencia, atarla al pedido y verificar */}
+      {/* VERIFY PAGO EN BANESCO — ingresar referencia, atarla al pedido y verificar */}
       {verifyInvoice && (
-        <Modal open={true} onClose={() => setVerifyInvoice(null)} title={`Verificar pago móvil — ${label(verifyInvoice)}`} size="sm">
+        <Modal open={true} onClose={() => setVerifyInvoice(null)} title={`Verificar pago en Banesco — ${label(verifyInvoice)}`} size="sm">
           <div className="space-y-3">
             <p className="text-sm text-navy-500 dark:text-gray-400">
-              Ingresá la referencia del pago móvil: se guarda en el pedido y se busca
-              contra Banesco por esa referencia (no por monto) en la fecha de la factura.
+              Ingresá la referencia del pago móvil o transferencia: se guarda en el pedido
+              y se busca contra Banesco por esa referencia (no por monto) en la fecha de la factura.
             </p>
-            {getPagoMovilPayments(verifyInvoice).map(({ payment, idx }) => {
+            {getVerifiablePayments(verifyInvoice).map(({ payment, idx }) => {
               const rate = verifyInvoice.exchangeRate || exchangeRate || 1;
               const ves = (Number(payment.amountVes) || 0) || ((Number(payment.amountUsd) || 0) * rate);
               return (
@@ -1254,6 +1284,36 @@ export function InvoicesPage() {
                 {RETURN_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}</select></div>
             <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Detalles</label>
               <textarea value={returnDetails} onChange={(e) => setReturnDetails(e.target.value)} className="input-field" rows={3} /></div>
+
+            {/* Reembolso — sin esto el cierre de caja marca faltante cada vez
+                que se devuelve efectivo, sin rastro de a dónde fue la plata. */}
+            <div className="pt-3 border-t border-surface-200 space-y-3">
+              <div>
+                <label className="block text-sm font-display font-medium text-navy-700 mb-1.5">¿Se devolvió dinero?</label>
+                <select value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)} className="input-field">
+                  <option value="">No se devolvió dinero</option>
+                  {PAYMENT_METHODS.filter((m) => m.currency !== 'none').map((m) => (
+                    <option key={m.id} value={m.name}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              {refundMethod && (
+                <div>
+                  <label className="block text-sm font-display font-medium text-navy-700 mb-1.5">
+                    Monto reembolsado {PAYMENT_METHODS.find((m) => m.name === refundMethod)?.currency === 'usd' ? 'en $' : 'en Bs'}
+                  </label>
+                  <input type="number" step="0.01" min="0" value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    className="input-field font-mono" placeholder="0.00" />
+                  <p className="text-xs text-navy-400 font-body mt-1">
+                    Sugerido: {PAYMENT_METHODS.find((m) => m.name === refundMethod)?.currency === 'usd'
+                      ? `$ ${returnInvoice.total.toFixed(2)}`
+                      : `Bs ${(returnInvoice.total * (returnInvoice.exchangeRate || exchangeRate)).toFixed(2)}`}
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3 pt-4 border-t border-surface-200">
               <button onClick={() => setReturnInvoice(null)} className="btn-secondary">Cancelar</button>
               <button onClick={handleReturn} disabled={loading} className="btn-danger">{loading ? 'Procesando...' : 'Procesar Devolución'}</button></div>
@@ -1276,7 +1336,10 @@ export function InvoicesPage() {
                 {PAYMENT_METHODS.filter((m) => m.currency !== 'none').map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}</select></div>
             <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Monto</label>
               <input type="number" step="0.01" value={abonoAmount} onChange={(e) => setAbonoAmount(e.target.value)} className="input-field font-mono" /></div>
-            {abonoMethod === 'Pago movil' && <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Referencia</label>
+            {/* Ref para cualquier método que la acepte (pago móvil, transferencia,
+                Zelle...). Antes estaba fijo en 'Pago movil' y las demás quedaban
+                sin referencia aunque el servicio sí la guarda. */}
+            {(PAYMENT_METHODS.find((m) => m.name === abonoMethod) as any)?.hasRef && <div><label className="block text-sm font-display font-medium text-navy-700 mb-1.5">Referencia</label>
               <input value={abonoRef} onChange={(e) => setAbonoRef(e.target.value)} className="input-field" /></div>}
             <div className="flex justify-end gap-3 pt-4 border-t border-surface-200">
               <button onClick={() => setAbonoInvoice(null)} className="btn-secondary">Cancelar</button>
@@ -1390,7 +1453,7 @@ function PagoMovilVerifyRow({
         toast.success('Referencia guardada en el pedido.');
       }
       // Buscar contra Banesco SOLO por referencia (no por monto)
-      const result = await validarPagoMovil({ referenceNumber: r, date });
+      const result = await validarCreditoBancario({ referenceNumber: r, date });
       if (result.found && result.match) {
         setState({ status: 'found', match: result.match, reviewed: result.reviewed });
       } else {
@@ -1430,26 +1493,7 @@ function PagoMovilVerifyRow({
           <div className="flex items-center gap-1.5 font-display font-semibold mb-1">
             <CheckCircle size={13} className="shrink-0" /> Pago encontrado
           </div>
-          <dl className="space-y-0.5 text-[11px] text-navy-700">
-            <div className="flex justify-between gap-2">
-              <dt className="text-navy-500">Referencia</dt>
-              <dd className="font-mono font-semibold break-all text-right">{state.match.referenceNumber}</dd>
-            </div>
-            <div className="flex justify-between gap-2">
-              <dt className="text-navy-500">Monto</dt>
-              <dd className="font-mono font-semibold">Bs {state.match.amount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</dd>
-            </div>
-            <div className="flex justify-between gap-2">
-              <dt className="text-navy-500">Fecha</dt>
-              <dd className="font-mono">{state.match.trnDate} {state.match.trnTime?.trim()}</dd>
-            </div>
-            {state.match.concept?.trim() && (
-              <div className="flex justify-between gap-2">
-                <dt className="text-navy-500">Concepto</dt>
-                <dd className="text-right break-words">{state.match.concept.trim()}</dd>
-              </div>
-            )}
-          </dl>
+          <BanescoMatchDetails match={state.match} />
         </div>
       )}
       {state.status === 'notfound' && (

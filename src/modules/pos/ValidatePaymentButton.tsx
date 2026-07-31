@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { validarPagoMovil, type BanescoTransaction } from '@/services/banescoService';
+import { validarCreditoBancario, type BanescoTransaction } from '@/services/banescoService';
 import { ShieldCheck, Search, Loader2, CheckCircle2, XCircle, AlertCircle, X } from 'lucide-react';
+import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
 
 /**
  * Buscador independiente de pagos contra Banesco para el panel de ventas.
@@ -46,7 +47,7 @@ function ValidatePaymentModal({ onClose }: { onClose: () => void }) {
     setState({ status: 'loading' });
     try {
       // La validación es solo por referencia (no se compara el monto).
-      const result = await validarPagoMovil({
+      const result = await validarCreditoBancario({
         referenceNumber: ref,
         date: parseLocalDate(date),
       });
@@ -74,7 +75,7 @@ function ValidatePaymentModal({ onClose }: { onClose: () => void }) {
           <h2 className="font-display font-bold text-navy-900 text-base">Validar pago en Banesco</h2>
         </div>
         <p className="text-xs text-navy-400 mb-4">
-          Consulta si un pago móvil llegó a la cuenta. No afecta la venta en curso.
+          Consulta si un pago móvil o transferencia llegó a la cuenta. No afecta la venta en curso.
         </p>
 
         <div className="space-y-3">
@@ -106,12 +107,7 @@ function ValidatePaymentModal({ onClose }: { onClose: () => void }) {
               <div className="flex items-center gap-1.5 text-emerald-700 font-display font-semibold mb-1.5">
                 <CheckCircle2 size={16} /> Pago encontrado
               </div>
-              <dl className="space-y-1 text-xs text-navy-700">
-                <div className="flex justify-between"><dt className="text-navy-500">Monto</dt><dd className="font-mono font-semibold">Bs {state.match.amount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</dd></div>
-                <div className="flex justify-between"><dt className="text-navy-500">Referencia</dt><dd className="font-mono">{state.match.referenceNumber}</dd></div>
-                <div className="flex justify-between"><dt className="text-navy-500">Fecha</dt><dd className="font-mono">{state.match.trnDate} {state.match.trnTime?.trim()}</dd></div>
-                <div className="flex justify-between"><dt className="text-navy-500">Concepto</dt><dd className="text-right">{state.match.concept?.trim()}</dd></div>
-              </dl>
+              <BanescoMatchDetails match={state.match} />
             </div>
           )}
 

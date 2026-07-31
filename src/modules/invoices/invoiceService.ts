@@ -4,7 +4,57 @@ import {
 import { db } from '@/config/firebase';
 import { batchRestoreStock, batchApplyStockDeltas, validateStock } from '@/utils/stockUtils';
 import { recordCouponUsage } from '@/services/promotionService';
-import type { CurrentSale, AppUser, Product, Invoice, ClientSnapshot } from '@/types';
+import type { CurrentSale, AppUser, Product, Invoice, ClientSnapshot, CashCurrency, Branch } from '@/types';
+
+/**
+ * Registra un movimiento de efectivo derivado de una operación sobre una
+ * factura (abono, devolución, cambio).
+ *
+ * Import dinámico a propósito: cashService importa PAYMENT_METHODS de este
+ * módulo, así que un import estático crearía un ciclo que puede dejar
+ * constantes sin inicializar según el orden de evaluación.
+ *
+ * Nunca lanza: si falla el registro del movimiento, la operación principal
+ * (devolver el producto, cargar el abono) ya se completó y no tiene sentido
+ * revertirla. Queda el warning en consola y el cierre de caja mostrará la
+ * diferencia.
+ */
+async function logCashMovement(opts: {
+  invoice: Invoice;
+  methodName: string | null | undefined;
+  /** Monto en la moneda del método (Bs si es Efectivo (Bs), USD si es Efectivo ($)). */
+  amount: number;
+  direction: 'in' | 'out';
+  source: 'abono' | 'return' | 'exchange';
+  concept: string;
+  currentUser: AppUser;
+}): Promise<void> {
+  try {
+    const { cashCurrencyOfMethod, recordCashMovement } = await import('@/modules/cash/cashService');
+    const { todayVE } = await import('@/utils/dateUtils');
+
+    const currency = cashCurrencyOfMethod(opts.methodName);
+    if (!currency) return; // no fue en efectivo: no toca la gaveta
+
+    await recordCashMovement({
+      dateKey: todayVE(),
+      branch: (opts.invoice.branch || 'store') as Branch,
+      direction: opts.direction,
+      currency,
+      amount: opts.amount,
+      source: opts.source,
+      concept: opts.concept,
+      invoiceId: opts.invoice.id,
+      invoiceNumericId: opts.invoice.numericId,
+      user: {
+        uid: opts.currentUser.uid,
+        name: `${opts.currentUser.nombre} ${opts.currentUser.apellido}`.trim(),
+      },
+    });
+  } catch (err) {
+    console.warn('No se pudo registrar el movimiento de caja:', err);
+  }
+}
 
 // ================================
 // PAYMENT METHODS CONFIG
@@ -12,6 +62,7 @@ import type { CurrentSale, AppUser, Product, Invoice, ClientSnapshot } from '@/t
 export const PAYMENT_METHODS = [
   { id: 'pago-movil', name: 'Pago movil', currency: 'ves' as const, hasRef: true },
   { id: 'punto-debito', name: 'Punto de venta (Débito)', currency: 'ves' as const, hasRef: true },
+  { id: 'transferencia', name: 'Transferencia bancaria', currency: 'ves' as const, hasRef: true },
   { id: 'efectivo-bs', name: 'Efectivo (Bs)', currency: 'ves' as const, hasRef: false },
   { id: 'efectivo-usd', name: 'Efectivo ($)', currency: 'usd' as const, hasRef: false },
   { id: 'zelle', name: 'Zelle', currency: 'usd' as const, hasRef: true },
@@ -50,8 +101,14 @@ export async function processSale(opts: {
    * persiste si > 0.01 — facturas viejas o exactas no tienen el campo.
    */
   changeUsd?: number;
+  /**
+   * Moneda en la que se entrega el vuelto. El monto se guarda siempre en
+   * USD, pero el cierre de caja necesita saber de qué gaveta salió.
+   * Default 'ves' — es lo más común dar el vuelto en bolívares.
+   */
+  changeCurrency?: CashCurrency;
 }): Promise<{ numericId: number }> {
-  const { sale, payments, exchangeRate, currentUser, products, clients, allowNegativeStock, changeUsd } = opts;
+  const { sale, payments, exchangeRate, currentUser, products, clients, allowNegativeStock, changeUsd, changeCurrency } = opts;
   const isCreditSale = !sale.deliveryPaidInStore;
 
   // ── Pre-validation ──
@@ -177,7 +234,14 @@ export async function processSale(opts: {
       // Vuelto entregado al cliente (en USD). Solo se setea cuando hay
       // efectivo en exceso. Facturas que no lo tienen se interpretan
       // como vuelto = 0 (lectura defensiva en el cliente con ?? 0).
-      ...((changeUsd ?? 0) > 0.01 ? { changeGiven: Number(changeUsd!.toFixed(2)) } : {}),
+      ...((changeUsd ?? 0) > 0.01
+        ? {
+            changeGiven: Number(changeUsd!.toFixed(2)),
+            // Moneda en la que se entregó el vuelto físicamente. Determina
+            // de qué gaveta lo descuenta el cierre de caja.
+            changeCurrency: changeCurrency ?? 'ves',
+          }
+        : {}),
     };
 
     const newInvoiceRef = doc(collection(db, 'invoices'));
@@ -211,8 +275,22 @@ export async function processReturn(opts: {
   products: Product[];
   /** Items to return. If omitted, all items are returned (full return). */
   returnItems?: Array<{ productId: string; variantIndex: number; quantity: number }>;
+  /**
+   * Cómo se le devolvió el dinero al cliente. `null` o monto 0 = no se
+   * reembolsó nada (mercadería dañada, cambio sin devolución de plata).
+   * Si el método es efectivo, el monto SALE de la gaveta y queda
+   * registrado como movimiento del cierre de caja.
+   */
+  refundMethod?: string | null;
+  /** Monto reembolsado, en la moneda del método elegido. */
+  refundAmount?: number;
+  /** Tasa usada para expresar el reembolso en USD en los reportes. */
+  exchangeRate?: number;
 }): Promise<void> {
-  const { invoiceId, invoice, reason, details, currentUser, products, returnItems } = opts;
+  const {
+    invoiceId, invoice, reason, details, currentUser, products, returnItems,
+    refundMethod, refundAmount, exchangeRate,
+  } = opts;
   const batch = writeBatch(db);
 
   // Para facturas con estado 'Cambio', el cliente tiene los ítems del
@@ -255,11 +333,40 @@ export async function processReturn(opts: {
     returnDetailsData.returnedItems = returnItems;
   }
 
+  // ── Reembolso: qué se le devolvió al cliente y por qué vía ──
+  const refund = refundAmount ?? 0;
+  if (refundMethod && refund > 0.001) {
+    const methodConfig = PAYMENT_METHODS.find((m) => m.name === refundMethod);
+    const rate = exchangeRate || invoice.exchangeRate || 1;
+    returnDetailsData.refundMethod = refundMethod;
+    returnDetailsData.refundAmount = Number(refund.toFixed(2));
+    returnDetailsData.refundAmountUsd = Number(
+      (methodConfig?.currency === 'usd' ? refund : refund / rate).toFixed(2),
+    );
+  } else {
+    returnDetailsData.refundMethod = null;
+    returnDetailsData.refundAmount = 0;
+    returnDetailsData.refundAmountUsd = 0;
+  }
+
   batch.update(doc(db, 'invoices', invoiceId), {
     status: isPartial ? invoice.status : 'Devolución',
     returnDetails: returnDetailsData,
   });
   await batch.commit();
+
+  // Si se devolvió efectivo, sale de la gaveta HOY (la factura puede ser vieja).
+  if (refundMethod && refund > 0.001) {
+    await logCashMovement({
+      invoice,
+      methodName: refundMethod,
+      amount: refund,
+      direction: 'out',
+      source: 'return',
+      concept: `Devolución factura #${invoice.numericId}`,
+      currentUser,
+    });
+  }
 }
 
 // ================================
@@ -277,8 +384,10 @@ export async function processExchange(opts: {
   deliveryMethod: string | null;
   currentUser: AppUser;
   products: Product[];
+  /** Tasa del día — se usa para convertir a Bs las diferencias cobradas en efectivo. */
+  exchangeRate?: number;
 }): Promise<void> {
-  const { invoiceId, invoice, returnedItems, newItems, reason, priceDiff, priceDiffMethod, newDeliveryCostUsd, deliveryMethod, currentUser, products } = opts;
+  const { invoiceId, invoice, returnedItems, newItems, reason, priceDiff, priceDiffMethod, newDeliveryCostUsd, deliveryMethod, currentUser, products, exchangeRate } = opts;
   const batch = writeBatch(db);
 
   // Combinar devueltos (+) y nuevos (-) en un solo pase para evitar que
@@ -305,6 +414,37 @@ export async function processExchange(opts: {
   });
 
   await batch.commit();
+
+  // ── Efectivo movido por el cambio ──
+  // priceDiff y deliveryDiff vienen en USD. Si se cobraron/pagaron en
+  // Efectivo (Bs) hay que convertirlos con la tasa de HOY, no con la de
+  // la factura original (que puede tener meses).
+  const rate = exchangeRate || invoice.exchangeRate || 1;
+  const deliveryDiff = newDeliveryCostUsd - (invoice.deliveryCostUsd || 0);
+
+  const cashLegs: Array<{ diffUsd: number; method: string | null; label: string }> = [
+    { diffUsd: priceDiff, method: priceDiffMethod, label: 'Diferencia de precio' },
+    { diffUsd: deliveryDiff, method: deliveryMethod, label: 'Diferencia de envío' },
+  ];
+
+  for (const leg of cashLegs) {
+    if (!leg.method || Math.abs(leg.diffUsd) < 0.001) continue;
+    const methodConfig = PAYMENT_METHODS.find((m) => m.name === leg.method);
+    const amount = methodConfig?.currency === 'usd'
+      ? Math.abs(leg.diffUsd)
+      : Math.abs(leg.diffUsd) * rate;
+
+    await logCashMovement({
+      invoice,
+      methodName: leg.method,
+      amount,
+      // diff > 0 → el cliente pone plata; diff < 0 → se le devuelve.
+      direction: leg.diffUsd > 0 ? 'in' : 'out',
+      source: 'exchange',
+      concept: `${leg.label} — cambio factura #${invoice.numericId}`,
+      currentUser,
+    });
+  }
 }
 
 // ================================
@@ -347,8 +487,10 @@ export async function addAbono(opts: {
   methodName: string;
   ref?: string;
   exchangeRate: number;
+  /** Necesario para registrar el abono en efectivo en el cierre de caja. */
+  currentUser?: AppUser;
 }): Promise<void> {
-  const { invoiceId, amount, methodName, ref: refValue, exchangeRate } = opts;
+  const { invoiceId, invoice, amount, methodName, ref: refValue, exchangeRate, currentUser } = opts;
   const method = PAYMENT_METHODS.find((m) => m.name === methodName);
 
   let amountVes: number, amountUsd: number;
@@ -392,6 +534,19 @@ export async function addAbono(opts: {
       status: newStatus,
     });
   });
+
+  // Un abono en efectivo entra a la gaveta HOY, aunque la factura sea vieja.
+  if (currentUser) {
+    await logCashMovement({
+      invoice,
+      methodName,
+      amount,
+      direction: 'in',
+      source: 'abono',
+      concept: `Abono factura #${invoice.numericId}`,
+      currentUser,
+    });
+  }
 }
 
 // ================================

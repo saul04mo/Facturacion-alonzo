@@ -58,6 +58,26 @@ export function todayVE(): string {
   }).format(new Date());
 }
 
+/** Convert any date to its YYYY-MM-DD key in Venezuela timezone */
+export function dateKeyVE(d: any): string {
+  const date = toDate(d);
+  if (!date) return todayVE();
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: VE_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+/** Shift a YYYY-MM-DD key by N days (negative = past). Returns YYYY-MM-DD. */
+export function shiftDateKey(dateKey: string, days: number): string {
+  // Mediodía UTC evita que el corrimiento de zona horaria mueva el día.
+  const d = new Date(`${dateKey}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Get current time display for Venezuela */
 export function currentTimeVE(): string {
   return new Date().toLocaleTimeString(VE_LOCALE, { timeZone: VE_TIMEZONE, hour: '2-digit', minute: '2-digit' });

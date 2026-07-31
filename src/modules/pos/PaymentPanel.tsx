@@ -3,7 +3,9 @@ import { useAppStore } from '@/store/appStore';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { PAYMENT_METHODS, processSale, type ActivePayment } from '@/modules/invoices/invoiceService';
-import { validarPagoMovil } from '@/services/banescoService';
+import { validarCreditoBancario, isBanescoValidatable, type BanescoTransaction } from '@/services/banescoService';
+import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
+import type { CashCurrency } from '@/types';
 import { CreditCard, Check, Loader2, ShieldCheck, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 
 interface PaymentEntry {
@@ -34,42 +36,55 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
 
   const [entries, setEntries] = useState<PaymentEntry[]>(buildDefaultEntries);
 
-  // Validación de Pago Móvil contra Banesco (solo informativa).
-  type PmValidation = { status: 'idle' | 'loading' | 'found' | 'notfound' | 'error'; message?: string };
-  const [pmValidation, setPmValidation] = useState<PmValidation>({ status: 'idle' });
+  // Moneda en la que se entrega el vuelto. Default Bs porque es lo habitual,
+  // pero el cajero lo cambia a $ cuando devuelve dólares.
+  const [changeCurrency, setChangeCurrency] = useState<CashCurrency>('ves');
 
-  const handleValidatePagoMovil = useCallback(async (entry: PaymentEntry) => {
+  // Validación contra Banesco (solo informativa). Aplica a los métodos que
+  // caen en la cuenta — pago móvil y transferencia bancaria — así que el
+  // estado va indexado por método: el cajero puede cobrar con los dos a la
+  // vez y cada uno lleva su propio resultado.
+  type BankValidation =
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'found'; match: BanescoTransaction }
+    | { status: 'notfound'; message: string }
+    | { status: 'error'; message: string };
+  const [validations, setValidations] = useState<Record<string, BankValidation>>({});
+
+  const setValidation = useCallback((methodId: string, value: BankValidation) => {
+    setValidations((prev) => ({ ...prev, [methodId]: value }));
+  }, []);
+
+  const handleValidateBank = useCallback(async (entry: PaymentEntry) => {
     const ref = entry.ref.trim();
     if (!ref) {
-      toast.warning('Ingresá la referencia del pago móvil primero.');
+      toast.warning('Ingresá la referencia del pago primero.');
       return;
     }
-    setPmValidation({ status: 'loading' });
+    setValidation(entry.methodId, { status: 'loading' });
     try {
       const amountVes = parseFloat(entry.amount) || 0;
-      const result = await validarPagoMovil({ referenceNumber: ref, amountVes });
+      const result = await validarCreditoBancario({ referenceNumber: ref, amountVes });
       if (result.found && result.match) {
-        setPmValidation({
-          status: 'found',
-          message: `Encontrado en Banesco: Bs ${result.match.amount} · ${result.match.trnDate}`,
-        });
+        setValidation(entry.methodId, { status: 'found', match: result.match });
       } else {
-        setPmValidation({
+        setValidation(entry.methodId, {
           status: 'notfound',
           message: `Sin coincidencia entre ${result.reviewed} crédito(s) de hoy.`,
         });
       }
     } catch (err: any) {
-      setPmValidation({ status: 'error', message: err?.message || 'No se pudo validar.' });
+      setValidation(entry.methodId, { status: 'error', message: err?.message || 'No se pudo validar.' });
     }
-  }, [toast]);
+  }, [toast, setValidation]);
 
   // FIX: Reset payment entries when cart items change significantly
   const prevItemCount = useRef(currentSale.items.length);
   useEffect(() => {
     if (currentSale.items.length === 0 && prevItemCount.current > 0) {
       setEntries(buildDefaultEntries());
-      setPmValidation({ status: 'idle' });
+      setValidations({});
     }
     prevItemCount.current = currentSale.items.length;
   }, [currentSale.items.length]);
@@ -109,16 +124,18 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
     if (isPending) {
       // Venta a crédito: la factura queda en 'Pendiente de pago'.
       // Si el cajero anotó algún método previsto, lo registramos como
-      // pago futuro (con monto 0 — se completará cuando entre el dinero).
-      // Si no anotó nada, default a 'Crédito'.
+      // abono. Respetamos el monto que haya ingresado (puede ser un
+      // pago parcial); si lo dejó en blanco queda en 0 y se completará
+      // cuando entre el dinero. Si no anotó nada, default a 'Crédito'.
       const annotated = entries
         .filter((e) => e.enabled)
         .map((e) => {
           const method = PAYMENT_METHODS.find((m) => m.id === e.methodId)!;
+          const amt = parseFloat(e.amount) || 0;
           return {
             method: method.name,
-            amountVes: 0,
-            amountUsd: 0,
+            amountVes: method.currency === 'ves' ? amt : 0,
+            amountUsd: method.currency === 'usd' ? amt : 0,
             ...(e.ref ? { ref: e.ref } : {}),
           };
         });
@@ -149,9 +166,12 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
         // Vuelto a entregar (USD). Si fue venta a crédito o no hay
         // exceso de efectivo, change será 0 y no se persiste el campo.
         changeUsd: !isPending && change > 0 ? change / exchangeRate : 0,
+        changeCurrency,
       });
       resetCurrentSale();
       setEntries(buildDefaultEntries());
+      setValidations({});
+      setChangeCurrency('ves');
       onSuccess?.(result.numericId);
       toast.success(`Venta procesada. Factura FACT-${String(result.numericId).padStart(4, '0')} generada.`);
     } catch (err: any) {
@@ -207,9 +227,14 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
           </h3>
         </div>
 
-        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+        {/* max-h-64: la lista tiene 10 métodos colapsados, pero uno abierto
+            ocupa ~150px entre monto, referencia y botón. Con 192px el que
+            estabas cargando quedaba medio tapado. */}
+        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
           {PAYMENT_METHODS.map((method) => {
             const entry = entries.find((e) => e.methodId === method.id)!;
+            const canValidate = isBanescoValidatable(method.name);
+            const validation = validations[method.id] ?? { status: 'idle' as const };
             return (
               <div key={method.id} className={`rounded-lg border transition-all duration-200 hover-lift ${entry.enabled ? 'border-blue-200 bg-blue-50/30 shadow-sm' : 'border-surface-200 bg-white'}`}>
                 <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
@@ -230,35 +255,18 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
                       className="input-field text-sm py-1.5 font-mono" />
                     {(method as any).hasRef && (
                       <input type="text" value={entry.ref}
-                        onChange={(e) => { updateEntry(method.id, 'ref', e.target.value); if (method.id === 'pago-movil') setPmValidation({ status: 'idle' }); }}
+                        onChange={(e) => { updateEntry(method.id, 'ref', e.target.value); if (canValidate) setValidation(method.id, { status: 'idle' }); }}
                           placeholder="Referencia" className="input-field text-sm py-1.5" />
                       )}
-                    {method.id === 'pago-movil' && (
-                      <div className="space-y-1.5">
-                        <button type="button"
-                          onClick={() => handleValidatePagoMovil(entry)}
-                          disabled={pmValidation.status === 'loading' || !entry.ref.trim()}
-                          className="w-full flex items-center justify-center gap-1.5 text-xs font-display font-medium py-1.5 rounded-lg border border-navy-200 text-navy-700 bg-white hover:bg-navy-50 disabled:opacity-50 transition-colors">
-                          {pmValidation.status === 'loading'
-                            ? (<><Loader2 size={14} className="animate-spin" /> Validando...</>)
-                            : (<><ShieldCheck size={14} /> Validar en Banesco</>)}
-                        </button>
-                        {pmValidation.status === 'found' && (
-                          <div className="flex items-start gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5">
-                            <CheckCircle2 size={14} className="mt-0.5 shrink-0" /><span>{pmValidation.message}</span>
-                          </div>
-                        )}
-                        {pmValidation.status === 'notfound' && (
-                          <div className="flex items-start gap-1.5 text-xs text-accent-red bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
-                            <XCircle size={14} className="mt-0.5 shrink-0" /><span>{pmValidation.message}</span>
-                          </div>
-                        )}
-                        {pmValidation.status === 'error' && (
-                          <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                            <AlertCircle size={14} className="mt-0.5 shrink-0" /><span>{pmValidation.message}</span>
-                          </div>
-                        )}
-                      </div>
+                    {canValidate && (
+                      <button type="button"
+                        onClick={() => handleValidateBank(entry)}
+                        disabled={validation.status === 'loading' || !entry.ref.trim()}
+                        className="w-full flex items-center justify-center gap-1.5 text-xs font-display font-medium py-1.5 rounded-lg border border-navy-200 text-navy-700 bg-white hover:bg-navy-50 disabled:opacity-50 transition-colors">
+                        {validation.status === 'loading'
+                          ? (<><Loader2 size={14} className="animate-spin" /> Validando...</>)
+                          : (<><ShieldCheck size={14} /> Validar en Banesco</>)}
+                      </button>
                     )}
                     </div>
                   )}
@@ -266,6 +274,43 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
               );
             })}
           </div>
+
+          {/* Resultado de la validación bancaria — FUERA de la lista con
+              scroll. Adentro quedaba encajonado en 192px y el detalle se
+              cortaba a la mitad. Acá tiene el ancho completo del panel y
+              cada tarjeta dice a qué método corresponde, porque se puede
+              cobrar con pago móvil y transferencia en la misma venta. */}
+          {PAYMENT_METHODS.map((method) => {
+            const validation = validations[method.id];
+            if (!validation || validation.status === 'idle' || validation.status === 'loading') return null;
+            return (
+              <div key={`val-${method.id}`} className="mt-2">
+                {validation.status === 'found' && (
+                  <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="flex items-center gap-1.5 font-display font-semibold">
+                        <CheckCircle2 size={14} className="shrink-0" /> Encontrado en Banesco
+                      </span>
+                      <span className="text-[10px] font-display text-navy-500 truncate">{method.name}</span>
+                    </div>
+                    <BanescoMatchDetails match={validation.match} />
+                  </div>
+                )}
+                {validation.status === 'notfound' && (
+                  <div className="flex items-start gap-1.5 text-xs text-accent-red bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                    <XCircle size={14} className="mt-0.5 shrink-0" />
+                    <span><strong className="font-display">{method.name}:</strong> {validation.message}</span>
+                  </div>
+                )}
+                {validation.status === 'error' && (
+                  <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    <span><strong className="font-display">{method.name}:</strong> {validation.message}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {!isPending && (
             <div className="bg-surface-50 rounded-lg border border-surface-200 p-3 space-y-1.5 text-sm hover-lift">
@@ -276,10 +321,37 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
                 </span>
               </div>
               {change > 0.01 && (
-                <div className="flex justify-between text-emerald-600">
-                  <span>Cambio</span>
-                  <span className="font-mono font-medium">{format(change / exchangeRate)}</span>
-                </div>
+                <>
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Cambio</span>
+                    <span className="font-mono font-medium">{format(change / exchangeRate)}</span>
+                  </div>
+                  {/* En qué moneda se entrega el vuelto. Determina de qué
+                      gaveta lo descuenta el cierre de caja — sin esto la
+                      caja en Bs y la caja en $ nunca cuadran. */}
+                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-surface-200">
+                    <span className="text-navy-500 text-xs">Vuelto entregado en</span>
+                    <div className="flex gap-1">
+                      {([
+                        { id: 'ves', label: 'Bs', hint: `Bs ${change.toFixed(2)}` },
+                        { id: 'usd', label: '$', hint: `$ ${(change / exchangeRate).toFixed(2)}` },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          title={opt.hint}
+                          onClick={() => setChangeCurrency(opt.id)}
+                          className={`px-3 py-1 rounded-md text-xs font-display font-semibold border transition-colors
+                            ${changeCurrency === opt.id
+                              ? 'bg-navy-900 text-white border-navy-900'
+                              : 'bg-white text-navy-500 border-surface-200 hover:border-navy-300'}`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           )}

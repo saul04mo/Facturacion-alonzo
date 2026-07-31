@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { validarPagoMovil, type BanescoTransaction } from '@/services/banescoService';
+import { validarCreditoBancario, type BanescoTransaction } from '@/services/banescoService';
 import { ShieldCheck, Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
 
 /**
- * Botón de verificación de un pago móvil contra Banesco para una factura
+ * Botón de verificación de un pago recibido (pago móvil o transferencia
+ * bancaria) contra Banesco para una factura
  * ya emitida. Consulta por la referencia registrada en el pago y la fecha
  * de la factura; muestra el resultado inline.
  *
@@ -31,7 +33,7 @@ export function VerifyPagoMovilButton({
     setState({ status: 'loading' });
     try {
       // Solo por referencia (no se valida el monto).
-      const result = await validarPagoMovil({ referenceNumber, date });
+      const result = await validarCreditoBancario({ referenceNumber, date });
       if (result.found && result.match) {
         setState({ status: 'found', match: result.match, reviewed: result.reviewed });
       } else {
@@ -56,12 +58,11 @@ export function VerifyPagoMovilButton({
       </button>
 
       {state.status === 'found' && (
-        <div className="flex items-start gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5">
-          <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
-          <span>
-            Pago encontrado: <strong>Bs {state.match.amount.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong>
-            {' · '}{state.match.trnDate} {state.match.trnTime?.trim()}
-          </span>
+        <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5">
+          <div className="flex items-center gap-1.5 font-display font-semibold mb-1">
+            <CheckCircle2 size={13} className="shrink-0" /> Pago encontrado
+          </div>
+          <BanescoMatchDetails match={state.match} />
         </div>
       )}
       {state.status === 'notfound' && (

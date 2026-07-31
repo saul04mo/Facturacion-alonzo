@@ -24,6 +24,7 @@ const NAV_GROUPS = [
   {
     title: 'REPORTES',
     items: [
+      { path: ROUTES.CASH, label: 'Cierre de Caja', icon: <Wallet size={18} />, permission: 'canAccessCaja' },
       { path: ROUTES.REPORTS, label: 'Informes', icon: <BarChart3 size={18} />, permission: 'canAccessInformes' },
       { path: ROUTES.ANALYTICS, label: 'Tráfico Web', icon: <TrendingUp size={18} />, permission: 'canAccessInformes' },
       { path: ROUTES.PAYMENTS, label: 'Pagos Banesco', icon: <Landmark size={18} />, permission: 'canAccessPagos' },
