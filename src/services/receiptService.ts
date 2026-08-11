@@ -28,6 +28,19 @@ interface ReceiptOptions {
   paperWidth?: '55mm' | '80mm';
 }
 
+/**
+ * Alto físico de la etiqueta de la MAJET, en milímetros.
+ *
+ * Se usa SOLO en el modo 80mm para poder anclar el bloque de totales al pie
+ * de la etiqueta (si el alto fuera 'auto' la página termina donde termina el
+ * contenido y no hay "fondo" al cual pegarse).
+ *
+ * Si la etiqueta real mide distinto, cambia SOLO este número. Si queda muy
+ * grande la etiqueta saldrá con más blanco abajo; si queda muy chico el
+ * recibo puede pasarse a una segunda etiqueta.
+ */
+const LABEL_HEIGHT_MM = 130;
+
 const DEFAULT_BUSINESS = {
   name: 'ALONZO',
   rif: 'J-502846239',
@@ -294,24 +307,26 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
         <thead><tr><th>Descripción</th><th style="text-align:right;">Total</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>`}
-      <hr>
-      <table class="totals-table">
-        ${compact ? '' : `<tr><td class="label">SubTotal:</td><td class="value">${(subtotal * rate).toFixed(2)}</td></tr>
-        <tr><td class="label">Descuento:</td><td class="value">${(totalDiscountAmount * rate).toFixed(2)}</td></tr>`}
-        ${compact ? '' : promoHtml}
-        ${compact ? '' : deliveryRowHtml}
-        <tr class="total-row"><td class="label">Total Bs:</td><td class="value">${grandTotalVES.toFixed(2)}</td></tr>
-        <tr class="total-row"><td class="label">Total $:</td><td class="value">${grandTotalUSD.toFixed(2)}</td></tr>
-        ${compact ? '' : refHtml}
-      </table>
-      ${compact ? '' : `<hr>
-      <div class="label">Forma de Pago:</div>
-      <div>${paymentsHtml}</div>
-      ${changeHtml}
-      ${abonosHtml}`}
-      <hr>
-      <div class="footer">¡Gracias por su compra!</div>
-      ${!compact && saldoHtml ? `<hr><div class="footer">${saldoHtml}</div>` : ''}
+      <div class="label-tail">
+        <hr>
+        <table class="totals-table">
+          ${compact ? '' : `<tr><td class="label">SubTotal:</td><td class="value">${(subtotal * rate).toFixed(2)}</td></tr>
+          <tr><td class="label">Descuento:</td><td class="value">${(totalDiscountAmount * rate).toFixed(2)}</td></tr>`}
+          ${compact ? '' : promoHtml}
+          ${compact ? '' : deliveryRowHtml}
+          <tr class="total-row"><td class="label">Total Bs:</td><td class="value">${grandTotalVES.toFixed(2)}</td></tr>
+          <tr class="total-row"><td class="label">Total $:</td><td class="value">${grandTotalUSD.toFixed(2)}</td></tr>
+          ${compact ? '' : refHtml}
+        </table>
+        ${compact ? '' : `<hr>
+        <div class="label">Forma de Pago:</div>
+        <div>${paymentsHtml}</div>
+        ${changeHtml}
+        ${abonosHtml}`}
+        <hr>
+        <div class="footer">¡Gracias por su compra!</div>
+        ${!compact && saldoHtml ? `<hr><div class="footer">${saldoHtml}</div>` : ''}
+      </div>
     </div>`;
 }
 
@@ -327,15 +342,26 @@ function buildReceiptStyles(paperWidth: '55mm' | '80mm'): string {
   const is80 = paperWidth === '80mm';
 
   if (is80) {
-    // Impresora POS-80 en modo CONTINUO (driver: Thermal Paper 80 x 3276).
-    // - Alto 'auto': el navegador hace la página tan alta como el contenido y el
-    //   driver continuo corta justo al final del recibo. Así NO arrastra
-    //   etiquetas/hojas de más (el fijo a 210mm causaba 2-3 etiquetas).
-    // - Márgenes mínimos y tipografía apretada para que ocupe lo mínimo.
+    // Impresora POS-80 / etiquetadora MAJET. Márgenes mínimos y tipografía
+    // apretada para que ocupe lo mínimo.
+    //
+    // El alto ya NO es 'auto' (antes la página terminaba donde terminaba el
+    // contenido): se fija al de la etiqueta física para poder empujar el
+    // bloque de totales al pie. El área de impresión es una columna flex de
+    // alto completo y el tail lleva margin-top:auto, así el blanco sobrante
+    // queda ENTRE los productos y los totales en vez de quedar todo debajo
+    // del "¡Gracias por su compra!".
+    //
+    // min-height (no height) para que un recibo largo siga fluyendo en vez de
+    // recortarse. OJO: si LABEL_HEIGHT_MM queda corto respecto a la etiqueta
+    // real, el recibo puede arrastrar una segunda etiqueta.
+    const bodyHeight = LABEL_HEIGHT_MM - 2; // menos el margen inferior de 2mm
     return `
-  @page { size: 80mm auto; margin: 0 2mm 2mm 2mm; }
+  @page { size: 80mm ${LABEL_HEIGHT_MM}mm; margin: 0 2mm 2mm 2mm; }
   .invoice-print-area { width: 76mm; max-width: 76mm; }
   ${RECEIPT_STYLES}
+  .invoice-print-area { display: flex; flex-direction: column; min-height: ${bodyHeight}mm; margin: 0 auto; }
+  .invoice-print-area .label-tail { margin-top: auto; }
   /* ---- Overrides solo para 80mm (con aire para que no se vea apretado) ---- */
   body { font-size: 9.5px; line-height: 1.45; }
   .invoice-print-area { line-height: 1.45; font-size: 9.5px; }
