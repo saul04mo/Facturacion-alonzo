@@ -35,11 +35,11 @@ interface ReceiptOptions {
  * de la etiqueta (si el alto fuera 'auto' la página termina donde termina el
  * contenido y no hay "fondo" al cual pegarse).
  *
- * Si la etiqueta real mide distinto, cambia SOLO este número. Si queda muy
- * grande la etiqueta saldrá con más blanco abajo; si queda muy chico el
- * recibo puede pasarse a una segunda etiqueta.
+ * 100mm = etiquetas pre-cortadas de 80 x 100mm de la MAJET MJ-DP36. Debe
+ * coincidir con el tamaño configurado en las preferencias del driver
+ * MJ-DP30; si no coincide, el recibo arrastra una segunda etiqueta.
  */
-const LABEL_HEIGHT_MM = 130;
+const LABEL_HEIGHT_MM = 100;
 
 const DEFAULT_BUSINESS = {
   name: 'ALONZO',
@@ -53,6 +53,17 @@ function toDate(d: any): Date {
   if (d?.toDate) return d.toDate();
   if (d instanceof Date) return d;
   return new Date(d);
+}
+
+/**
+ * Escapa el texto libre que escribe el vendedor (observación) para que un
+ * `<`, `>` o `&` no rompa el HTML del recibo al imprimir.
+ */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 /**
@@ -87,10 +98,20 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
   const biz = opts.businessInfo || DEFAULT_BUSINESS;
   const rate = invoice.exchangeRate || currentExchangeRate;
 
-  // Modo compacto SOLO para la etiqueta de 80mm: oculta Observación,
-  // SubTotal y Descuento para que quepa en la etiqueta corta. El recibo
-  // estándar (55mm) queda intacto y completo, como siempre.
+  // Modo compacto SOLO para la etiqueta de 80mm: oculta SubTotal y
+  // Descuento para que quepa en la etiqueta corta. Vendedor y Observación
+  // SÍ se imprimen (la observación solo si tiene texto, para no gastar
+  // una línea de etiqueta en un "N/A"). El recibo estándar (55mm) queda
+  // intacto y completo, como siempre.
   const compact = opts.paperWidth === '80mm';
+
+  // Vendedor + observación. `notes` es el campo legacy de facturas viejas
+  // (mismo fallback que usa el panel de Facturas).
+  const sellerName = invoice.sellerName || 'GENERICO';
+  const observationText = String(invoice.observation || (invoice as any).notes || '').trim();
+  const compactObservationHtml = observationText
+    ? `<br><span class="label">Observación:</span> ${escapeHtml(observationText)}`
+    : '';
 
   // Client (use snapshot stored in invoice)
   const clientName = invoice.clientSnapshot?.name || 'Cliente General';
@@ -285,14 +306,14 @@ export function generateReceiptHTML(opts: ReceiptOptions): string {
       <div class="datos-cliente">
         ${compact
           ? `<span class="label">Cliente:</span> ${clientName} &nbsp;<span class="label">Tel:</span> ${clientPhone}<br>
-        <span class="label">RIF/C.I.:</span> ${clientRif}<br>
-        <span class="label">Dirección:</span> ${clientAddress}`
+        <span class="label">RIF/C.I.:</span> ${clientRif} &nbsp;<span class="label">Vendedor:</span> ${sellerName}<br>
+        <span class="label">Dirección:</span> ${clientAddress}${compactObservationHtml}`
           : `<span class="label">Cliente:</span> ${clientName}<br>
         <span class="label">RIF/C.I.:</span> ${clientRif}<br>
         <span class="label">Dirección:</span> ${clientAddress}<br>
         <span class="label">Teléfono:</span> ${clientPhone}<br>
-        <span class="label">Vendedor:</span> ${invoice.sellerName || 'GENERICO'}<br>
-        <span class="subtitle">Observación: ${invoice.observation || 'N/A'}</span>`}
+        <span class="label">Vendedor:</span> ${sellerName}<br>
+        <span class="subtitle">Observación: ${escapeHtml(observationText) || 'N/A'}</span>`}
       </div>
       <hr>
       ${compact
@@ -355,12 +376,24 @@ function buildReceiptStyles(paperWidth: '55mm' | '80mm'): string {
     // min-height (no height) para que un recibo largo siga fluyendo en vez de
     // recortarse. OJO: si LABEL_HEIGHT_MM queda corto respecto a la etiqueta
     // real, el recibo puede arrastrar una segunda etiqueta.
-    const bodyHeight = LABEL_HEIGHT_MM - 2; // menos el margen inferior de 2mm
+    // Margen 0: además de aprovechar toda la etiqueta, evita que Chrome tenga
+    // espacio para meter su encabezado/pie (fecha, título, "about:blank",
+    // "1/1"). Los 2mm de aire lateral los da el ancho de 76mm centrado con
+    // margin:auto. 1mm menos de alto como colchón para que el redondeo no
+    // empuje el contenido a una segunda etiqueta.
+    const bodyHeight = LABEL_HEIGHT_MM - 1;
     return `
-  @page { size: 80mm ${LABEL_HEIGHT_MM}mm; margin: 0 2mm 2mm 2mm; }
+  @page { size: 80mm ${LABEL_HEIGHT_MM}mm; margin: 0; }
   .invoice-print-area { width: 76mm; max-width: 76mm; }
   ${RECEIPT_STYLES}
-  .invoice-print-area { display: flex; flex-direction: column; min-height: ${bodyHeight}mm; margin: 0 auto; }
+  /* html/body al 100% para que el 'min-height: 100%' del área de impresión
+     resuelva contra el ALTO REAL de la página que arme el navegador, no
+     contra un número fijo en mm. Un valor fijo fallaba: si Chrome usaba un
+     área imprimible distinta (márgenes del diálogo, papel del driver), el
+     pie quedaba anclado a una altura que no era el fondo y sobraba blanco
+     debajo de los totales. El valor en mm queda como fallback. */
+  html, body { height: 100%; }
+  .invoice-print-area { display: flex; flex-direction: column; margin: 0 auto; min-height: ${bodyHeight}mm; min-height: 100%; }
   .invoice-print-area .label-tail { margin-top: auto; }
   /* ---- Overrides solo para 80mm (con aire para que no se vea apretado) ---- */
   body { font-size: 9.5px; line-height: 1.45; }
@@ -372,7 +405,11 @@ function buildReceiptStyles(paperWidth: '55mm' | '80mm'): string {
   .invoice-print-area .title { margin-top: 0 !important; }
   .invoice-print-area .title, .invoice-print-area .business-name { font-size: 14px; margin-bottom: 2px; margin-top: 0; }
   .invoice-print-area .subtitle { font-size: 8.5px; margin-bottom: 1px; }
-  .invoice-print-area .datos-cliente { font-size: 9px; margin-bottom: 3px; line-height: 1.5; }
+  /* Datos del cliente + vendedor + observación: es el bloque que más se lee
+     a mano, así que va un punto más grande que el resto de la etiqueta
+     (9px → 10.5px). line-height un poco más apretado para compensar el alto
+     extra que suma el cuerpo más grande. */
+  .invoice-print-area .datos-cliente { font-size: 10.5px; margin-bottom: 3px; line-height: 1.4; }
   .invoice-print-area table { font-size: 9px; margin-bottom: 3px; }
   .invoice-print-area th, .invoice-print-area td { font-size: 9px; padding: 2px 0; }
   .invoice-print-area .totals-table td { padding: 2px 0; }
