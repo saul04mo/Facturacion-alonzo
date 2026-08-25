@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { validarCreditoBancario, type BanescoTransaction } from '@/services/banescoService';
-import { ShieldCheck, Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
+import { BanescoErrorNotice } from '@/components/BanescoErrorNotice';
 
 /**
  * Botón de verificación de un pago recibido (pago móvil o transferencia
@@ -18,7 +19,7 @@ type State =
   | { status: 'loading' }
   | { status: 'found'; match: BanescoTransaction; reviewed: number }
   | { status: 'notfound'; reviewed: number }
-  | { status: 'error'; message: string };
+  | { status: 'error'; error: unknown };
 
 export function VerifyPagoMovilButton({
   referenceNumber,
@@ -39,8 +40,8 @@ export function VerifyPagoMovilButton({
       } else {
         setState({ status: 'notfound', reviewed: result.reviewed });
       }
-    } catch (err: any) {
-      setState({ status: 'error', message: err?.message || 'No se pudo verificar.' });
+    } catch (err) {
+      setState({ status: 'error', error: err });
     }
   }
 
@@ -72,10 +73,7 @@ export function VerifyPagoMovilButton({
         </div>
       )}
       {state.status === 'error' && (
-        <div className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-          <AlertCircle size={13} className="mt-0.5 shrink-0" />
-          <span>{state.message}</span>
-        </div>
+        <BanescoErrorNotice error={state.error} onRetry={verify} size="sm" />
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { validarCreditoBancario, type BanescoTransaction } from '@/services/banescoService';
 import { ShieldCheck, Search, Loader2, CheckCircle2, XCircle, AlertCircle, X } from 'lucide-react';
 import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
+import { BanescoErrorNotice } from '@/components/BanescoErrorNotice';
 
 /**
  * Buscador independiente de pagos contra Banesco para el panel de ventas.
@@ -17,7 +18,10 @@ type SearchState =
   | { status: 'loading' }
   | { status: 'found'; match: BanescoTransaction; reviewed: number }
   | { status: 'notfound'; reviewed: number }
-  | { status: 'error'; message: string };
+  /** Validación local del formulario (falta la referencia). */
+  | { status: 'invalid'; message: string }
+  /** La consulta no se pudo completar — el resultado es desconocido. */
+  | { status: 'error'; error: unknown };
 
 /** Fecha de hoy en formato YYYY-MM-DD (hora local) para el input date. */
 function todayInputValue(): string {
@@ -41,7 +45,7 @@ function ValidatePaymentModal({ onClose }: { onClose: () => void }) {
   const handleSearch = useCallback(async () => {
     const ref = reference.trim();
     if (!ref) {
-      setState({ status: 'error', message: 'Ingresá la referencia del pago.' });
+      setState({ status: 'invalid', message: 'Ingresá la referencia del pago.' });
       return;
     }
     setState({ status: 'loading' });
@@ -56,8 +60,8 @@ function ValidatePaymentModal({ onClose }: { onClose: () => void }) {
       } else {
         setState({ status: 'notfound', reviewed: result.reviewed });
       }
-    } catch (err: any) {
-      setState({ status: 'error', message: err?.message || 'No se pudo consultar Banesco.' });
+    } catch (err) {
+      setState({ status: 'error', error: err });
     }
   }, [reference, date]);
 
@@ -118,11 +122,15 @@ function ValidatePaymentModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {state.status === 'error' && (
+          {state.status === 'invalid' && (
             <div className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
               <AlertCircle size={15} className="mt-0.5 shrink-0" />
               <span>{state.message}</span>
             </div>
+          )}
+
+          {state.status === 'error' && (
+            <BanescoErrorNotice error={state.error} onRetry={handleSearch} />
           )}
         </div>
       </div>

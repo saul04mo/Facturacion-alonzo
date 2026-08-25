@@ -5,8 +5,9 @@ import { useToast } from '@/components/Toast';
 import { PAYMENT_METHODS, processSale, type ActivePayment } from '@/modules/invoices/invoiceService';
 import { validarCreditoBancario, isBanescoValidatable, type BanescoTransaction } from '@/services/banescoService';
 import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
+import { BanescoErrorNotice } from '@/components/BanescoErrorNotice';
 import type { CashCurrency } from '@/types';
-import { CreditCard, Check, Loader2, ShieldCheck, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { CreditCard, Check, Loader2, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
 
 interface PaymentEntry {
   methodId: string;
@@ -49,7 +50,7 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
     | { status: 'loading' }
     | { status: 'found'; match: BanescoTransaction }
     | { status: 'notfound'; message: string }
-    | { status: 'error'; message: string };
+    | { status: 'error'; error: unknown };
   const [validations, setValidations] = useState<Record<string, BankValidation>>({});
 
   const setValidation = useCallback((methodId: string, value: BankValidation) => {
@@ -74,8 +75,8 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
           message: `Sin coincidencia entre ${result.reviewed} crédito(s) de hoy.`,
         });
       }
-    } catch (err: any) {
-      setValidation(entry.methodId, { status: 'error', message: err?.message || 'No se pudo validar.' });
+    } catch (err) {
+      setValidation(entry.methodId, { status: 'error', error: err });
     }
   }, [toast, setValidation]);
 
@@ -303,10 +304,14 @@ export function PaymentPanel({ total, onSuccess }: { total: number; onSuccess?: 
                   </div>
                 )}
                 {validation.status === 'error' && (
-                  <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    <span><strong className="font-display">{method.name}:</strong> {validation.message}</span>
-                  </div>
+                  <BanescoErrorNotice
+                    error={validation.error}
+                    label={method.name}
+                    onRetry={() => {
+                      const entry = entries.find((e) => e.methodId === method.id);
+                      if (entry) handleValidateBank(entry);
+                    }}
+                  />
                 )}
               </div>
             );

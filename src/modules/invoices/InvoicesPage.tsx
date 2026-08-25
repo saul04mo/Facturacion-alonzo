@@ -11,6 +11,7 @@ import { ExchangeModal } from './ExchangeModal';
 import type { ExchangeConfirmData } from './ExchangeModal';
 import { VerifyPagoMovilButton } from './VerifyPagoMovilButton';
 import { validarCreditoBancario, isBanescoValidatable, type BanescoTransaction } from '@/services/banescoService';
+import { BanescoErrorNotice } from '@/components/BanescoErrorNotice';
 import { BanescoMatchDetails } from '@/components/BanescoMatchDetails';
 import { printReceipt, printReceiptLabel, downloadReceiptPdf } from '@/services/receiptService';
 import { calcDiscountAmount } from '@/utils/discountUtils';
@@ -1417,7 +1418,10 @@ type VerifyState =
   | { status: 'loading' }
   | { status: 'found'; match: BanescoTransaction; reviewed: number }
   | { status: 'notfound'; reviewed: number }
-  | { status: 'error'; message: string };
+  /** Validación local del formulario (falta la referencia). */
+  | { status: 'invalid'; message: string }
+  /** La consulta no se pudo completar — el resultado es desconocido. */
+  | { status: 'error'; error: unknown };
 
 function PagoMovilVerifyRow({
   invoiceId,
@@ -1440,18 +1444,27 @@ function PagoMovilVerifyRow({
   async function saveAndVerify() {
     const r = ref.trim();
     if (!r) {
-      setState({ status: 'error', message: 'Ingresá la referencia del pago.' });
+      setState({ status: 'invalid', message: 'Ingresá la referencia del pago.' });
       return;
     }
     setState({ status: 'loading' });
-    try {
-      // Atar la referencia al pedido si cambió respecto a la guardada
-      if (r !== savedRef) {
+
+    // Guardar y consultar van en try separados: si falla el guardado en
+    // Firestore no tiene nada que ver con Banesco y mostrarlo como una falla
+    // del banco confundiría al cajero.
+    if (r !== savedRef) {
+      try {
         await updatePaymentRef(invoiceId, paymentIndex, r);
         setSavedRef(r);
         onRefSaved();
         toast.success('Referencia guardada en el pedido.');
+      } catch {
+        setState({ status: 'invalid', message: 'No se pudo guardar la referencia en el pedido. Intentá de nuevo.' });
+        return;
       }
+    }
+
+    try {
       // Buscar contra Banesco SOLO por referencia (no por monto)
       const result = await validarCreditoBancario({ referenceNumber: r, date });
       if (result.found && result.match) {
@@ -1459,8 +1472,8 @@ function PagoMovilVerifyRow({
       } else {
         setState({ status: 'notfound', reviewed: result.reviewed });
       }
-    } catch (err: any) {
-      setState({ status: 'error', message: err?.message || 'No se pudo verificar.' });
+    } catch (err) {
+      setState({ status: 'error', error: err });
     }
   }
 
@@ -1502,11 +1515,14 @@ function PagoMovilVerifyRow({
           <span>No se encontró un crédito con esa referencia en la fecha (se revisaron {state.reviewed}). Verificá la fecha o la referencia.</span>
         </div>
       )}
-      {state.status === 'error' && (
+      {state.status === 'invalid' && (
         <div className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
           <XCircle size={13} className="mt-0.5 shrink-0" />
           <span>{state.message}</span>
         </div>
+      )}
+      {state.status === 'error' && (
+        <BanescoErrorNotice error={state.error} onRetry={saveAndVerify} size="sm" />
       )}
     </div>
   );

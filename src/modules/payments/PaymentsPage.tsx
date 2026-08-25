@@ -4,9 +4,11 @@ import {
   buscarPagoMovil,
   getBancos,
   refMatches,
+  toBanescoError,
   type BanescoTransaction,
   type Banco,
 } from '@/services/banescoService';
+import { BanescoErrorNotice } from '@/components/BanescoErrorNotice';
 import { useToast } from '@/components/Toast';
 import { Landmark, Search, Loader2, ArrowDownLeft, ArrowUpRight, Calendar, Smartphone, CheckCircle2, XCircle } from 'lucide-react';
 
@@ -22,6 +24,11 @@ const bs = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFra
 
 function isCredit(t: BanescoTransaction): boolean {
   return t.trnType?.trim().toUpperCase() === 'CR';
+}
+
+/** 'YYYY-MM-DD' + 'HH:MM:SS' ordenan bien como texto: clave para ordenar por fecha/hora. */
+function trnKey(t: BanescoTransaction): string {
+  return `${(t.trnDate ?? '').trim()} ${(t.trnTime ?? '').trim()}`;
 }
 
 type Tab = 'fecha' | 'movil';
@@ -69,6 +76,10 @@ function BuscarPorFecha({ toast }: { toast: ReturnType<typeof useToast> }) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<BanescoTransaction[] | null>(null);
   const [filter, setFilter] = useState('');
+  // La falla va inline (no en un toast): el toast se va solo y el cajero
+  // se queda mirando una tabla vacía sin saber si el rango no tuvo
+  // movimientos o si la consulta nunca llegó a hacerse.
+  const [error, setError] = useState<unknown>(null);
 
   const buscar = useCallback(async () => {
     if (!startDt || !endDt) {
@@ -80,12 +91,13 @@ function BuscarPorFecha({ toast }: { toast: ReturnType<typeof useToast> }) {
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const data = await consultarPagosPorFecha({ startDt, endDt });
       setResults(data);
       if (data.length === 0) toast.info('No se encontraron movimientos en ese rango.');
-    } catch (err: any) {
-      toast.error(err?.message || 'No se pudieron consultar los pagos.');
+    } catch (err) {
+      setError(err);
       setResults(null);
     } finally {
       setLoading(false);
@@ -95,10 +107,14 @@ function BuscarPorFecha({ toast }: { toast: ReturnType<typeof useToast> }) {
   const filtered = useMemo(() => {
     if (!results) return [];
     const q = filter.trim().toLowerCase();
-    if (!q) return results;
-    return results.filter(
-      (t) => t.referenceNumber?.toLowerCase().includes(q) || t.concept?.toLowerCase().includes(q),
-    );
+    const base = q
+      ? results.filter(
+          (t) => t.referenceNumber?.toLowerCase().includes(q) || t.concept?.toLowerCase().includes(q),
+        )
+      : results;
+    // El banco devuelve los movimientos del mas viejo al mas nuevo; el cajero
+    // necesita ver primero el ultimo que entro.
+    return [...base].sort((a, b) => trnKey(b).localeCompare(trnKey(a)));
   }, [results, filter]);
 
   const summary = useMemo(() => {
@@ -134,6 +150,8 @@ function BuscarPorFecha({ toast }: { toast: ReturnType<typeof useToast> }) {
           </button>
         </div>
       </div>
+
+      {error != null && <BanescoErrorNotice error={error} onRetry={buscar} />}
 
       {results && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -224,10 +242,12 @@ function BuscarPagoMovil({ toast }: { toast: ReturnType<typeof useToast> }) {
   const [bancos, setBancos] = useState<Banco[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MovilResult | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
-    getBancos().then(setBancos).catch(() => {
-      toast.error('No se pudo cargar el catálogo de bancos.');
+    getBancos().then(setBancos).catch((err) => {
+      // No bloquea la búsqueda: el select cae al default de Banesco.
+      toast.error(`No se pudo cargar el catálogo de bancos. ${toBanescoError(err).message}`);
     });
   }, [toast]);
 
@@ -240,6 +260,7 @@ function BuscarPagoMovil({ toast }: { toast: ReturnType<typeof useToast> }) {
     }
     setLoading(true);
     setResult(null);
+    setError(null);
     try {
       const txs = await buscarPagoMovil({ referenceNumber: referenceNumber.trim(), phoneNum, bankId, startDt });
       // Buscamos la transacción cuya referencia coincida; si no, tomamos la primera.
@@ -248,8 +269,8 @@ function BuscarPagoMovil({ toast }: { toast: ReturnType<typeof useToast> }) {
       const amountOk = match ? Math.abs(match.amount - expected) <= 0.01 : null;
       setResult({ match, amountOk });
       if (!match) toast.info('Banesco no devolvió una transacción para esos datos.');
-    } catch (err: any) {
-      toast.error(err?.message || 'No se pudo buscar el pago móvil.');
+    } catch (err) {
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -294,6 +315,8 @@ function BuscarPagoMovil({ toast }: { toast: ReturnType<typeof useToast> }) {
           </div>
         </div>
       </div>
+
+      {error != null && <BanescoErrorNotice error={error} onRetry={buscar} />}
 
       {/* Resultado */}
       {result && result.match && (
