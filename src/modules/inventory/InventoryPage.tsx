@@ -4,11 +4,12 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
-import { saveProduct, deleteProduct, toggleProductActive, toggleProductPosVisible } from './inventoryService';
+import { saveProduct, deleteProduct, toggleProductActive, toggleProductPosVisible, bulkUpdatePrices, calcNewPrice } from './inventoryService';
+import type { PriceMode, PriceRounding, PriceChangeOptions } from './inventoryService';
 import { BarcodeRenderer, BarcodePrintModal, generateBarcode, findByBarcode, useBarcodeScanner } from '@/components/Barcode';
 import { getStockBreakdown, getProductStockBreakdown, NO_SIZE_LABEL, isNoSize, sizeLabel } from '@/utils/branchUtils';
 import type { Product, ProductVariant } from '@/types';
-import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy, Store, Warehouse, Truck as TruckIcon, FileSpreadsheet, Globe, Monitor } from 'lucide-react';
+import { Plus, Search, Package, Trash2, X as XIcon, Check, ChevronDown, AlertTriangle, Filter, ImagePlus, GripVertical, Barcode, Shuffle, Eye, EyeOff, Copy, Store, Warehouse, Truck as TruckIcon, FileSpreadsheet, Globe, Monitor, DollarSign } from 'lucide-react';
 
 /** Vista de stock por sucursal en el inventario. */
 type StockView = 'total' | 'store' | 'warehouse' | 'transit';
@@ -16,6 +17,44 @@ type StockView = 'total' | 'store' | 'warehouse' | 'transit';
 /** Formatea un valor de stock. */
 function fmtStock(n: number): string {
   return String(n);
+}
+
+/** Etiqueta legible de la ubicacion activa. */
+function locationName(view: StockView): string {
+  return view === 'store' ? 'Tienda' : view === 'warehouse' ? 'Almacén' : view === 'transit' ? 'Tránsito' : 'Todo';
+}
+
+/** Stock de un producto en la ubicacion de la vista activa. */
+function stockAtLocation(p: Product, view: StockView): number {
+  const b = getProductStockBreakdown(p);
+  return view === 'store' ? b.store : view === 'warehouse' ? b.warehouse : view === 'transit' ? b.inTransit : b.total;
+}
+
+/** Agrupa productos por Genero -> Categoria (Hombre primero, categorias A-Z). */
+function groupByGenderCategory(list: Product[]): { gender: string; category: string; products: Product[] }[] {
+  const groups: { gender: string; category: string; products: Product[] }[] = [];
+  const map: Record<string, Product[]> = {};
+
+  list.forEach((p) => {
+    const key = `${p.gender}|||${p.category || 'Sin Categoría'}`;
+    if (!map[key]) map[key] = [];
+    map[key].push(p);
+  });
+
+  // Sort: Hombre first, then Mujer, then alphabetical categories
+  Object.entries(map)
+    .sort(([a], [b]) => {
+      const [gA, cA] = a.split('|||');
+      const [gB, cB] = b.split('|||');
+      if (gA !== gB) return gA === 'Hombre' ? -1 : 1;
+      return cA.localeCompare(cB);
+    })
+    .forEach(([key, prods]) => {
+      const [gender, category] = key.split('|||');
+      groups.push({ gender, category, products: prods.sort((a, b) => a.name.localeCompare(b.name)) });
+    });
+
+  return groups;
 }
 
 
@@ -522,6 +561,231 @@ function ProductFormModal({ open, onClose, product }: { open: boolean; onClose: 
 
 
 // ============================
+// CAMBIO DE PRECIOS POR CATEGORÍA (Modal)
+// ============================
+/**
+ * Aplica un precio fijo, un % o un monto a TODAS las variantes de los
+ * productos de una categoría. Muestra previsualización real (usa la misma
+ * `calcNewPrice` que después se persiste) y permite destildar productos
+ * que no se quieran tocar.
+ */
+function CategoryPriceModal({
+  open, onClose, gender, category, products,
+}: {
+  open: boolean;
+  onClose: () => void;
+  gender: string;
+  category: string;
+  products: Product[];
+}) {
+  const { format } = useCurrency();
+  const toast = useToast();
+
+  const [mode, setMode] = useState<PriceMode>('percent');
+  const [value, setValue] = useState('');
+  const [rounding, setRounding] = useState<PriceRounding>('none');
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  // Reset al abrir con otra categoría
+  useEffect(() => {
+    if (open) {
+      setMode('percent');
+      setValue('');
+      setRounding('none');
+      setExcluded(new Set());
+    }
+  }, [open, gender, category]);
+
+  const numValue = parseFloat(value);
+  const validValue = !isNaN(numValue) && (mode !== 'fixed' || numValue >= 0);
+  const opts: PriceChangeOptions = { mode, value: numValue, rounding };
+
+  const selected = useMemo(
+    () => products.filter((p) => !excluded.has(p.id)),
+    [products, excluded],
+  );
+
+  // Previsualización: rango de precios actual → nuevo, por producto
+  const preview = useMemo(() => {
+    if (!validValue) return [];
+    return selected.map((p) => {
+      const prices = (p.variants || []).map((v) => v.price ?? 0);
+      const next = prices.map((pr) => calcNewPrice(pr, opts));
+      return {
+        id: p.id,
+        name: p.name,
+        oldMin: prices.length ? Math.min(...prices) : 0,
+        oldMax: prices.length ? Math.max(...prices) : 0,
+        newMin: next.length ? Math.min(...next) : 0,
+        newMax: next.length ? Math.max(...next) : 0,
+      };
+    });
+  }, [selected, validValue, mode, numValue, rounding]);
+
+  const variantCount = selected.reduce((n, p) => n + (p.variants?.length || 0), 0);
+
+  function toggleExcluded(id: string) {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleApply() {
+    if (!validValue || selected.length === 0) return;
+    const label = mode === 'fixed'
+      ? `dejar TODAS las variantes en ${format(numValue)}`
+      : mode === 'percent'
+        ? `${numValue >= 0 ? 'aumentar' : 'bajar'} ${Math.abs(numValue)}%`
+        : `${numValue >= 0 ? 'sumar' : 'restar'} $${Math.abs(numValue).toFixed(2)}`;
+    if (!confirm(`Vas a ${label} en ${selected.length} producto(s) (${variantCount} variantes) de "${category}" (${gender}).\n\nEsta acción no se puede deshacer. ¿Continuar?`)) return;
+
+    setSaving(true);
+    try {
+      const n = await bulkUpdatePrices(
+        selected.map((p) => ({ id: p.id, variants: p.variants || [] })),
+        opts,
+      );
+      toast.success(`Precios actualizados en ${n} producto(s) de "${category}".`);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al actualizar los precios.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const modes: { key: PriceMode; label: string; hint: string }[] = [
+    { key: 'percent', label: '% Porcentaje', hint: 'Ej: 10 sube 10% · -15 baja 15%' },
+    { key: 'amount', label: '$ Monto', hint: 'Ej: 2 suma $2 · -1.5 resta $1.50' },
+    { key: 'fixed', label: '= Precio fijo', hint: 'Todas las variantes al mismo precio' },
+  ];
+  const activeMode = modes.find((m) => m.key === mode)!;
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Precios · ${category} (${gender})`} size="lg">
+      <div className="space-y-4">
+        <p className="text-sm text-navy-500">
+          Se aplicará a <strong className="text-navy-900">{selected.length}</strong> producto(s) ·{' '}
+          <strong className="text-navy-900">{variantCount}</strong> variantes de esta categoría.
+        </p>
+
+        {/* Modo */}
+        <div className="flex gap-2">
+          {modes.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMode(m.key)}
+              className={`flex-1 px-3 py-2 rounded-lg border text-xs font-display font-semibold transition-colors ${
+                mode === m.key
+                  ? 'bg-amber-50 border-amber-400 text-amber-700'
+                  : 'border-surface-200 text-navy-500 hover:bg-surface-50'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">
+              {mode === 'percent' ? 'Porcentaje (%)' : mode === 'amount' ? 'Monto (USD)' : 'Precio (USD)'}
+            </label>
+            <input
+              type="number"
+              step={mode === 'percent' ? '1' : '0.01'}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={mode === 'percent' ? '10' : '0.00'}
+              autoFocus
+              className="input-field font-mono"
+            />
+            <p className="text-[10px] text-navy-400 mt-1">{activeMode.hint}</p>
+          </div>
+          <div>
+            <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Redondeo</label>
+            <select value={rounding} onChange={(e) => setRounding(e.target.value as PriceRounding)} className="input-field text-sm">
+              <option value="none">Sin redondear (2 decimales)</option>
+              <option value="integer">Entero más cercano</option>
+              <option value="ends99">Terminado en .99</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Previsualización */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[10px] font-display font-semibold text-navy-400 uppercase">
+              Previsualización {excluded.size > 0 && `· ${excluded.size} excluido(s)`}
+            </label>
+            {excluded.size > 0 && (
+              <button type="button" onClick={() => setExcluded(new Set())} className="text-[10px] text-amber-600 hover:underline font-display">
+                Incluir todos
+              </button>
+            )}
+          </div>
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-surface-200 divide-y divide-surface-200">
+            {products.map((p) => {
+              const isExcluded = excluded.has(p.id);
+              const row = preview.find((r) => r.id === p.id);
+              const fmtRange = (min: number, max: number) => (min === max ? format(min) : `${format(min)} – ${format(max)}`);
+              const prices = (p.variants || []).map((v) => v.price ?? 0);
+              const oldMin = prices.length ? Math.min(...prices) : 0;
+              const oldMax = prices.length ? Math.max(...prices) : 0;
+              return (
+                <label
+                  key={p.id}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-surface-50 ${isExcluded ? 'opacity-40' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!isExcluded}
+                    onChange={() => toggleExcluded(p.id)}
+                    className="accent-amber-500"
+                  />
+                  <span className="flex-1 truncate text-navy-700">{p.name}</span>
+                  <span className="font-mono text-navy-400 whitespace-nowrap">{fmtRange(oldMin, oldMax)}</span>
+                  {row && !isExcluded && (
+                    <>
+                      <span className="text-navy-300">→</span>
+                      <span className="font-mono font-bold text-emerald-600 whitespace-nowrap">{fmtRange(row.newMin, row.newMax)}</span>
+                    </>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+          <AlertTriangle size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+          <p className="text-[11px] text-amber-800">
+            El cambio se guarda directo en Firestore y afecta al POS y a la web. No se puede deshacer.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-3 border-t border-surface-200">
+          <button onClick={onClose} className="btn-secondary" disabled={saving}>Cancelar</button>
+          <button
+            onClick={handleApply}
+            disabled={!validValue || selected.length === 0 || saving}
+            className="btn-primary disabled:opacity-40"
+          >
+            {saving ? 'Aplicando...' : `Aplicar a ${selected.length} producto(s)`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+
+// ============================
 // MAIN INVENTORY PAGE
 // ============================
 export function InventoryPage() {
@@ -604,8 +868,20 @@ export function InventoryPage() {
       setTogglingCategoryKey(null);
     }
   }
+  // Cambio de precios por categoría
+  const [priceModalGroup, setPriceModalGroup] = useState<{ gender: string; category: string; products: Product[] } | null>(null);
+
   // Vista de stock: total / por sucursal
   const [stockView, setStockView] = useState<StockView>('total');
+  // Borrador del select de Ubicación (se confirma con "Aplicar", igual que
+  // Género y Categoría). Las tarjetas de stock lo cambian al instante.
+  const [draftStockView, setDraftStockView] = useState<StockView>('total');
+
+  /** Cambia la ubicación al instante (tarjetas de stock / atajos). */
+  function pickStockView(view: StockView) {
+    setDraftStockView(view);
+    setStockView(view);
+  }
 
   // Barcode print modal state
   const [printModalOpen, setPrintModalOpen] = useState(false);
@@ -654,16 +930,18 @@ export function InventoryPage() {
     setAppliedGender(draftGender);
     setAppliedCategory(draftCategory);
     setAppliedSearch(draftSearch);
+    setStockView(draftStockView);
     setExpandedId(null);
   }
 
   function clearFilters() {
     setDraftGender('all'); setDraftCategory('all'); setDraftSearch('');
     setAppliedGender('all'); setAppliedCategory('all'); setAppliedSearch('');
+    setDraftStockView('total'); setStockView('total');
   }
 
-  const hasActiveFilters = appliedGender !== 'all' || appliedCategory !== 'all' || appliedSearch !== '';
-  const hasDraftChanges = draftGender !== appliedGender || draftCategory !== appliedCategory || draftSearch !== appliedSearch;
+  const hasActiveFilters = appliedGender !== 'all' || appliedCategory !== 'all' || appliedSearch !== '' || stockView !== 'total';
+  const hasDraftChanges = draftGender !== appliedGender || draftCategory !== appliedCategory || draftSearch !== appliedSearch || draftStockView !== stockView;
 
   // Filtered products
   const filtered = useMemo(() => {
@@ -680,32 +958,19 @@ export function InventoryPage() {
     return result;
   }, [products, appliedGender, appliedCategory, appliedSearch]);
 
+  // Filtro por ubicacion: la vista de sucursal ademas de cambiar los numeros
+  // recorta la lista, asi el inventario de "Tienda" muestra SOLO lo que hay en
+  // tienda (y lo mismo para almacen / transito).
+  const locationFiltered = useMemo(() => {
+    if (stockView === 'total') return filtered;
+    return filtered.filter((p) => stockAtLocation(p, stockView) > 0);
+  }, [filtered, stockView]);
+
+  const hiddenByLocation = filtered.length - locationFiltered.length;
+  const locationLabel = locationName(stockView);
+
   // Group by Gender → Category
-  const grouped = useMemo(() => {
-    const groups: { gender: string; category: string; products: Product[] }[] = [];
-    const map: Record<string, Product[]> = {};
-
-    filtered.forEach((p) => {
-      const key = `${p.gender}|||${p.category || 'Sin Categoría'}`;
-      if (!map[key]) map[key] = [];
-      map[key].push(p);
-    });
-
-    // Sort: Hombre first, then Mujer, then alphabetical categories
-    Object.entries(map)
-      .sort(([a], [b]) => {
-        const [gA, cA] = a.split('|||');
-        const [gB, cB] = b.split('|||');
-        if (gA !== gB) return gA === 'Hombre' ? -1 : 1;
-        return cA.localeCompare(cB);
-      })
-      .forEach(([key, prods]) => {
-        const [gender, category] = key.split('|||');
-        groups.push({ gender, category, products: prods.sort((a, b) => a.name.localeCompare(b.name)) });
-      });
-
-    return groups;
-  }, [filtered]);
+  const grouped = useMemo(() => groupByGenderCategory(locationFiltered), [locationFiltered]);
 
   // Mostrar todos los productos en una sola página (sin paginado)
   const paginatedGroups = useMemo(() => {
@@ -730,19 +995,42 @@ export function InventoryPage() {
   const totalStock = stockTotals.total;
   const lowStockCount = filtered.filter((p) => getProductStockBreakdown(p).total <= 5).length;
 
+  // Totales de lo que realmente se esta viendo (tras el filtro de ubicacion).
+  const visibleTotals = useMemo(() => {
+    return locationFiltered.reduce(
+      (acc, p) => {
+        const b = getProductStockBreakdown(p);
+        return {
+          store: acc.store + b.store,
+          warehouse: acc.warehouse + b.warehouse,
+          inTransit: acc.inTransit + b.inTransit,
+          total: acc.total + b.total,
+        };
+      },
+      { store: 0, warehouse: 0, inTransit: 0, total: 0 }
+    );
+  }, [locationFiltered]);
+  const visibleStockTotal = stockView === 'store' ? visibleTotals.store
+    : stockView === 'warehouse' ? visibleTotals.warehouse
+    : stockView === 'transit' ? visibleTotals.inTransit
+    : visibleTotals.total;
+
   // Exporta el inventario filtrado a Excel.
   //  - mode 'all': desglose Tienda / Almacén / En Tránsito + Total.
   //  - mode 'warehouse': SOLO variantes con stock en almacén (>0), columna Almacén.
   const handleExportExcel = useCallback(async (mode: 'all' | 'warehouse' = 'all') => {
-    if (filtered.length === 0) { toast.warning('No hay productos para exportar.'); return; }
+    if (locationFiltered.length === 0) { toast.warning('No hay productos para exportar.'); return; }
     const onlyWarehouse = mode === 'warehouse';
+    // El boton "Almacen" siempre exporta TODO el almacen, sin importar el
+    // filtro de ubicacion activo en pantalla.
+    const groups = onlyWarehouse ? groupByGenderCategory(filtered) : grouped;
     try {
       const XLSX = await import('xlsx');
 
       // ── Hoja 1: una fila por variante, ordenado por género→categoría→nombre ──
       const rows: Record<string, string | number>[] = [];
       let warehouseQty = 0;
-      grouped.forEach((g) => g.products.forEach((p) => {
+      groups.forEach((g) => g.products.forEach((p) => {
         (p.variants || []).forEach((v) => {
           const b = getStockBreakdown(v);
           // En modo almacén, solo incluimos lo que realmente hay en almacén.
@@ -771,7 +1059,7 @@ export function InventoryPage() {
       // Fila de totales
       rows.push(onlyWarehouse
         ? { 'Género': '', 'Categoría': '', 'Producto': 'TOTAL ALMACÉN', 'Talla': '', 'Color': '', 'Código': '', 'Precio (USD)': '', 'Almacén': warehouseQty }
-        : { 'Género': '', 'Categoría': '', 'Producto': 'TOTAL GENERAL', 'Talla': '', 'Color': '', 'Código': '', 'Precio (USD)': '', 'Tienda': stockTotals.store, 'Almacén': stockTotals.warehouse, 'En Tránsito': stockTotals.inTransit, 'Total': stockTotals.total });
+        : { 'Género': '', 'Categoría': '', 'Producto': 'TOTAL GENERAL', 'Talla': '', 'Color': '', 'Código': '', 'Precio (USD)': '', 'Tienda': visibleTotals.store, 'Almacén': visibleTotals.warehouse, 'En Tránsito': visibleTotals.inTransit, 'Total': visibleTotals.total });
 
       const ws = XLSX.utils.json_to_sheet(rows);
       ws['!cols'] = onlyWarehouse
@@ -780,7 +1068,7 @@ export function InventoryPage() {
 
       // ── Hoja 2: Resumen por categoría ──
       const summary: Record<string, string | number>[] = [];
-      grouped.forEach((g) => {
+      groups.forEach((g) => {
         const t = g.products.reduce(
           (acc, p) => {
             const b = getProductStockBreakdown(p);
@@ -796,7 +1084,7 @@ export function InventoryPage() {
       });
       summary.push(onlyWarehouse
         ? { 'Género': '', 'Categoría': 'TOTAL ALMACÉN', 'Almacén': stockTotals.warehouse }
-        : { 'Género': '', 'Categoría': 'TOTAL GENERAL', 'Productos': filtered.length, 'Tienda': stockTotals.store, 'Almacén': stockTotals.warehouse, 'En Tránsito': stockTotals.inTransit, 'Total': stockTotals.total });
+        : { 'Género': '', 'Categoría': 'TOTAL GENERAL', 'Productos': locationFiltered.length, 'Tienda': visibleTotals.store, 'Almacén': visibleTotals.warehouse, 'En Tránsito': visibleTotals.inTransit, 'Total': visibleTotals.total });
       const wsSummary = XLSX.utils.json_to_sheet(summary);
       wsSummary['!cols'] = onlyWarehouse
         ? [{ wch: 9 }, { wch: 20 }, { wch: 9 }]
@@ -805,14 +1093,18 @@ export function InventoryPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, onlyWarehouse ? 'Almacén' : 'Inventario');
       XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen');
-      const prefix = onlyWarehouse ? 'almacen' : 'inventario';
+      const prefix = onlyWarehouse ? 'almacen'
+        : stockView === 'store' ? 'inventario-tienda'
+        : stockView === 'warehouse' ? 'inventario-almacen'
+        : stockView === 'transit' ? 'inventario-transito'
+        : 'inventario';
       XLSX.writeFile(wb, `${prefix}-alonzo-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.success(`${onlyWarehouse ? 'Almacén' : 'Inventario'} exportado (${rows.length - 1} variantes).`);
     } catch (err) {
       console.error('Error exportando inventario:', err);
       toast.error('No se pudo exportar el Excel.');
     }
-  }, [filtered, grouped, stockTotals, toast]);
+  }, [filtered, locationFiltered, grouped, stockTotals, visibleTotals, stockView, toast]);
 
   function handleEdit(p: Product) { setEditProduct(p); setFormOpen(true); }
 
@@ -860,7 +1152,10 @@ export function InventoryPage() {
             <div className="w-1 h-12 bg-amber-500 rounded-full" />
             <div>
               <h1 className="text-xl font-display font-bold text-navy-900">Inventario</h1>
-              <p className="text-navy-400 text-sm">{filtered.length} productos · {totalStock} unidades</p>
+              <p className="text-navy-400 text-sm">
+                {locationFiltered.length} productos · {visibleStockTotal} unidades
+                {stockView !== 'total' && <span className="text-navy-300"> · solo {locationLabel}</span>}
+              </p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -890,7 +1185,7 @@ export function InventoryPage() {
         {/* Filters panel */}
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-surface-200 animate-fade-up">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div>
                 <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Buscar</label>
                 <Search size={14} className="absolute ml-3 mt-2.5 text-navy-300 pointer-events-none" />
@@ -912,6 +1207,15 @@ export function InventoryPage() {
                   {availableCategories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="block text-[10px] font-display font-semibold text-navy-400 uppercase mb-1">Ubicación</label>
+                <select value={draftStockView} onChange={(e) => setDraftStockView(e.target.value as StockView)} className="input-field text-sm">
+                  <option value="total">Todo (Tienda + Almacén)</option>
+                  <option value="store">Solo Tienda</option>
+                  <option value="warehouse">Solo Almacén</option>
+                  <option value="transit">Solo En Tránsito</option>
+                </select>
+              </div>
               <div className="flex items-end gap-2">
                 <button onClick={applyFilters}
                   className={`btn-primary text-sm flex-1 ${hasDraftChanges ? 'animate-pulse' : ''}`}>
@@ -929,6 +1233,9 @@ export function InventoryPage() {
                 {appliedGender !== 'all' && <span className="badge badge-blue">Género: {appliedGender}</span>}
                 {appliedCategory !== 'all' && <span className="badge badge-amber">Categoría: {appliedCategory}</span>}
                 {appliedSearch && <span className="badge badge-gray">Búsqueda: "{appliedSearch}"</span>}
+                {stockView !== 'total' && (
+                  <span className="badge badge-green">Ubicación: solo {locationLabel}</span>
+                )}
               </div>
             )}
           </div>
@@ -939,28 +1246,28 @@ export function InventoryPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
         <div className="card px-4 py-3 hover-lift"><p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Productos</p>
           <p className="text-lg font-mono font-bold text-navy-900">{filtered.length}</p></div>
-        <button onClick={() => setStockView('store')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'store' ? 'ring-2 ring-emerald-500 border-emerald-300' : ''}`}>
+        <button onClick={() => pickStockView('store')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'store' ? 'ring-2 ring-emerald-500 border-emerald-300' : ''}`}>
           <p className="text-[10px] font-display font-semibold text-emerald-600 uppercase flex items-center gap-1"><Store size={11} /> Tienda</p>
           <p className="text-lg font-mono font-bold text-navy-900">{stockTotals.store}</p>
         </button>
-        <button onClick={() => setStockView('warehouse')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'warehouse' ? 'ring-2 ring-blue-500 border-blue-300' : ''}`}>
+        <button onClick={() => pickStockView('warehouse')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'warehouse' ? 'ring-2 ring-blue-500 border-blue-300' : ''}`}>
           <p className="text-[10px] font-display font-semibold text-blue-600 uppercase flex items-center gap-1"><Warehouse size={11} /> Almacén</p>
           <p className="text-lg font-mono font-bold text-navy-900">{stockTotals.warehouse}</p>
         </button>
-        <button onClick={() => setStockView('transit')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'transit' ? 'ring-2 ring-amber-500 border-amber-300' : ''}`}>
+        <button onClick={() => pickStockView('transit')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'transit' ? 'ring-2 ring-amber-500 border-amber-300' : ''}`}>
           <p className="text-[10px] font-display font-semibold text-amber-600 uppercase flex items-center gap-1"><TruckIcon size={11} /> En Tránsito</p>
           <p className="text-lg font-mono font-bold text-navy-900">{stockTotals.inTransit}</p>
         </button>
-        <button onClick={() => setStockView('total')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'total' ? 'ring-2 ring-navy-500 border-navy-300' : ''}`}>
+        <button onClick={() => pickStockView('total')} className={`card px-4 py-3 hover-lift text-left transition-all ${stockView === 'total' ? 'ring-2 ring-navy-500 border-navy-300' : ''}`}>
           <p className="text-[10px] font-display font-semibold text-navy-400 uppercase">Total</p>
           <p className={`text-lg font-mono font-bold ${lowStockCount > 0 && stockView === 'total' ? 'text-navy-900' : 'text-navy-900'}`}>{totalStock}</p>
           {lowStockCount > 0 && <p className="text-[9px] text-accent-red font-display mt-0.5"><AlertTriangle size={9} className="inline" /> {lowStockCount} bajos</p>}
         </button>
       </div>
 
-      {/* Indicador de vista activa */}
+      {/* Indicador del filtro de ubicación activo */}
       {stockView !== 'total' && (
-        <div className={`text-xs font-display flex items-center gap-2 px-1 ${
+        <div className={`text-xs font-display flex flex-wrap items-center gap-2 px-1 ${
           stockView === 'store' ? 'text-emerald-700 dark:text-emerald-400' :
           stockView === 'warehouse' ? 'text-blue-700 dark:text-blue-400' :
           'text-amber-700 dark:text-amber-400'
@@ -968,10 +1275,13 @@ export function InventoryPage() {
           {stockView === 'store' && <Store size={14} />}
           {stockView === 'warehouse' && <Warehouse size={14} />}
           {stockView === 'transit' && <TruckIcon size={14} />}
-          Mostrando solo stock de <strong>
-            {stockView === 'store' ? 'Tienda' : stockView === 'warehouse' ? 'Almacén' : 'En Tránsito'}
-          </strong>
-          <button onClick={() => setStockView('total')} className="ml-auto underline hover:opacity-80">Ver todo</button>
+          Mostrando solo lo que hay en <strong>{locationLabel}</strong>
+          {hiddenByLocation > 0 && (
+            <span className="text-navy-400">
+              · {hiddenByLocation} {hiddenByLocation === 1 ? 'producto' : 'productos'} sin stock {hiddenByLocation === 1 ? 'oculto' : 'ocultos'}
+            </span>
+          )}
+          <button onClick={() => pickStockView('total')} className="ml-auto underline hover:opacity-80">Ver todo</button>
         </div>
       )}
 
@@ -980,7 +1290,16 @@ export function InventoryPage() {
         {paginatedGroups.length === 0 ? (
           <div className="card p-16 text-center">
             <Package size={48} className="mx-auto text-navy-200 mb-3" />
-            <p className="text-navy-400 text-sm font-display">No hay productos que coincidan.</p>
+            <p className="text-navy-400 text-sm font-display">
+              {stockView === 'total'
+                ? 'No hay productos que coincidan.'
+                : `Ningún producto tiene stock en ${locationLabel}.`}
+            </p>
+            {stockView !== 'total' && (
+              <button onClick={() => pickStockView('total')} className="btn-ghost text-xs mt-3 underline">
+                Ver todo el inventario
+              </button>
+            )}
           </div>
         ) : (
           paginatedGroups.map((group) => (
@@ -996,6 +1315,17 @@ export function InventoryPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Cambio de precios de toda la categoría */}
+                  {can('canEditProducts') && (
+                    <button
+                      type="button"
+                      onClick={() => setPriceModalGroup(group)}
+                      title={`Cambiar precios de "${group.category}" (${group.gender})`}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-surface-200 bg-white dark:bg-dark-card text-[10px] font-display font-semibold uppercase tracking-wider text-navy-600 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 transition-colors"
+                    >
+                      <DollarSign size={12} /> Precios
+                    </button>
+                  )}
                   {/* Toggle visibilidad en la web */}
                   {(() => {
                     const key = `${group.gender}|||${group.category}`;
@@ -1044,6 +1374,14 @@ export function InventoryPage() {
                       if (bi === -1) return -1;
                       return ai - bi;
                     });
+                    // En una vista de sucursal solo listamos las tallas que tienen
+                    // stock ahí; así lo que se ve en pantalla es lo contable.
+                    const visibleVariants = stockView === 'total'
+                      ? sortedVariants
+                      : sortedVariants.filter((v) => {
+                          const b = getStockBreakdown(v);
+                          return (stockView === 'store' ? b.store : stockView === 'warehouse' ? b.warehouse : b.inTransit) > 0;
+                        });
                     const colorLabel = product.variants?.[0]?.color || '';
                     const allSameColor = product.variants?.every((v) => v.color === colorLabel);
 
@@ -1190,7 +1528,7 @@ export function InventoryPage() {
                             )}
                             <span className="text-[10px] font-display font-bold uppercase tracking-wider text-navy-400 dark:text-gray-500">Talla</span>
                           </div>
-                          {sortedVariants.map((v, idx) => {
+                          {visibleVariants.map((v, idx) => {
                             const breakdown = getStockBreakdown(v);
                             const variantStock = stockView === 'store' ? breakdown.store
                               : stockView === 'warehouse' ? breakdown.warehouse
@@ -1277,6 +1615,17 @@ export function InventoryPage() {
       </div>
 
       {formOpen && <ProductFormModal open={formOpen} onClose={() => { setFormOpen(false); setEditProduct(null); }} product={editProduct} />}
+
+      {/* Cambio de precios por categoría */}
+      {priceModalGroup && (
+        <CategoryPriceModal
+          open
+          onClose={() => setPriceModalGroup(null)}
+          gender={priceModalGroup.gender}
+          category={priceModalGroup.category}
+          products={priceModalGroup.products}
+        />
+      )}
 
       {/* Barcode Print Modal */}
       {printModalOpen && (

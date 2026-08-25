@@ -17,6 +17,39 @@ import { ChannelReport } from './ChannelReport';
 
 type Tab = 'general' | 'products' | 'adSpend' | 'channels';
 
+/** Monto de una factura atribuible a los items que pasan el filtro de
+ *  género/categoría. El descuento general y el delivery se prorratean según
+ *  el peso de esos items dentro de la factura, así una venta mixta
+ *  (ej. 5 camisas + 1 zapato) solo aporta su parte de la categoría filtrada.
+ *  Usa la misma matemática que "Productos Vendidos", por lo que ambas
+ *  pestañas cuadran con el mismo filtro. */
+function attributeInvoice(
+  inv: any,
+  products: any[],
+  genderFilter: string,
+  categoryFilter: string,
+): { salesUsd: number; deliveryUsd: number; totalUsd: number; share: number } {
+  const iDel = Number(inv.deliveryCostUsd) || 0;
+  const iReal = (Number(inv.total) || 0) - iDel;
+  let iSub = 0, matchSub = 0;
+  (inv.items || []).forEach((item: any) => {
+    const p = products.find((pr: any) => pr.id === item.productId); if (!p) return;
+    const v = p.variants?.[item.variantIndex]; if (!v) return;
+    const price = item.priceAtSale ?? v.price;
+    const lineTotal = price * item.quantity;
+    const net = lineTotal - calcDiscountAmount(lineTotal, item.discount);
+    iSub += net;
+    if (genderFilter !== 'all' && p.gender !== genderFilter) return;
+    if (categoryFilter !== 'all' && (p.category || 'Sin Categoría') !== categoryFilter) return;
+    matchSub += net;
+  });
+  if (iSub <= 0) return { salesUsd: 0, deliveryUsd: 0, totalUsd: 0, share: 0 };
+  const share = matchSub / iSub;
+  const salesUsd = matchSub * (iReal / iSub);
+  const deliveryUsd = iDel * share;
+  return { salesUsd, deliveryUsd, totalUsd: salesUsd + deliveryUsd, share };
+}
+
 export function ReportsPage() {
   const invoices = useAppStore((s) => s.invoices);
   const products = useAppStore((s) => s.products);
@@ -133,15 +166,38 @@ export function ReportsPage() {
     });
   }, [invoices, serverInvoices, startDate, endDate, sellerFilter, methodFilter, deliveryFilter, genderFilter, categoryFilter, products]);
 
+  // Con filtro de género/categoría los montos dejan de ser el total de la
+  // factura y pasan a ser solo la parte de esa categoría.
+  const isPartialFilter = genderFilter !== 'all' || categoryFilter !== 'all';
+  const partialLabel = categoryFilter !== 'all' ? categoryFilter : genderFilter;
+
+  const attributions = useMemo(() => {
+    if (!isPartialFilter) return null;
+    const map = new Map<string, { salesUsd: number; deliveryUsd: number; totalUsd: number; share: number }>();
+    filtered.forEach((inv: any) => {
+      map.set(inv.id, attributeInvoice(inv, products, genderFilter, categoryFilter));
+    });
+    return map;
+  }, [filtered, products, genderFilter, categoryFilter, isPartialFilter]);
+
   const generalTotals = useMemo(() => {
     let totalAll = 0, du = 0;
-    filtered.forEach((inv: any) => {
-      totalAll += Number(inv.total) || 0;
-      du += Number(inv.deliveryCostUsd) || 0;
-    });
+    if (attributions) {
+      filtered.forEach((inv: any) => {
+        const a = attributions.get(inv.id);
+        if (!a) return;
+        totalAll += a.totalUsd;
+        du += a.deliveryUsd;
+      });
+    } else {
+      filtered.forEach((inv: any) => {
+        totalAll += Number(inv.total) || 0;
+        du += Number(inv.deliveryCostUsd) || 0;
+      });
+    }
     const su = totalAll - du;
     return { count: filtered.length, salesUsd: su, deliveryUsd: du, totalUsd: totalAll };
-  }, [filtered]);
+  }, [filtered, attributions]);
 
   const productsSummary = useMemo(() => {
     // Agrupado por PRODUCTO (no por variante): cada producto reúne su foto,
@@ -286,21 +342,33 @@ export function ReportsPage() {
         <div className="space-y-4 animate-fade-up">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[{ i: <Hash size={18} />, l: 'Pedidos', v: String(generalTotals.count), c: 'text-amber-600' },
-              { i: <ShoppingBag size={18} />, l: 'Ventas (Sin Delivery)', v: format(generalTotals.salesUsd), c: 'text-navy-900' },
-              { i: <BarChart3 size={18} />, l: 'Delivery', v: format(generalTotals.deliveryUsd), c: 'text-blue-600' },
-              { i: <DollarSign size={18} />, l: 'Total General', v: format(generalTotals.totalUsd), c: 'text-emerald-600' }].map((c) => (
+              { i: <ShoppingBag size={18} />, l: isPartialFilter ? `Ventas ${partialLabel} (Sin Delivery)` : 'Ventas (Sin Delivery)', v: format(generalTotals.salesUsd), c: 'text-navy-900' },
+              { i: <BarChart3 size={18} />, l: isPartialFilter ? 'Delivery (Parte)' : 'Delivery', v: format(generalTotals.deliveryUsd), c: 'text-blue-600' },
+              { i: <DollarSign size={18} />, l: isPartialFilter ? `Total ${partialLabel}` : 'Total General', v: format(generalTotals.totalUsd), c: 'text-emerald-600' }].map((c) => (
               <div key={c.l} className="card p-4 hover-lift"><div className="flex items-center gap-2 mb-2"><span className="text-navy-400">{c.i}</span>
                 <span className="text-[10px] font-display font-semibold text-navy-400 uppercase">{c.l}</span></div>
                 <p className={`text-xl font-mono font-bold ${c.c}`}>{c.v}</p></div>
             ))}
           </div>
+
+          {/* Con filtro de categoría/género los montos son la parte de esa
+              categoría dentro de cada factura, no el total de la venta. */}
+          {isPartialFilter && (
+            <div className="text-xs font-display text-navy-500 dark:text-gray-400 flex items-start gap-2 px-1">
+              <Layers size={14} className="mt-0.5 shrink-0 text-rose-500" />
+              <span>
+                Montos de <strong>{partialLabel}</strong> únicamente: en ventas mixtas se cuenta solo la parte de esa categoría,
+                con el descuento general y el delivery repartidos a proporción. <span className="text-navy-400">Pedidos = facturas que incluyen {partialLabel}.</span>
+              </span>
+            </div>
+          )}
           <div className="card overflow-hidden">
             {filtered.length === 0 ? (
               <div className="p-12 text-center"><BarChart3 size={40} className="mx-auto text-navy-200 mb-3" /><p className="text-navy-400 text-sm">Sin datos.</p></div>
             ) : (
               <>
                 <div className="overflow-x-auto"><table className="w-full"><thead><tr className="border-b border-surface-200 bg-surface-50">
-                  {['Fecha', 'Factura', 'Vendedor', 'Cliente', 'Método', 'Envío', 'Total'].map((h) => (
+                  {['Fecha', 'Factura', 'Vendedor', 'Cliente', 'Método', 'Envío', isPartialFilter ? `Total ${partialLabel}` : 'Total'].map((h) => (
                     <th key={h} className="text-left text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider px-4 py-3">{h}</th>
                   ))}</tr></thead>
                   <tbody className="divide-y divide-surface-100">
@@ -309,6 +377,7 @@ export function ReportsPage() {
                       .map((inv: any) => {
                         const d = toDate(inv.date); const cl = clients.find((c: any) => c.id === inv.clientId);
                         const dt = (DELIVERY_TYPES as any).find((t: any) => t.value === (inv as any).deliveryType || ((inv as any).deliveryType === 'local' && t.value === 'local'));
+                        const attr = attributions?.get(inv.id);
                         return (<tr key={inv.id} className="hover:bg-surface-50 transition-colors">
                           <td className="px-4 py-3 text-sm text-navy-500">{d?.toLocaleDateString('es-VE')}</td>
                           <td className="px-4 py-3 font-mono font-semibold text-sm text-navy-900">FACT-{String(inv.numericId).padStart(4, '0')}</td>
@@ -316,7 +385,17 @@ export function ReportsPage() {
                           <td className="px-4 py-3 text-sm text-navy-600 max-w-[120px] truncate">{(cl as any)?.name || inv.clientSnapshot?.name || 'General'}</td>
                           <td className="px-4 py-3 text-xs text-navy-400">{inv.payments?.map((p: any) => p.method).join(', ')}</td>
                           <td className="px-4 py-3 text-xs text-navy-400">{dt?.label || inv.deliveryType}</td>
-                          <td className="px-4 py-3 font-mono font-semibold text-sm text-navy-900 text-right">{format(inv.total)}</td>
+                          <td
+                            className="px-4 py-3 font-mono font-semibold text-sm text-navy-900 text-right"
+                            title={attr ? `Total de la factura: ${format(inv.total)} · ${partialLabel}: ${format(attr.totalUsd)}` : undefined}
+                          >
+                            {format(attr ? attr.totalUsd : inv.total)}
+                            {attr && (
+                              <span className="block text-[10px] font-normal text-navy-400">
+                                de {format(inv.total)}
+                              </span>
+                            )}
+                          </td>
                         </tr>);
                       })}
                   </tbody></table></div>

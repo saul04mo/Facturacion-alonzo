@@ -109,19 +109,92 @@ export async function deleteProduct(id: string, imageUrl?: string, imageUrls?: s
   await deleteDoc(doc(db, 'products', id));
 }
 
+// ============================================================
+// CAMBIO DE PRECIOS POR CATEGORÍA
+// ============================================================
+
+/** Cómo se calcula el precio nuevo a partir del actual. */
+export type PriceMode =
+  /** Precio fijo: todas las variantes quedan en `value`. */
+  | 'fixed'
+  /** Porcentaje: precio * (1 + value/100). `value` puede ser negativo. */
+  | 'percent'
+  /** Monto: precio + value. `value` puede ser negativo. */
+  | 'amount';
+
+/** Redondeo aplicado al precio calculado. */
+export type PriceRounding = 'none' | 'integer' | 'ends99';
+
+export interface PriceChangeOptions {
+  mode: PriceMode;
+  value: number;
+  rounding?: PriceRounding;
+}
+
+/**
+ * Calcula el precio nuevo de UNA variante. Exportado aparte para que la UI
+ * pueda mostrar la previsualización con exactamente la misma fórmula que
+ * después se persiste (evita que preview y resultado se desincronicen).
+ */
+export function calcNewPrice(current: number, opts: PriceChangeOptions): number {
+  const base = Number.isFinite(current) ? current : 0;
+  let next: number;
+
+  switch (opts.mode) {
+    case 'fixed': next = opts.value; break;
+    case 'percent': next = base * (1 + opts.value / 100); break;
+    case 'amount': next = base + opts.value; break;
+  }
+
+  if (!Number.isFinite(next) || next < 0) next = 0;
+
+  switch (opts.rounding) {
+    case 'integer':
+      next = Math.round(next);
+      break;
+    case 'ends99':
+      // 12.40 → 12.99 · 12.99 → 12.99 · 0.50 → 0.99
+      next = Math.floor(next) + 0.99;
+      break;
+    default:
+      next = Math.round(next * 100) / 100;
+  }
+
+  return Math.round(next * 100) / 100;
+}
+
+/** Límite de operaciones por batch en Firestore. */
+const BATCH_LIMIT = 450;
+
+/**
+ * Aplica un cambio de precio a todas las variantes de los productos dados.
+ * Devuelve cuántos productos se actualizaron.
+ *
+ * Se escribe el array `variants` completo (Firestore no permite actualizar
+ * elementos sueltos de un array), y se trocea en batches por el límite de
+ * 500 escrituras.
+ */
 export async function bulkUpdatePrices(
   products: { id: string; variants: ProductVariant[] }[],
-  newPrice: number,
+  opts: PriceChangeOptions,
 ): Promise<number> {
-  const batch = writeBatch(db);
   let count = 0;
 
-  products.forEach((product) => {
-    const updatedVariants = product.variants.map((v) => ({ ...v, price: newPrice }));
-    batch.update(doc(db, 'products', product.id), { variants: updatedVariants });
-    count++;
-  });
+  for (let i = 0; i < products.length; i += BATCH_LIMIT) {
+    const chunk = products.slice(i, i + BATCH_LIMIT);
+    const batch = writeBatch(db);
 
-  if (count > 0) await batch.commit();
+    chunk.forEach((product) => {
+      const updatedVariants = (product.variants || []).map((v) => ({
+        ...v,
+        price: calcNewPrice(v.price, opts),
+      }));
+      batch.update(doc(db, 'products', product.id), { variants: updatedVariants });
+      count++;
+    });
+
+    await batch.commit();
+  }
+
   return count;
 }
