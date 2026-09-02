@@ -1547,14 +1547,19 @@ function SellerCell({ invoice, onUpdated }: { invoice: any; onUpdated: () => voi
 
   const current = invoice.sellerName || '';
 
+  // Cada opción lleva su uid porque la reasignación tiene que escribir
+  // `sellerUid` además de `sellerName` (ver updateInvoiceSeller).
   const options = useMemo(() => {
-    const names = users
-      .map((u: any) => `${u.nombre || ''} ${u.apellido || ''}`.trim())
-      .filter(Boolean);
+    const byName = new Map<string, string>();
+    users.forEach((u: any) => {
+      const name = `${u.nombre || ''} ${u.apellido || ''}`.replace(/\s+/g, ' ').trim();
+      if (name && !byName.has(name)) byName.set(name, u.uid || u.id);
+    });
     // El vendedor actual puede ser un usuario ya eliminado; lo conservamos como
     // opción para no perderlo silenciosamente al abrir el selector.
-    if (current && !names.includes(current)) names.unshift(current);
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, 'es'));
+    if (current && !byName.has(current)) byName.set(current, '');
+    return Array.from(byName, ([name, uid]) => ({ name, uid }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
   }, [users, current]);
 
   const editable = can('canReassignSeller') && options.length > 0;
@@ -1571,7 +1576,7 @@ function SellerCell({ invoice, onUpdated }: { invoice: any; onUpdated: () => voi
     if (!next || next === current || saving) return;
     setSaving(true);
     try {
-      await updateInvoiceSeller(invoice.id, next);
+      await updateInvoiceSeller(invoice.id, next, options.find((o) => o.name === next)?.uid);
       toast.success(`Vendedor cambiado a ${next}.`);
       onUpdated();
     } catch (err: any) {
@@ -1595,8 +1600,8 @@ function SellerCell({ invoice, onUpdated }: { invoice: any; onUpdated: () => voi
                    cursor-pointer disabled:opacity-50 disabled:cursor-wait transition-colors"
       >
         {!current && <option value="">N/A</option>}
-        {options.map((name) => (
-          <option key={name} value={name}>{name}</option>
+        {options.map((o) => (
+          <option key={o.name} value={o.name}>{o.name}</option>
         ))}
       </select>
     </td>

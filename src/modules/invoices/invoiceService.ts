@@ -741,14 +741,25 @@ export async function updateInvoiceStatus(
  * con el usuario equivocado (p.ej. la caja quedó abierta con otra sesión) y
  * hay que corregirla para que las comisiones y los reportes por vendedor
  * cuadren.
+ *
+ * IMPORTANTE: hay que escribir `sellerUid` junto con `sellerName`. Facturas
+ * e Historial filtran por nombre, pero Informes y Nómina filtran por uid; si
+ * solo se actualiza el nombre, la factura aparece con el vendedor nuevo en
+ * el historial pero sigue sumando al vendedor viejo en informes y comisiones.
+ *
+ * `sellerUid` es opcional solo para el caso de un vendedor histórico cuyo
+ * usuario ya no existe (no hay uid al cual apuntar).
  */
 export async function updateInvoiceSeller(
   invoiceId: string,
   sellerName: string,
+  sellerUid?: string,
 ): Promise<void> {
   if (!invoiceId) throw new Error('Falta el id de la factura.');
   const name = sellerName.trim();
   if (!name) throw new Error('El vendedor no puede quedar vacío.');
-  await updateDoc(doc(db, 'invoices', invoiceId), { sellerName: name });
+  const payload: Record<string, string> = { sellerName: name };
+  if (sellerUid) payload.sellerUid = sellerUid;
+  await updateDoc(doc(db, 'invoices', invoiceId), payload);
 }
 
