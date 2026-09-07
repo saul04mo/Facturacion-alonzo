@@ -31,7 +31,7 @@ service cloud.firestore {
     // 1. CONFIG (exchange rate, counters)
     // ════════════════════════════════════════
     match /config/{docId} {
-      allow read: if isAuth();
+      allow read: if true;
       allow write: if isAuth(); // counter updated via transaction
     }
 
@@ -52,7 +52,7 @@ service cloud.firestore {
     // 2. PRODUCTS
     // ════════════════════════════════════════
     match /products/{productId} {
-      allow read: if isAuth();
+      allow read: if true;
       allow create, delete: if isAdmin();
       allow update: if isAuth(); // sellers update stock via sales
     }
@@ -118,6 +118,13 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════
+    // 6b. AD SPEND (inversión publicitaria por día)
+    // ════════════════════════════════════════
+    match /adSpend/{date} {
+      allow read, write: if isAuth();
+    }
+
+    // ════════════════════════════════════════
     // 7. WISHLISTS
     // ════════════════════════════════════════
     match /wishlists/{uid} {
@@ -152,6 +159,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /employee_incidents/{id} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+    match /payrollDraftPeriods/{periodId} {
       allow read: if isAuth();
       allow write: if isAdmin();
     }
@@ -204,6 +215,24 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Efectivo que hay AHORA en cada sucursal (doc ID = 'store' | 'warehouse').
+    // Va aparte de cashSessions porque el efectivo se cuenta aunque nadie
+    // haya abierto la caja de esa sucursal. Se reescribe: es la foto del
+    // estado actual, no un asiento contable — el rastro va en cashCountHistory.
+    match /cashCounts/{branch} {
+      allow read: if isAuth();
+      allow create, update: if isAuth();
+      allow delete: if false;
+    }
+
+    // Historial: una entrada por cada vez que el efectivo cambió.
+    // Append-only — es el rastro de auditoría del conteo, no se edita.
+    match /cashCountHistory/{entryId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if false;
+    }
+
     // Movimientos de efectivo (retiros, gastos, abonos, devoluciones).
     // Delete solo para los cargados a mano: los que genera el sistema a
     // partir de una devolución o un abono son rastro de auditoría.
@@ -212,6 +241,18 @@ service cloud.firestore {
       allow create: if isAuth();
       allow update: if false;
       allow delete: if isAuth() && resource.data.source == 'manual';
+    }
+
+    // ════════════════════════════════════════
+    // 14. HISTORIAL DE TASAS (BCV, EUR, Binance P2P)
+    // ════════════════════════════════════════
+    // Una fila por día (doc ID = 'YYYY-MM-DD'). Es solo registro para
+    // comparar: NO es la tasa con la que se factura, esa vive en
+    // config/exchangeRate. Se reescribe con el botón "Actualizar".
+    match /rateHistory/{dateKey} {
+      allow read: if isAuth();
+      allow create, update: if isAuth();
+      allow delete: if false;
     }
 
     // ════════════════════════════════════════

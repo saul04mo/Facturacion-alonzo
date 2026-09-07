@@ -715,3 +715,87 @@ export interface CashSession {
   closingNote?: string;
   snapshot?: CashSessionSnapshot;
 }
+
+/**
+ * Conteo de un fajo de billetes.
+ *
+ * `bills` guarda CUÁNTOS billetes hay de cada denominación (clave = valor
+ * del billete: '1', '5', '20'...) y `loose` el efectivo que no se desglosa
+ * — monedas, billetes deteriorados, lo que en la planilla va como "encima".
+ * Las denominaciones en cero no se guardan: el mapa queda chico y agregar
+ * un billete nuevo no obliga a migrar los documentos viejos.
+ */
+export interface DenominationCount {
+  bills: Record<string, number>;
+  loose: number;
+}
+
+/** Los dos lugares donde vive el efectivo de una sucursal. */
+export type CashCountSlot = 'admin' | 'counter';
+
+/**
+ * El efectivo que hay AHORA en una sucursal. Doc ID = la sucursal, así que
+ * hay exactamente un documento por sucursal y siempre refleja lo último.
+ *
+ * Va aparte de `CashSession` a propósito: el efectivo se cuenta aunque nadie
+ * haya abierto la caja de esa sucursal, y el panel muestra Tienda y Almacén
+ * juntos. Cada vez que cambia se registra la foto anterior en
+ * [[CashCountEntry]], para no perder el rastro sin ensuciar este documento.
+ */
+export interface CashCount {
+  id: string;
+  branch: Branch;
+  /** Lo que está guardado en la caja de administración. */
+  admin: DenominationCount;
+  /** El cambio que tienen los vendedores en el mostrador. */
+  counter: DenominationCount;
+  updatedAt: Timestamp;
+  updatedByUid: string;
+  updatedByName: string;
+}
+
+/**
+ * Una entrada del historial: cómo quedó el conteo de una sucursal después de
+ * un cambio. Se escribe SOLO si los números cambiaron de verdad — guardar sin
+ * tocar nada no ensucia el registro.
+ */
+export interface CashCountEntry {
+  id: string;
+  branch: Branch;
+  admin: DenominationCount;
+  counter: DenominationCount;
+  /** Total en dólares con el que quedó la sucursal. */
+  total: number;
+  /** Total que tenía antes; null en la primera carga. */
+  previousTotal: number | null;
+  changedAt: Timestamp;
+  changedByUid: string;
+  changedByName: string;
+}
+
+/**
+ * Foto de las tasas de un día. Doc ID = dateKey (YYYY-MM-DD en horario
+ * Venezuela), así no puede haber dos filas del mismo día.
+ *
+ * Es SOLO un registro histórico para comparar: nada de esto toca
+ * `config/exchangeRate`, que es la tasa con la que se factura.
+ */
+export interface RateSnapshot {
+  id: string;
+  dateKey: string;
+  /** Bs por dólar según el BCV. */
+  bcv: number | null;
+  /** Bs por euro según el BCV. */
+  eur: number | null;
+  /** Bs por USDT: mediana de los avisos de venta del P2P de Binance. */
+  binance: number | null;
+  /**
+   * 'cron'   = la tarea programada de las 6 PM
+   * 'auto'   = lo guardó el panel al abrirse
+   * 'manual' = alguien apretó "Actualizar tasas de hoy"
+   */
+  source: 'cron' | 'auto' | 'manual';
+  capturedAt: Timestamp;
+  capturedByUid?: string;
+  capturedByName?: string;
+}

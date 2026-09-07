@@ -9,6 +9,12 @@
   external_node_modules = ["firebase-admin", "@google-analytics/data"]
   node_bundler = "esbuild"
 
+# Captura automática de la fila de tasas del día. 22:00 UTC = 6:00 PM en
+# Venezuela (offset -4 fijo todo el año, allá no hay horario de verano).
+# A esa hora el BCV ya publicó la tasa del día y el P2P sigue líquido.
+[functions."rates-daily"]
+  schedule = "0 22 * * *"
+
 # OJO: no se puede añadir un [[redirects]] para /.netlify/functions/* — Netlify
 # rechaza esa ruta ("path field must not start with /.netlify") porque es
 # reservada. Las funciones ya se resuelven antes que los redirects; el chequeo

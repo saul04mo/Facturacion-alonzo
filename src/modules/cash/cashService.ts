@@ -1,16 +1,18 @@
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-  query, where, Timestamp,
+  query, where, orderBy, limit, Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { shiftDateKey } from '@/utils/dateUtils';
 import type {
-  AppUser, Branch, CashCurrency, CashMovement, CashMovementSource,
-  CashSession, CashSessionSnapshot, Invoice,
+  AppUser, Branch, CashCount, CashCountEntry, CashCurrency, CashMovement,
+  CashMovementSource, CashSession, CashSessionSnapshot, DenominationCount, Invoice,
 } from '@/types';
 
 export const CASH_SESSIONS = 'cashSessions';
 export const CASH_MOVEMENTS = 'cashMovements';
+export const CASH_COUNTS = 'cashCounts';
+export const CASH_COUNT_HISTORY = 'cashCountHistory';
 
 /** Nombres exactos de los métodos que mueven efectivo físico. */
 export const CASH_METHOD_VES = 'Efectivo (Bs)';
@@ -31,7 +33,8 @@ export function isCashMethod(methodName: string | null | undefined): boolean {
   return cashCurrencyOfMethod(methodName) !== null;
 }
 
-function sessionId(dateKey: string, branch: Branch): string {
+/** ID compartido por la caja y el arqueo de un día/sucursal. */
+function dayBranchId(dateKey: string, branch: Branch): string {
   return `${dateKey}_${branch}`;
 }
 
@@ -55,7 +58,7 @@ function dayBounds(dateKey: string): { start: Date; end: Date } {
 // ════════════════════════════════════════
 
 export async function getSession(dateKey: string, branch: Branch): Promise<CashSession | null> {
-  const snap = await getDoc(doc(db, CASH_SESSIONS, sessionId(dateKey, branch)));
+  const snap = await getDoc(doc(db, CASH_SESSIONS, dayBranchId(dateKey, branch)));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as CashSession;
 }
@@ -110,7 +113,7 @@ export async function openSession(opts: {
     ...(note?.trim() ? { openingNote: note.trim() } : {}),
   };
 
-  await setDoc(doc(db, CASH_SESSIONS, sessionId(dateKey, branch)), session);
+  await setDoc(doc(db, CASH_SESSIONS, dayBranchId(dateKey, branch)), session);
 }
 
 export async function closeSession(opts: {
@@ -126,7 +129,7 @@ export async function closeSession(opts: {
   if (!existing) throw new Error('No hay caja abierta para ese día y sucursal.');
   if (existing.status === 'closed') throw new Error('Esa caja ya está cerrada.');
 
-  await updateDoc(doc(db, CASH_SESSIONS, sessionId(dateKey, branch)), {
+  await updateDoc(doc(db, CASH_SESSIONS, dayBranchId(dateKey, branch)), {
     status: 'closed',
     closedAt: Timestamp.now(),
     closedByUid: user.uid,
@@ -143,7 +146,7 @@ export async function reopenSession(dateKey: string, branch: Branch): Promise<vo
   if (existing.status === 'open') throw new Error('Esa caja ya está abierta.');
 
   const { deleteField } = await import('firebase/firestore');
-  await updateDoc(doc(db, CASH_SESSIONS, sessionId(dateKey, branch)), {
+  await updateDoc(doc(db, CASH_SESSIONS, dayBranchId(dateKey, branch)), {
     status: 'open',
     closedAt: deleteField(),
     closedByUid: deleteField(),
@@ -412,4 +415,133 @@ export function buildSnapshot(opts: {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+// ════════════════════════════════════════
+// ARQUEO POR DENOMINACIÓN
+// ════════════════════════════════════════
+
+/** Billetes de dólar que se cuentan, de menor a mayor. */
+export const USD_DENOMINATIONS = [1, 5, 10, 20, 50, 100] as const;
+
+const BRANCHES: Branch[] = ['store', 'warehouse'];
+
+export function emptyDenominationCount(): DenominationCount {
+  return { bills: {}, loose: 0 };
+}
+
+/** Total de un fajo: suelto + Σ (denominación × cantidad). */
+export function denominationTotal(count: DenominationCount | null | undefined): number {
+  if (!count) return 0;
+  const bills = USD_DENOMINATIONS.reduce(
+    (sum, den) => sum + den * (count.bills?.[String(den)] || 0),
+    0,
+  );
+  return round2(bills + (count.loose || 0));
+}
+
+/** Descarta cantidades negativas, decimales y ceros antes de guardar. */
+function normalizeCount(count: DenominationCount): DenominationCount {
+  const bills: Record<string, number> = {};
+  USD_DENOMINATIONS.forEach((den) => {
+    const qty = Math.floor(count.bills?.[String(den)] || 0);
+    if (qty > 0) bills[String(den)] = qty;
+  });
+  return { bills, loose: round2(Math.max(0, count.loose || 0)) };
+}
+
+/** El efectivo que hay ahora en cada sucursal. Doc ID = la sucursal. */
+export async function fetchCashCounts(): Promise<Record<Branch, CashCount | null>> {
+  const snaps = await Promise.all(BRANCHES.map((b) => getDoc(doc(db, CASH_COUNTS, b))));
+
+  const result = {} as Record<Branch, CashCount | null>;
+  BRANCHES.forEach((b, i) => {
+    const snap = snaps[i];
+    result[b] = snap.exists() ? ({ id: snap.id, ...snap.data() } as CashCount) : null;
+  });
+  return result;
+}
+
+/** El total en dólares de una sucursal: mostrador + caja de administración. */
+export function cashCountTotal(count: Pick<CashCount, 'admin' | 'counter'> | null): number {
+  if (!count) return 0;
+  return round2(denominationTotal(count.counter) + denominationTotal(count.admin));
+}
+
+/**
+ * Guarda el conteo actual de una sucursal y, si cambió, deja la constancia
+ * en el historial.
+ *
+ * Devuelve `changed: false` cuando los números vinieron iguales a lo que ya
+ * estaba: así apretar Guardar dos veces no llena el historial de entradas
+ * que no dicen nada.
+ */
+export async function saveCashCount(opts: {
+  branch: Branch;
+  admin: DenominationCount;
+  counter: DenominationCount;
+  user: AppUser;
+}): Promise<{ saved: CashCount; changed: boolean }> {
+  const { branch, user } = opts;
+
+  const admin = normalizeCount(opts.admin);
+  const counter = normalizeCount(opts.counter);
+
+  const ref = doc(db, CASH_COUNTS, branch);
+  const before = (await getDoc(ref)).data() as CashCount | undefined;
+
+  const changed = !before
+    || JSON.stringify([normalizeCount(before.admin), normalizeCount(before.counter)])
+       !== JSON.stringify([admin, counter]);
+
+  const userName = `${user.nombre} ${user.apellido}`.trim();
+  const now = Timestamp.now();
+
+  const saved: CashCount = {
+    id: branch,
+    branch,
+    admin,
+    counter,
+    updatedAt: now,
+    updatedByUid: user.uid,
+    updatedByName: userName,
+  };
+
+  if (!changed) return { saved: before ? { ...before, id: branch } : saved, changed: false };
+
+  const { id: _id, ...payload } = saved;
+  await setDoc(ref, payload);
+
+  await addDoc(collection(db, CASH_COUNT_HISTORY), {
+    branch,
+    admin,
+    counter,
+    total: cashCountTotal({ admin, counter }),
+    previousTotal: before ? cashCountTotal(before) : null,
+    changedAt: now,
+    changedByUid: user.uid,
+    changedByName: userName,
+  });
+
+  return { saved, changed: true };
+}
+
+/** Los últimos cambios de efectivo, del más nuevo al más viejo. */
+export async function fetchCashCountHistory(limitNum = 50): Promise<CashCountEntry[]> {
+  // orderBy sobre un solo campo, sin where: no hace falta índice compuesto.
+  const snap = await getDocs(query(
+    collection(db, CASH_COUNT_HISTORY),
+    orderBy('changedAt', 'desc'),
+    limit(limitNum),
+  ));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CashCountEntry);
+}
+
+/** Las cajas de las dos sucursales de un día, para saber cuáles están cerradas. */
+export async function fetchSessions(dateKey: string): Promise<Record<Branch, CashSession | null>> {
+  const sessions = await Promise.all(BRANCHES.map((b) => getSession(dateKey, b)));
+
+  const result = {} as Record<Branch, CashSession | null>;
+  BRANCHES.forEach((b, i) => { result[b] = sessions[i]; });
+  return result;
 }

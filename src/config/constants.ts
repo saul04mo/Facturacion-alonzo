@@ -18,6 +18,7 @@ export const ROUTES = {
   PAYMENTS: '/pagos',
   CASH: '/caja',
   ANALYTICS: '/trafico-web',
+  RATES: '/tasas',
   // Ruta PÚBLICA (sin login) — formulario de registro de envío para clientes
   CLIENT_REGISTRATION: '/registro-envio',
 } as const;
@@ -51,7 +52,7 @@ export const ALL_PERMISSIONS = {
   canAccessCierreNomina: 'Acceder a Cierre de Nómina',
   canAccessSettings: 'Acceder a Configuración',
   canAccessPagos: 'Acceder a Pagos Banesco',
-  canAccessCaja: 'Acceder a Cierre de Caja',
+  canAccessCaja: 'Acceder a Conteo de Efectivo',
 } as const;
 
 export type PermissionKey = keyof typeof ALL_PERMISSIONS;

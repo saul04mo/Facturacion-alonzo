@@ -25,6 +25,7 @@ const CRMPage = lazy(() => import('@/modules/clients/CRMPage').then((m) => ({ de
 const PaymentsPage = lazy(() => import('@/modules/payments/PaymentsPage').then((m) => ({ default: m.PaymentsPage })));
 const AnalyticsPage = lazy(() => import('@/modules/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const CashRegisterPage = lazy(() => import('@/modules/cash/CashRegisterPage').then((m) => ({ default: m.CashRegisterPage })));
+const RatesPage = lazy(() => import('@/modules/rates/RatesPage').then((m) => ({ default: m.RatesPage })));
 const ClientRegistrationPage = lazy(() => import('@/modules/public/ClientRegistrationPage').then((m) => ({ default: m.ClientRegistrationPage })));
 
 export function App() {
@@ -57,6 +58,7 @@ export function App() {
               <Route path={ROUTES.PAYMENTS} element={<PaymentsPage />} />
               <Route path={ROUTES.ANALYTICS} element={<AnalyticsPage />} />
               <Route path={ROUTES.CASH} element={<CashRegisterPage />} />
+              <Route path={ROUTES.RATES} element={<RatesPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to={ROUTES.INVOICES} replace />} />
