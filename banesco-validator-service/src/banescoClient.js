@@ -8,6 +8,24 @@ const SSO_TIMEOUT_MS = 15_000;
 const API_TIMEOUT_MS = 30_000;
 
 /**
+ * Reintentos al ABRIR la conexión. Desde el 11-sep-2026 Banesco rechaza buena
+ * parte de los intentos de conexión nueva que salen de Cloud Run: fallan en
+ * ~2.5 s, antes de que el banco llegue a ver la petición. Una vez que una
+ * entra, Node la deja en el pool y la reusa sin problemas — de ahí que una
+ * instancia falle sus primeros segundos de vida y después ande sin chistar.
+ * Insistir unas pocas veces convierte casi todos esos fallos en una consulta
+ * que tarda un poco más, en vez de un error en la cara del cajero.
+ *
+ * Sólo se reintenta si el rechazo fue rápido. Si en cambio la conexión se
+ * colgó hasta agotar su propio tope (undici corta a los 10 s), insistir sólo
+ * suma espera: dos etapas así se pasan de los 40 s que aguanta el front, y el
+ * cajero termina viendo un timeout genérico en vez de nuestro mensaje.
+ */
+const CONNECT_BACKOFF_MS = [300, 900, 2000];
+const RETRY_BUDGET_MS = 12_000;
+const FALLO_RAPIDO_MS = 5_000;
+
+/**
  * Códigos de falla que el front usa para decidir qué mensaje mostrarle al
  * cajero. Lo importante es distinguir "el banco está caído" (no es culpa de
  * nadie acá, hay que reintentar) de "está mal configurado" (hay que avisarle
@@ -65,6 +83,69 @@ function codeFromFetchError(err) {
   return BanescoErrorCode.BANK_UNREACHABLE;
 }
 
+/** Pausa entre reintentos. */
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Arma una descripción con los códigos reales de un error de fetch. Node
+ * envuelve todo en un `TypeError: fetch failed` pelado y esconde la causa
+ * en `err.cause` (y en `err.errors` si probó varias direcciones), que es
+ * justo lo único que distingue un problema de DNS de uno de TLS o de que del
+ * otro lado nos cortaron la conexión.
+ */
+function causaReal(err) {
+  const partes = [];
+  const pendientes = [err];
+  const vistos = new Set();
+
+  while (pendientes.length) {
+    const e = pendientes.shift();
+    if (!e || typeof e !== 'object' || vistos.has(e)) continue;
+    vistos.add(e);
+
+    const etiqueta = e.code || (e.name && e.name !== 'Error' ? e.name : null);
+    const texto = [etiqueta, e.message].filter(Boolean).join(': ');
+    if (texto && !partes.includes(texto)) partes.push(texto);
+
+    if (e.cause) pendientes.push(e.cause);
+    if (Array.isArray(e.errors)) pendientes.push(...e.errors);
+  }
+
+  return partes.join(' <- ') || 'causa desconocida';
+}
+
+/**
+ * Hace la petición reintentando mientras el fallo sea al abrir la conexión.
+ * Devuelve la Response tal cual — un 4xx/5xx del banco lo interpreta quien
+ * llama, acá sólo importa haber conseguido respuesta. Si se agotan los
+ * intentos lanza BanescoError con la causa real y cuántas veces se probó.
+ */
+async function fetchInsistiendo(url, init, { stage, timeoutMs, descripcion }) {
+  const t0 = Date.now();
+
+  for (let intento = 1; ; intento++) {
+    const tIntento = Date.now();
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (err) {
+      const code = codeFromFetchError(err);
+      const backoff = CONNECT_BACKOFF_MS[intento - 1];
+      const rapido = Date.now() - tIntento < FALLO_RAPIDO_MS;
+      const alcanza = backoff !== undefined && Date.now() - t0 + backoff < RETRY_BUDGET_MS;
+
+      if (code !== BanescoErrorCode.BANK_UNREACHABLE || !rapido || !alcanza) {
+        throw new BanescoError(`${descripcion}: ${causaReal(err)}`, {
+          code,
+          stage,
+          details: `${intento} intento(s) en ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+        });
+      }
+
+      await espera(backoff);
+    }
+  }
+}
+
 /** Verifica que estén las credenciales antes de salir a la red. */
 function assertConfigured() {
   const { ssoUrl, apiUrl, clientId, clientSecret, username, password } = config.banesco;
@@ -102,23 +183,18 @@ async function fetchToken() {
     password,
   });
 
-  let res;
-  try {
-    res = await fetch(ssoUrl, {
+  const res = await fetchInsistiendo(
+    ssoUrl,
+    {
       method: 'POST',
       headers: {
         Authorization: `Basic ${basic}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body,
-      signal: AbortSignal.timeout(SSO_TIMEOUT_MS),
-    });
-  } catch (err) {
-    throw new BanescoError(`No se pudo conectar al SSO de Banesco: ${err.message}`, {
-      code: codeFromFetchError(err),
-      stage: 'sso',
-    });
-  }
+    },
+    { stage: 'sso', timeoutMs: SSO_TIMEOUT_MS, descripcion: 'No se pudo conectar al SSO de Banesco' },
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -193,15 +269,18 @@ function asEmptyResult(text) {
 
 /** Ejecuta la petición a transacciones con un token dado. */
 function requestTransactions(token, payload) {
-  return fetch(config.banesco.apiUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+  return fetchInsistiendo(
+    config.banesco.apiUrl,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(API_TIMEOUT_MS),
-  });
+    { stage: 'transactions', timeoutMs: API_TIMEOUT_MS, descripcion: 'No se pudo conectar a la API de Banesco' },
+  );
 }
 
 /**
@@ -212,21 +291,12 @@ async function postTransactions(payload) {
   assertConfigured();
   let token = await getToken();
 
-  let res;
-  try {
-    res = await requestTransactions(token, payload);
+  let res = await requestTransactions(token, payload);
 
-    if (res.status === 401) {
-      invalidateToken();
-      token = await getToken({ forceRefresh: true });
-      res = await requestTransactions(token, payload);
-    }
-  } catch (err) {
-    if (err instanceof BanescoError) throw err;
-    throw new BanescoError(`No se pudo conectar a la API de Banesco: ${err.message}`, {
-      code: codeFromFetchError(err),
-      stage: 'transactions',
-    });
+  if (res.status === 401) {
+    invalidateToken();
+    token = await getToken({ forceRefresh: true });
+    res = await requestTransactions(token, payload);
   }
 
   if (!res.ok) {
