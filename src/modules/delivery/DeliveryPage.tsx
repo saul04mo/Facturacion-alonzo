@@ -4,9 +4,44 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { confirmDeliveryPayment } from '@/modules/invoices/invoiceService';
-import { Truck, CheckCircle, Clock, MapPin, Check, X as XIcon } from 'lucide-react';
+import { Truck, CheckCircle, Clock, MapPin, Check, X as XIcon, Undo2 } from 'lucide-react';
 import { todayVE, toDate } from '@/utils/dateUtils';
-import { isCountableSale } from '@/utils/invoiceStatus';
+import { isCountableSale, STATUS_CONFIG } from '@/utils/invoiceStatus';
+import type { InvoiceStatus } from '@/types';
+
+/**
+ * Estado del pedido + qué reportó el repartidor.
+ *
+ * El badge es el MISMO de Facturas, Dashboard e Informes: la entrega no tiene
+ * estado propio. Debajo se agrega lo único que esta tabla no puede sacar de
+ * otra columna — cuántas prendas se volvieron y quién lo confirmó.
+ */
+function EstadoEntrega({ inv }: { inv: any }) {
+  const st = STATUS_CONFIG[inv.status as InvoiceStatus] || { class: 'badge-gray', label: inv.status || 'N/A' };
+  const conf = inv.deliveryConfirmation;
+  const devueltas = conf?.returnedItems?.length || 0;
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className={`badge ${st.class}`}>{st.label}</span>
+      {!conf ? (
+        <span className="text-[10px] text-navy-300 flex items-center gap-1">
+          <Clock size={10} /> sin confirmar
+        </span>
+      ) : devueltas > 0 ? (
+        <span className="text-[10px] text-amber-600 flex items-center gap-1"
+              title={`Confirmado por ${conf.courierName}`}>
+          <Undo2 size={10} /> volvieron {devueltas}
+        </span>
+      ) : (
+        <span className="text-[10px] text-emerald-600 flex items-center gap-1"
+              title={`Confirmado por ${conf.courierName}`}>
+          <CheckCircle size={10} /> completo
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function DeliveryPage() {
   const invoices = useAppStore((s) => s.invoices);
@@ -80,7 +115,7 @@ export function DeliveryPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead><tr className="border-b border-surface-200 bg-surface-50">
-                {['Factura', 'Cliente', 'Fecha', 'Dirección', 'Teléfono', 'Costo', 'Estado'].map((h) => (
+                {['Factura', 'Cliente', 'Fecha', 'Dirección', 'Teléfono', 'Costo', 'Estado', 'Pago envío'].map((h) => (
                   <th key={h} className="text-left text-[10px] font-display font-semibold text-navy-400 uppercase tracking-wider px-4 py-3">{h}</th>
                 ))}</tr></thead>
               <tbody className="divide-y divide-surface-100">
@@ -96,6 +131,7 @@ export function DeliveryPage() {
                         <span className="text-sm text-navy-500 truncate">{cl.address || 'N/A'}</span></div></td>
                       <td className="px-4 py-3 text-sm text-navy-500">{cl.phone || 'N/A'}</td>
                       <td className="px-4 py-3 font-mono font-semibold text-sm text-navy-900">{format(inv.deliveryCostUsd || 0)}</td>
+                      <td className="px-4 py-3"><EstadoEntrega inv={inv} /></td>
                       <td className="px-4 py-3">{isPaid ? (
                         <span className="badge badge-green"><CheckCircle size={12} /> Pagado</span>
                       ) : (

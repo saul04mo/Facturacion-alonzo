@@ -19,6 +19,9 @@ export const ROUTES = {
   CASH: '/caja',
   ANALYTICS: '/trafico-web',
   RATES: '/tasas',
+  // Vista del repartidor. Va fuera del Layout: sin sidebar, pensada para
+  // usarse con una mano en la puerta del cliente.
+  COURIER: '/entregas',
   // Ruta PÚBLICA (sin login) — formulario de registro de envío para clientes
   CLIENT_REGISTRATION: '/registro-envio',
 } as const;
@@ -53,6 +56,7 @@ export const ALL_PERMISSIONS = {
   canAccessSettings: 'Acceder a Configuración',
   canAccessPagos: 'Acceder a Pagos Banesco',
   canAccessCaja: 'Acceder a Conteo de Efectivo',
+  canConfirmHandoff: 'Confirmar Entregas en Ruta',
 } as const;
 
 export type PermissionKey = keyof typeof ALL_PERMISSIONS;
@@ -72,6 +76,20 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<PermissionKey, boolean>>
     // El cierre de caja lo hace quien tiene la responsabilidad del efectivo.
     // Arranca cerrado para vendedores: se habilita por usuario si hace falta.
     canAccessCaja: false,
+    canConfirmHandoff: false,
+  },
+  /**
+   * Repartidor. Arranca con TODO apagado salvo su propia vista: no tiene por
+   * qué ver inventario, facturas ni reportes. Es la razón de que sea un rol
+   * aparte y no un vendedor recortado — así el default es cerrado y hay que
+   * abrir a propósito, en vez de depender de acordarse de apagar catorce
+   * permisos uno por uno.
+   */
+  delivery: {
+    ...(Object.keys(ALL_PERMISSIONS).reduce(
+      (acc, key) => ({ ...acc, [key]: false }), {} as Record<PermissionKey, boolean>,
+    )),
+    canConfirmHandoff: true,
   },
   administrador: Object.keys(ALL_PERMISSIONS).reduce(
     (acc, key) => ({ ...acc, [key]: true }), {} as Record<PermissionKey, boolean>,

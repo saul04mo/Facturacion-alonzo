@@ -4,6 +4,7 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
 import { sizeLabel } from '@/utils/branchUtils';
+import { whatsappHref } from '@/utils/phoneUtils';
 import {
   Users, Crown, TrendingUp, ShoppingBag, Phone, Mail, MapPin,
   Download, Search, ChevronRight, ArrowUpDown, MessageCircle,
@@ -342,11 +343,15 @@ export function CRMPage() {
     setPage(1);
   }
 
-  function whatsappLink(phone: string, name: string) {
-    const clean = phone.replace(/\D/g, '');
-    const intl = clean.startsWith('0') ? '58' + clean.slice(1) : clean;
-    const msg = encodeURIComponent(`Hola ${name.split(' ')[0]}! 👋 Te escribimos desde ALONZO.`);
-    return `https://wa.me/${intl}?text=${msg}`;
+  // La normalización vive en phoneUtils: la usan también las entregas, y
+  // tener dos copias es cómo se arregla el link en una pantalla y queda roto
+  // en la otra. Devuelve undefined si el número no sirve, para que el botón
+  // quede apagado en vez de abrir WhatsApp a un error.
+  function whatsappLink(phone: string, name: string): string | undefined {
+    return whatsappHref(
+      phone,
+      `Hola ${name.split(' ')[0]}! 👋 Te escribimos desde ALONZO.`,
+    ) ?? undefined;
   }
 
   return (
@@ -590,7 +595,7 @@ export function CRMPage() {
 // ════════════════════════════════════════
 function ClientDetailModal({ client, format, onClose, whatsappLink }: {
   client: ClientAnalytics; format: (n: number) => string; onClose: () => void;
-  whatsappLink: (phone: string, name: string) => string;
+  whatsappLink: (phone: string, name: string) => string | undefined;
 }) {
   const seg = SEGMENT_CONFIG[client.segment];
   const maxMonthly = Math.max(...client.monthlySpend.map((m) => m.amount), 1);

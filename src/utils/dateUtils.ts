@@ -35,6 +35,24 @@ export function formatDateTime(d: any): string {
   return date.toLocaleString(VE_LOCALE, { timeZone: VE_TIMEZONE });
 }
 
+/**
+ * Format as "8 mar, 2:45 p. m." in Venezuela timezone.
+ *
+ * Versión compacta de formatDateTime, para listas donde no entra el
+ * "dd/mm/yyyy hh:mm:ss" completo (la tarjeta del repartidor, por ejemplo).
+ */
+export function formatDateTimeShort(d: any): string {
+  const date = toDate(d);
+  if (!date) return '—';
+  const dia = date.toLocaleDateString(VE_LOCALE, {
+    timeZone: VE_TIMEZONE, day: 'numeric', month: 'short',
+  });
+  const hora = date.toLocaleTimeString(VE_LOCALE, {
+    timeZone: VE_TIMEZONE, hour: 'numeric', minute: '2-digit',
+  });
+  return `${dia}, ${hora}`;
+}
+
 /** Format as "sábado, 8 de marzo de 2026" in Venezuela timezone */
 export function formatDateLong(d: any): string {
   const date = toDate(d);

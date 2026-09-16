@@ -26,6 +26,7 @@ const PaymentsPage = lazy(() => import('@/modules/payments/PaymentsPage').then((
 const AnalyticsPage = lazy(() => import('@/modules/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const CashRegisterPage = lazy(() => import('@/modules/cash/CashRegisterPage').then((m) => ({ default: m.CashRegisterPage })));
 const RatesPage = lazy(() => import('@/modules/rates/RatesPage').then((m) => ({ default: m.RatesPage })));
+const CourierPage = lazy(() => import('@/modules/delivery/CourierPage').then((m) => ({ default: m.CourierPage })));
 const ClientRegistrationPage = lazy(() => import('@/modules/public/ClientRegistrationPage').then((m) => ({ default: m.ClientRegistrationPage })));
 
 export function App() {
@@ -39,6 +40,14 @@ export function App() {
 
             {/* Ruta PÚBLICA — formulario de registro de envío (sin auth) */}
             <Route path={ROUTES.CLIENT_REGISTRATION} element={<ClientRegistrationPage />} />
+
+            {/* Vista del repartidor — fuera del Layout a propósito: sin sidebar
+                ni header, y sin los listeners que bajan todo el catálogo y 500
+                facturas, que en la calle con datos móviles no tiene sentido. */}
+            <Route
+              path={ROUTES.COURIER}
+              element={<RequireAuth courierOnly><CourierPage /></RequireAuth>}
+            />
 
             <Route element={<RequireAuth><Layout /></RequireAuth>}>
               <Route path={ROUTES.DASHBOARD} element={<DashboardPage />} />

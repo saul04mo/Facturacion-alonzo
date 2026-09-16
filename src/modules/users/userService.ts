@@ -11,7 +11,7 @@ interface UserInput {
   cedula: string;
   phone: string;
   correo: string;
-  rol: 'administrador' | 'vendedor';
+  rol: 'administrador' | 'vendedor' | 'delivery';
 }
 
 /**

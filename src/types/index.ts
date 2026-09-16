@@ -12,7 +12,7 @@ export interface AppUser {
   cedula: string;
   phone: string;
   correo: string;
-  rol: 'administrador' | 'vendedor';
+  rol: 'administrador' | 'vendedor' | 'delivery';
   permissions: Record<PermissionKey, boolean>;
 }
 
@@ -290,6 +290,44 @@ export interface ExchangeDetails {
   deliveryMethod: string | null;
 }
 
+/** Una prenda, identificada como la identifica InvoiceItem. */
+export interface DeliveryItemRef {
+  productId: string;
+  variantIndex: number;
+  quantity: number;
+}
+
+/**
+ * Lo que el repartidor confirmó en la puerta. Queda como rastro de auditoría
+ * al lado de la factura ya ajustada: `itemsOriginal` y `totalOriginal`
+ * guardan cómo salió el pedido de la tienda, para poder reconstruir qué pasó
+ * aunque después se edite la factura.
+ */
+export interface DeliveryConfirmation {
+  date: Timestamp;
+  courierUid: string;
+  courierName: string;
+  /** Prendas que el cliente se quedó. */
+  keptItems: DeliveryItemRef[];
+  /** Prendas que volvieron a la tienda (ya reintegradas al stock). */
+  returnedItems: DeliveryItemRef[];
+  /** Ítems tal como salieron de la tienda, antes del ajuste. */
+  itemsOriginal: InvoiceItem[];
+  /** Total antes del ajuste, en USD. */
+  totalOriginal: number;
+  /** Crédito descontado del total por las prendas devueltas, en USD. */
+  creditUsd: number;
+  /** Lo que el repartidor cobró en la puerta. null = no cobró nada. */
+  collected: {
+    method: string;
+    /** Monto en la moneda del método. */
+    amount: number;
+    amountUsd: number;
+    ref?: string;
+  } | null;
+  note: string | null;
+}
+
 export interface Invoice {
   id: string;
   numericId: number;
@@ -346,6 +384,15 @@ export interface Invoice {
     refundAmountUsd?: number;
   };
   exchangeDetails?: ExchangeDetails;
+  /**
+   * Qué confirmó el repartidor en la puerta.
+   *
+   * NO es un estado paralelo: el estado de la entrega es el `status` de la
+   * factura, el mismo que ve todo el sistema. Esto es el rastro de qué pasó
+   * (qué prendas volvieron, cuánto se cobró, quién lo reportó). Ausente =
+   * el repartidor todavía no lo confirmó.
+   */
+  deliveryConfirmation?: DeliveryConfirmation;
 }
 
 export interface Abono {

@@ -34,7 +34,7 @@ function UserFormModal({
     cedula: user?.cedula || '',
     phone: user?.phone || '',
     correo: user?.correo || '',
-    rol: (user?.rol || 'vendedor') as 'administrador' | 'vendedor',
+    rol: (user?.rol || 'vendedor') as 'administrador' | 'vendedor' | 'delivery',
     password: '',
   });
   const [saving, setSaving] = useState(false);
@@ -119,6 +119,7 @@ function UserFormModal({
             <select value={form.rol} onChange={(e) => handleChange('rol', e.target.value)} className="input-field">
               <option value="vendedor">Vendedor</option>
               <option value="administrador">Administrador</option>
+              <option value="delivery">Repartidor</option>
             </select>
           </div>
           <div>
@@ -281,9 +282,9 @@ export function UsersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0
-                          ${user.rol === 'administrador' ? 'bg-indigo-100' : 'bg-surface-100'}`}>
+                          ${user.rol === 'administrador' ? 'bg-indigo-100' : user.rol === 'delivery' ? 'bg-emerald-100' : 'bg-surface-100'}`}>
                           <span className={`text-xs font-display font-bold
-                            ${user.rol === 'administrador' ? 'text-indigo-600' : 'text-navy-500'}`}>
+                            ${user.rol === 'administrador' ? 'text-indigo-600' : user.rol === 'delivery' ? 'text-emerald-600' : 'text-navy-500'}`}>
                             {(user.nombre?.charAt(0) || '') + (user.apellido?.charAt(0) || '')}
                           </span>
                         </div>
@@ -296,8 +297,8 @@ export function UsersPage() {
                     <td className="px-4 py-3 font-mono text-sm text-navy-500">{user.cedula || '—'}</td>
                     <td className="px-4 py-3 text-sm text-navy-500">{user.correo}</td>
                     <td className="px-4 py-3">
-                      <span className={`badge ${user.rol === 'administrador' ? 'badge-purple' : 'badge-gray'}`}>
-                        {user.rol === 'administrador' ? 'Admin' : 'Vendedor'}
+                      <span className={`badge ${user.rol === 'administrador' ? 'badge-purple' : user.rol === 'delivery' ? 'badge-green' : 'badge-gray'}`}>
+                        {user.rol === 'administrador' ? 'Admin' : user.rol === 'delivery' ? 'Repartidor' : 'Vendedor'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">

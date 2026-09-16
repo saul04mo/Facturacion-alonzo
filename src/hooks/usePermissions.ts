@@ -8,9 +8,11 @@ import { DEFAULT_PERMISSIONS, type PermissionKey } from '@/config/constants';
 export function usePermissions() {
   const currentUser = useAppStore((s) => s.currentUser);
 
-  const roleDefaults = currentUser?.rol === 'administrador'
-    ? DEFAULT_PERMISSIONS.administrador
-    : DEFAULT_PERMISSIONS.vendedor;
+  // Lookup por rol en vez de un ternario: con tres roles el ternario hacía
+  // que cualquier rol nuevo cayera silenciosamente en los permisos de
+  // vendedor, que es justo lo que no queremos para un repartidor.
+  const roleDefaults =
+    (currentUser?.rol && DEFAULT_PERMISSIONS[currentUser.rol]) || DEFAULT_PERMISSIONS.vendedor;
 
   // Merge saved permissions with defaults — new permissions use role default
   const permissions = currentUser?.permissions
@@ -23,6 +25,7 @@ export function usePermissions() {
   }
 
   const isAdmin = currentUser?.rol === 'administrador';
+  const isCourier = currentUser?.rol === 'delivery';
 
-  return { can, isAdmin, permissions };
+  return { can, isAdmin, isCourier, permissions };
 }
