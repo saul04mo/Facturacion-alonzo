@@ -462,6 +462,22 @@ export async function fetchCashCounts(): Promise<Record<Branch, CashCount | null
   return result;
 }
 
+/**
+ * Momento actual en horario Venezuela como texto ordenable:
+ * '2026-09-08T19:34:12'. Los diez primeros caracteres son el dateKey.
+ */
+function veTimestampKey(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Caracas',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  return `${get('year')}-${get('month')}-${get('day')}`
+    + `T${get('hour')}:${get('minute')}:${get('second')}`;
+}
+
 /** El total en dólares de una sucursal: mostrador + caja de administración. */
 export function cashCountTotal(count: Pick<CashCount, 'admin' | 'counter'> | null): number {
   if (!count) return 0;
@@ -518,12 +534,42 @@ export async function saveCashCount(opts: {
     counter,
     total: cashCountTotal({ admin, counter }),
     previousTotal: before ? cashCountTotal(before) : null,
+    changedAtKey: veTimestampKey(now.toDate()),
     changedAt: now,
     changedByUid: user.uid,
     changedByName: userName,
   });
 
   return { saved, changed: true };
+}
+
+/**
+ * Cómo quedó cada sucursal AL CIERRE de un día.
+ *
+ * Devuelve el último cambio de cada sucursal ocurrido en ese día o antes,
+ * así un día en el que nadie tocó nada muestra lo que venía arrastrando en
+ * vez de aparecer vacío.
+ *
+ * El rango y el orden van sobre `changedAtKey`, un solo campo, para que
+ * Firestore lo resuelva sin índice compuesto. Se traen 120 entradas: alcanza
+ * de sobra para encontrar la última de cada sucursal aunque una lleve
+ * semanas sin moverse.
+ */
+export async function fetchCashCountAt(dateKey: string): Promise<Record<Branch, CashCountEntry | null>> {
+  const snap = await getDocs(query(
+    collection(db, CASH_COUNT_HISTORY),
+    where('changedAtKey', '<=', `${dateKey}T23:59:59`),
+    orderBy('changedAtKey', 'desc'),
+    limit(120),
+  ));
+
+  const result = { store: null, warehouse: null } as Record<Branch, CashCountEntry | null>;
+  snap.docs.forEach((d) => {
+    const entry = { id: d.id, ...d.data() } as CashCountEntry;
+    // Vienen del más nuevo al más viejo: el primero de cada sucursal manda.
+    if (!result[entry.branch]) result[entry.branch] = entry;
+  });
+  return result;
 }
 
 /** Los últimos cambios de efectivo, del más nuevo al más viejo. */

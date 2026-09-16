@@ -768,6 +768,15 @@ export interface CashCountEntry {
   total: number;
   /** Total que tenía antes; null en la primera carga. */
   previousTotal: number | null;
+  /**
+   * Momento del cambio en horario Venezuela como texto ordenable
+   * ('2026-09-08T19:34:12').
+   *
+   * Duplica a `changedAt` a propósito: permite filtrar por día Y ordenar
+   * por hora usando UN SOLO campo, que es lo que Firestore resuelve sin
+   * pedir un índice compuesto. Los diez primeros caracteres son el día.
+   */
+  changedAtKey: string;
   changedAt: Timestamp;
   changedByUid: string;
   changedByName: string;

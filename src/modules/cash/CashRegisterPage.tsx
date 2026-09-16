@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useToast } from '@/components/Toast';
 import { PageLoading } from '@/components/LoadingScreen';
-import { formatDateTime } from '@/utils/dateUtils';
+import { todayVE, formatDateTime } from '@/utils/dateUtils';
 import {
-  fetchCashCounts, fetchCashCountHistory, saveCashCount,
+  fetchCashCounts, fetchCashCountHistory, fetchCashCountAt, saveCashCount,
   denominationTotal, USD_DENOMINATIONS,
 } from './cashService';
 import type {
@@ -12,7 +12,7 @@ import type {
 } from '@/types';
 import {
   Wallet, Banknote, Save, RefreshCw, Store, Warehouse, History, ChevronDown,
-  ArrowUpRight, ArrowDownRight,
+  ArrowUpRight, ArrowDownRight, CalendarClock, X,
 } from 'lucide-react';
 
 const BRANCH_ORDER: Branch[] = ['store', 'warehouse'];
@@ -20,6 +20,12 @@ const BRANCH_LABEL: Record<Branch, string> = { store: 'Tienda', warehouse: 'Alma
 
 function fmtUsd(n: number): string {
   return `$ ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** DD/MM/AAAA a partir del dateKey, sin pasar por Date (evita corrimientos). */
+function fmtDateKey(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-');
+  return `${d}/${m}/${y}`;
 }
 
 /** Convierte el string de un input numérico a número, tolerando coma decimal. */
@@ -31,6 +37,10 @@ function parseAmount(raw: string): number {
 export function CashRegisterPage() {
   const currentUser = useAppStore((s) => s.currentUser);
   const toast = useToast();
+
+  /** Vacío = el efectivo de ahora (editable). Con fecha = cómo estaba ese día. */
+  const [viewDate, setViewDate] = useState('');
+  const readOnly = Boolean(viewDate);
 
   const [loading, setLoading] = useState(true);
   const [savingBranch, setSavingBranch] = useState<Branch | null>(null);
@@ -47,19 +57,32 @@ export function CashRegisterPage() {
     () => ({ store: '', warehouse: '' }),
   );
   const [history, setHistory] = useState<CashCountEntry[]>([]);
+  /** Cómo quedó cada sucursal el día que se está mirando. */
+  const [asOf, setAsOf] = useState<Record<Branch, CashCountEntry | null>>(
+    () => ({ store: null, warehouse: null }),
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [counts, entries] = await Promise.all([
+      const [counts, entries, at] = await Promise.all([
         fetchCashCounts(),
         fetchCashCountHistory(50),
+        viewDate ? fetchCashCountAt(viewDate) : Promise.resolve(null),
       ]);
+
+      // Con fecha elegida los recuadros muestran la foto de ese día; sin fecha,
+      // el efectivo de ahora.
+      const source: Record<Branch, { admin?: DenominationCount; counter?: DenominationCount } | null> =
+        at ?? counts;
 
       const nextDrafts = {} as Record<Branch, BranchCountDraft>;
       const nextBaselines = {} as Record<Branch, string>;
       BRANCH_ORDER.forEach((b) => {
-        nextDrafts[b] = cashCountToDraft(counts[b]);
+        nextDrafts[b] = {
+          admin: countToDraft(source[b]?.admin),
+          counter: countToDraft(source[b]?.counter),
+        };
         nextBaselines[b] = draftSignature(nextDrafts[b]);
       });
 
@@ -67,13 +90,14 @@ export function CashRegisterPage() {
       setDrafts(nextDrafts);
       setBaselines(nextBaselines);
       setHistory(entries);
+      setAsOf(at ?? { store: null, warehouse: null });
     } catch (err: any) {
       console.error('Error cargando el conteo de efectivo:', err);
       toast.error(err?.message || 'No se pudo cargar el conteo.');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [viewDate, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -82,7 +106,7 @@ export function CashRegisterPage() {
   }
 
   async function handleSave(b: Branch) {
-    if (!currentUser) return;
+    if (!currentUser || readOnly) return;
     setSavingBranch(b);
     try {
       const draft = drafts[b];
@@ -126,13 +150,31 @@ export function CashRegisterPage() {
             <div>
               <h1 className="text-lg font-display font-bold text-navy-900">Conteo de Efectivo</h1>
               <p className="text-navy-400 text-xs font-body">
-                El efectivo que hay ahora mismo · cada cambio queda en el historial
+                {readOnly
+                  ? `Viendo cómo quedó el ${fmtDateKey(viewDate)}`
+                  : 'El efectivo que hay ahora mismo'}
               </p>
             </div>
           </div>
 
+          <div>
+            <label className="block text-xs font-display font-medium text-navy-500 mb-1">Ver otro día</label>
+            <div className="flex gap-1">
+              <input type="date" value={viewDate} max={todayVE()}
+                onChange={(e) => setViewDate(e.target.value)} className="input-field" />
+              {readOnly && (
+                <button type="button" onClick={() => setViewDate('')} className="btn-ghost text-sm"
+                  title="Volver al efectivo de ahora">
+                  <X size={14} /> Hoy
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="text-right">
-            <p className="text-xs text-navy-400 font-display uppercase tracking-wide">Total en mano</p>
+            <p className="text-xs text-navy-400 font-display uppercase tracking-wide">
+              {readOnly ? 'Total ese día' : 'Total en mano'}
+            </p>
             <p className="font-mono text-xl font-bold text-navy-900">{fmtUsd(grandTotal)}</p>
           </div>
 
@@ -142,6 +184,21 @@ export function CashRegisterPage() {
           </button>
         </div>
       </div>
+
+      {readOnly && (
+        <div className="card p-4 border-l-4 border-l-blue-500 flex gap-3">
+          <CalendarClock size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-display font-medium text-navy-800">
+              Estás viendo el {fmtDateKey(viewDate)} — solo lectura
+            </p>
+            <p className="text-navy-500 font-body mt-0.5">
+              Son los últimos números registrados hasta ese día. Para volver a cargar
+              efectivo tocá <strong>Hoy</strong>, arriba.
+            </p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <PageLoading message="Cargando el efectivo..." />
@@ -165,7 +222,9 @@ export function CashRegisterPage() {
                   branch={b}
                   draft={drafts[b]}
                   saved={saved[b]}
-                  dirty={draftSignature(drafts[b]) !== baselines[b]}
+                  asOf={asOf[b]}
+                  readOnly={readOnly}
+                  dirty={!readOnly && draftSignature(drafts[b]) !== baselines[b]}
                   saving={savingBranch === b}
                   onChange={(slot, draft) => handleChange(b, slot, draft)}
                   onSave={() => handleSave(b)}
@@ -178,6 +237,7 @@ export function CashRegisterPage() {
             entries={history}
             open={showHistory}
             onToggle={() => setShowHistory((v) => !v)}
+            onPickDate={setViewDate}
           />
         </>
       )}
@@ -226,10 +286,6 @@ function countToDraft(count: DenominationCount | null | undefined): CountDraft {
   return { bills, loose: count?.loose ? String(count.loose) : '' };
 }
 
-function cashCountToDraft(count: CashCount | null): BranchCountDraft {
-  return { admin: countToDraft(count?.admin), counter: countToDraft(count?.counter) };
-}
-
 /** Firma del borrador: sirve para detectar cambios sin guardar. */
 function draftSignature(draft: BranchCountDraft): string {
   return JSON.stringify([draftToCount(draft.admin), draftToCount(draft.counter)]);
@@ -243,12 +299,14 @@ function BranchCountColumn(props: {
   branch: Branch;
   draft: BranchCountDraft;
   saved: CashCount | null;
+  asOf: CashCountEntry | null;
+  readOnly: boolean;
   dirty: boolean;
   saving: boolean;
   onChange: (slot: CashCountSlot, draft: CountDraft) => void;
   onSave: () => void;
 }) {
-  const { branch, draft, saved, dirty, saving } = props;
+  const { branch, draft, saved, asOf, readOnly, dirty, saving } = props;
   const total = branchDraftTotal(draft);
 
   return (
@@ -263,19 +321,25 @@ function BranchCountColumn(props: {
           {BRANCH_LABEL[branch]}
         </h3>
         <span className="ml-auto font-mono font-bold text-navy-900">{fmtUsd(total)}</span>
-        <button onClick={props.onSave} disabled={saving || !dirty}
-          className="btn-primary text-sm px-4 py-2">
-          <Save size={14} /> {saving ? 'Guardando...' : dirty ? 'Guardar' : 'Guardado'}
-        </button>
+        {!readOnly && (
+          <button onClick={props.onSave} disabled={saving || !dirty}
+            className="btn-primary text-sm px-4 py-2">
+            <Save size={14} /> {saving ? 'Guardando...' : dirty ? 'Guardar' : 'Guardado'}
+          </button>
+        )}
       </div>
 
       <p className={`text-xs font-body mt-2 pb-3 border-b border-surface-200
         ${dirty ? 'text-amber-600 font-medium' : 'text-navy-400'}`}>
-        {dirty
-          ? 'Hay cambios sin guardar.'
-          : saved
-            ? `Actualizado por ${saved.updatedByName} · ${formatDateTime(saved.updatedAt)}`
-            : 'Todavía no se guardó ningún conteo.'}
+        {readOnly
+          ? asOf
+            ? `Último cambio hasta esa fecha · ${asOf.changedByName} · ${formatDateTime(asOf.changedAt)}`
+            : 'Esta sucursal no tenía nada registrado a esa fecha.'
+          : dirty
+            ? 'Hay cambios sin guardar.'
+            : saved
+              ? `Actualizado por ${saved.updatedByName} · ${formatDateTime(saved.updatedAt)}`
+              : 'Todavía no se guardó ningún conteo.'}
       </p>
 
       <div className="mt-4 space-y-5">
@@ -285,6 +349,7 @@ function BranchCountColumn(props: {
             title={slot.title}
             hint={slot.hint}
             draft={draft[slot.id]}
+            readOnly={readOnly}
             onChange={(d) => props.onChange(slot.id, d)}
           />
         ))}
@@ -297,9 +362,11 @@ function DenominationBlock(props: {
   title: string;
   hint: string;
   draft: CountDraft;
+  readOnly: boolean;
   onChange: (draft: CountDraft) => void;
 }) {
-  const { draft } = props;
+  const { draft, readOnly } = props;
+  const loose = parseAmount(draft.loose);
   const total = denominationTotal(draftToCount(draft));
 
   return (
@@ -315,13 +382,17 @@ function DenominationBlock(props: {
             <td className="py-1.5 text-navy-500 font-body">Encima</td>
             <td className="py-1.5 text-center text-navy-300 font-body text-xs">suelto</td>
             <td className="py-1.5 text-right">
-              <input
-                type="number" step="0.01" min="0" inputMode="decimal"
-                value={draft.loose}
-                onChange={(e) => props.onChange({ ...draft, loose: e.target.value })}
-                className="input-field w-24 ml-auto px-2 py-1 text-right font-mono"
-                placeholder="0.00"
-              />
+              {readOnly ? (
+                <span className="font-mono text-navy-700">{loose ? fmtUsd(loose) : '—'}</span>
+              ) : (
+                <input
+                  type="number" step="0.01" min="0" inputMode="decimal"
+                  value={draft.loose}
+                  onChange={(e) => props.onChange({ ...draft, loose: e.target.value })}
+                  className="input-field w-24 ml-auto px-2 py-1 text-right font-mono"
+                  placeholder="0.00"
+                />
+              )}
             </td>
           </tr>
 
@@ -334,16 +405,20 @@ function DenominationBlock(props: {
               <tr key={den}>
                 <td className="py-1.5 font-mono text-navy-600">{fmtUsd(den)}</td>
                 <td className="py-1.5 text-center">
-                  <input
-                    type="number" step="1" min="0" inputMode="numeric"
-                    value={raw}
-                    onChange={(e) => props.onChange({
-                      ...draft,
-                      bills: { ...draft.bills, [String(den)]: e.target.value },
-                    })}
-                    className="input-field w-16 mx-auto px-2 py-1 text-center font-mono font-semibold"
-                    placeholder="0"
-                  />
+                  {readOnly ? (
+                    <span className="font-mono font-semibold text-navy-800">{subtotal ? qty : 0}</span>
+                  ) : (
+                    <input
+                      type="number" step="1" min="0" inputMode="numeric"
+                      value={raw}
+                      onChange={(e) => props.onChange({
+                        ...draft,
+                        bills: { ...draft.bills, [String(den)]: e.target.value },
+                      })}
+                      className="input-field w-16 mx-auto px-2 py-1 text-center font-mono font-semibold"
+                      placeholder="0"
+                    />
+                  )}
                 </td>
                 <td className="py-1.5 text-right font-mono text-navy-700">
                   {subtotal ? fmtUsd(subtotal) : '—'}
@@ -367,10 +442,11 @@ function DenominationBlock(props: {
 // Historial de cambios
 // ════════════════════════════════════════
 
-function CashCountHistory({ entries, open, onToggle }: {
+function CashCountHistory({ entries, open, onToggle, onPickDate }: {
   entries: CashCountEntry[];
   open: boolean;
   onToggle: () => void;
+  onPickDate: (dateKey: string) => void;
 }) {
   return (
     <div className="card overflow-hidden">
@@ -380,7 +456,7 @@ function CashCountHistory({ entries, open, onToggle }: {
         <div className="text-left mr-auto">
           <h2 className="font-display font-bold text-navy-900">Historial de cambios</h2>
           <p className="text-navy-400 text-xs font-body mt-0.5">
-            Cada vez que el efectivo cambia queda una línea acá
+            Tocá una fecha para ver los recuadros de ese día
           </p>
         </div>
         <span className="text-navy-400 font-body text-sm">{entries.length}</span>
@@ -412,11 +488,20 @@ function CashCountHistory({ entries, open, onToggle }: {
                     const delta = e.previousTotal === null ? null : e.total - e.previousTotal;
                     const up = delta !== null && delta > 0.005;
                     const down = delta !== null && delta < -0.005;
+                    const dateKey = e.changedAtKey?.slice(0, 10);
 
                     return (
                       <tr key={e.id}>
-                        <td className="px-5 py-2.5 text-navy-600 font-body whitespace-nowrap">
-                          {formatDateTime(e.changedAt)}
+                        <td className="px-5 py-2.5 whitespace-nowrap">
+                          {dateKey ? (
+                            <button type="button" onClick={() => onPickDate(dateKey)}
+                              className="text-blue-600 font-body hover:underline"
+                              title="Ver los recuadros de ese día">
+                              {formatDateTime(e.changedAt)}
+                            </button>
+                          ) : (
+                            <span className="text-navy-600 font-body">{formatDateTime(e.changedAt)}</span>
+                          )}
                         </td>
                         <td className="px-5 py-2.5 text-navy-700 font-display font-medium">
                           {BRANCH_LABEL[e.branch]}

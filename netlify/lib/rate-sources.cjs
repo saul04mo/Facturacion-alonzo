@@ -166,4 +166,36 @@ async function readRates() {
   };
 }
 
-module.exports = { readRates, todayVE, round2 };
+/**
+ * Solo el BCV, sin tocar Binance.
+ *
+ * La usa la API de disponibilidad: ahí la tasa es un dato de apoyo para
+ * convertir el precio a bolívares, y no tiene sentido hacerla esperar por el
+ * P2P (que además es la fuente más lenta de las dos). Nunca lanza: si el BCV
+ * no responde, devuelve nulls y el motivo en `errors`.
+ */
+async function readBcv() {
+  try {
+    const { usd, eur, valueDate } = await fetchBcv();
+    const errors = [];
+    if (usd === null) errors.push('No se encontró el dólar en la página del BCV.');
+    if (eur === null) errors.push('No se encontró el euro en la página del BCV.');
+    return {
+      bcv: usd === null ? null : round2(usd),
+      eur: eur === null ? null : round2(eur),
+      bcvDate: valueDate,
+      fetchedAt: new Date().toISOString(),
+      errors,
+    };
+  } catch (err) {
+    return {
+      bcv: null,
+      eur: null,
+      bcvDate: null,
+      fetchedAt: new Date().toISOString(),
+      errors: [`BCV: ${(err && err.message) || 'no respondió'}`],
+    };
+  }
+}
+
+module.exports = { readRates, readBcv, todayVE, round2 };
