@@ -97,6 +97,29 @@ function shape(product, stockSize) {
   };
 }
 
+/**
+ * La ficha CORTA, para `disponible=1`: lo que el bot necesita para mandar
+ * "las fotos de lo que hay en tu talla" y nada más.
+ *
+ * La ficha completa pesa ~1.600 caracteres por producto (todas las variantes
+ * y todas las fotos), y el bot recibe como mucho 4.000 por herramienta: con
+ * seis productos veía tres enteros y mandaba tres fotos. Con ésta, seis
+ * entran de sobra.
+ */
+function compacta(p) {
+  return {
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    url: p.url,
+    image: p.image,
+    price: p.priceFrom === p.priceTo ? p.priceFrom : { from: p.priceFrom, to: p.priceTo },
+    ...(p.offer ? { offer: p.offer } : {}),
+    available: p.available,
+    availableSize: p.availableSize,
+  };
+}
+
 /** Resumen en texto para que el bot lo mande sin tener que redactarlo. */
 function toText(products, disponible, size) {
   if (!products.length) {
@@ -172,7 +195,7 @@ exports.handler = async (event) => {
       // Cuántos había en total antes de cortar por `limit`: le dice al bot si
       // vale la pena pedir más o si ya tiene todo.
       totalMatches: matched.length,
-      products: page,
+      products: disponible ? page.map(compacta) : page,
       text: toText(page, disponible, filters.size),
     }, {
       // El catálogo (nombres, tallas, precios) cambia pocas veces al día; el
