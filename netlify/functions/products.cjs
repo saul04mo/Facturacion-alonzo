@@ -181,6 +181,9 @@ exports.handler = async (event) => {
     const matched = disponible
       ? filtrados.filter((p) => disponibles(p, filters.size) > 0)
       : filtrados;
+    // No había exactamente lo pedido (ej. "chaqueta negra" sin negras): son
+    // los más parecidos, y el bot tiene que decirlo así.
+    const aproximado = Boolean(filtrados.aproximado);
 
     // Con búsqueda libre manda la relevancia (el match exacto primero); sin
     // ella, orden alfabético para que listar el catálogo sea predecible.
@@ -195,6 +198,10 @@ exports.handler = async (event) => {
       // Cuántos había en total antes de cortar por `limit`: le dice al bot si
       // vale la pena pedir más o si ya tiene todo.
       totalMatches: matched.length,
+      ...(aproximado ? {
+        aproximado: true,
+        aviso: 'No hay exactamente lo que pidió: estos son los más parecidos (por ejemplo, la misma prenda en otro color). Decíselo así al cliente.',
+      } : {}),
       products: disponible ? page.map(compacta) : page,
       text: toText(page, disponible, filters.size),
     }, {

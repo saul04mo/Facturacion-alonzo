@@ -233,11 +233,113 @@ function fold(s) {
 }
 
 /**
+ * CÓMO PIDE LA GENTE vs. CÓMO SE LLAMAN LAS COSAS EN EL CATÁLOGO.
+ *
+ * El bot le pasa a `q` lo que dijo el cliente, más o menos tal cual, y el
+ * catálogo nombra distinto: "pantalón de caballero" es género "Hombre" y un
+ * producto "PANTALON…" en singular; una chaqueta se llama "JACKET"; "negra"
+ * es "negro" o "black"; "jean" son los "Cargo…" y los "Corte Recto". Con el
+ * AND literal de antes, "pantalones y cargos jean denim de caballero" en
+ * talla 34 daba CERO cuando había once con stock (2026-09-24).
+ *
+ * Tres cosas, y ninguna adivina de más:
+ *   1. Palabras vacías fuera ("y", "de", "talla", "quiero"…).
+ *   2. El género se reconoce ("caballero", "dama"…) y FILTRA por género en
+ *      vez de buscarse como texto.
+ *   3. Cada palabra que queda se vuelve un grupo de alternativas: sus
+ *      sinónimos del catálogo y su raíz (sin plural ni vocal final: "negra"
+ *      y "negros" encuentran "negro"). Un producto cumple la palabra si
+ *      aparece CUALQUIERA de sus alternativas.
+ *
+ * Los sinónimos salen del vocabulario real del catálogo (nombres,
+ * categorías y colores), no de un diccionario: si la tienda empieza a
+ * nombrar distinto, esto es lo que hay que actualizar.
+ */
+const PALABRAS_VACIAS = new Set([
+  'y', 'o', 'u', 'e', 'de', 'del', 'la', 'las', 'el', 'los', 'lo', 'un', 'una', 'unos', 'unas',
+  'para', 'con', 'sin', 'en', 'a', 'al', 'por', 'que', 'mi', 'me', 'tu', 'su',
+  'talla', 'tallas', 'size', 'tipo', 'modelo', 'modelos', 'color', 'colores',
+  'quiero', 'busco', 'buscar', 'tienen', 'tienes', 'hay', 'tengan', 'disponible', 'disponibles',
+  'ver', 'algun', 'alguna', 'algunos', 'algunas', 'otro', 'otra', 'otros', 'otras',
+  'ropa', 'prenda', 'prendas', 'articulo', 'articulos',
+  // Descripciones que el catálogo no usa: todas las camisas son manga corta,
+  // y buscar "corta" encontraría "Corte Recto".
+  'manga', 'mangas', 'corta', 'cortas', 'corto', 'cortos', 'larga', 'largas', 'largo', 'largos',
+]);
+
+const GENERO = {
+  hombre: ['caballero', 'caballeros', 'hombre', 'hombres', 'masculino', 'masculina', 'chico', 'chicos', 'varon', 'varones', 'senor', 'senores'],
+  mujer: ['dama', 'damas', 'mujer', 'mujeres', 'femenino', 'femenina', 'chica', 'chicas', 'senora', 'senoras'],
+};
+const GENERO_DE = new Map(Object.entries(GENERO).flatMap(([g, ws]) => ws.map((w) => [w, g])));
+
+// raíz → alternativas que valen como la misma cosa en el catálogo. Las que
+// son TIPO DE PRENDA se juntan en un solo grupo cuando se nombra más de una:
+// "pantalones y cargos" es "uno u otro", no "los dos a la vez".
+const TIPOS = new Set(['pantalon', 'jean', 'cargo', 'camisa', 'chaqueta', 'blazer']);
+const SINONIMOS = [
+  [['pantalon', 'pantalone'], ['pantalon']],
+  [['jean', 'jeans', 'denim', 'mezclilla', 'blue jean'], ['jean', 'denim', 'cargo', 'recto']],
+  [['cargo'], ['cargo']],
+  [['camisa', 'camis', 'chemise'], ['camisa']],
+  [['chaqueta', 'chaquet', 'jacket', 'chamarra', 'campera'], ['chaquet', 'jacket']],
+  [['blazer', 'saco', 'americana'], ['blazer']],
+  [['negro', 'negr', 'black'], ['negr', 'black']],
+  [['blanco', 'blanc', 'white'], ['blanc', 'white']],
+  [['azul', 'blue', 'navy'], ['azul', 'blue', 'navy']],
+  [['rosa', 'rosad', 'pink', 'rose'], ['rosa', 'rose', 'pink', 'fucsia']],
+  [['vino', 'vinotinto', 'burdeo'], ['vino']],
+  [['beige', 'crema', 'arena'], ['beige']],
+  [['vestir', 'formal', 'gabardina'], ['vestir']],
+  [['recto', 'rect'], ['recto']],
+];
+
+/** "pantalones" → "pantalon"; "negras" → "negr"; "azul" → "azul". Mínimo 4 letras. */
+function raiz(w) {
+  let r = w;
+  if (r.length > 5 && r.endsWith('es')) r = r.slice(0, -2);
+  else if (r.length > 4 && r.endsWith('s')) r = r.slice(0, -1);
+  if (r.length > 4 && /[aeo]$/.test(r)) r = r.slice(0, -1);
+  return r;
+}
+
+/**
+ * La búsqueda del cliente, interpretada: el género que pidió (si lo dijo) y
+ * un grupo de alternativas por cada palabra que importa.
+ */
+function interpretarBusqueda(q) {
+  const palabras = fold(q).replace(/[^a-z0-9ñ/ ]/g, ' ').split(/\s+/).filter(Boolean);
+  let genero = null;
+  const grupos = [];
+  const tipos = [];
+  for (const w of palabras) {
+    if (PALABRAS_VACIAS.has(w)) continue;
+    if (GENERO_DE.has(w)) { genero = GENERO_DE.get(w); continue; }
+    const r = raiz(w);
+    const sin = SINONIMOS.find(([claves]) => claves.some((k) => w === k || r === k || r.startsWith(k) || k.startsWith(r)));
+    const alternativas = [w, r, ...(sin ? sin[1] : [])];
+    if (sin && TIPOS.has(sin[0][0])) tipos.push(...alternativas);
+    else grupos.push([...new Set(alternativas)]);
+  }
+  return { genero, tipo: tipos.length ? [...new Set(tipos)] : null, grupos };
+}
+
+/** Todo el texto de un producto donde se busca, ya plegado. */
+function textoDe(p) {
+  return fold([
+    p.name, p.category, p.gender,
+    ...(p.variants || []).map((v) => `${v.color || ''} ${v.size || ''} ${v.barcode || ''}`),
+  ].join(' '));
+}
+
+/**
  * Filtra el catálogo con los parámetros de la query.
  *
- * `q` hace match por TODOS los términos (AND) contra nombre, categoría,
- * género, color y código de barras: "camisa azul" no debe traer todas las
- * camisas.
+ * `q` pide TODAS sus palabras (cada una con sus variantes, ver arriba):
+ * "camisa azul" no debe traer todas las camisas. Pero si así no aparece
+ * NADA, se devuelve lo que cumple MÁS palabras: "camisas manga corta" trae
+ * las camisas aunque ningún nombre diga "manga corta". Un "no hay" tiene que
+ * ser porque no hay, no porque el cliente lo dijo con otras palabras.
  */
 function filterProducts(products, params) {
   const { id, barcode, q, category, gender, size } = params;
@@ -249,30 +351,43 @@ function filterProducts(products, params) {
     return products.filter((p) => (p.variants || []).some((v) => String(v.barcode || '').trim() === b));
   }
 
-  const terms = fold(q).split(/\s+/).filter(Boolean);
+  const { genero, tipo, grupos } = interpretarBusqueda(q);
   const wantCategory = fold(category);
-  const wantGender = fold(gender);
+  const wantGender = fold(gender) || genero || '';
   const wantSize = fold(size);
 
-  return products.filter((p) => {
+  const base = products.filter((p) => {
     if (wantCategory && fold(p.category) !== wantCategory) return false;
     if (wantGender && fold(p.gender) !== wantGender) return false;
-
     if (wantSize) {
       const sizes = (p.variants || []).map((v) => fold(sizeLabel(v.size)));
       if (!sizes.includes(wantSize)) return false;
     }
-
-    if (terms.length) {
-      const haystack = fold([
-        p.name, p.category, p.gender,
-        ...(p.variants || []).map((v) => `${v.color || ''} ${v.size || ''} ${v.barcode || ''}`),
-      ].join(' '));
-      if (!terms.every((t) => haystack.includes(t))) return false;
-    }
-
     return true;
   });
+
+  // El TIPO de prenda es obligatorio: si pidió una chaqueta negra y no hay,
+  // se le pueden ofrecer chaquetas de otro color, nunca una camisa negra.
+  const delTipo = tipo ? base.filter((p) => { const t = textoDe(p); return tipo.some((a) => t.includes(a)); }) : base;
+  if (!grupos.length) return delTipo;
+
+  const conPuntos = delTipo.map((p) => {
+    const texto = textoDe(p);
+    return { p, cumple: grupos.filter((alts) => alts.some((a) => texto.includes(a))).length };
+  });
+
+  const todas = conPuntos.filter((x) => x.cumple === grupos.length).map((x) => x.p);
+  if (todas.length) return todas;
+
+  // Nada cumple todo: lo que cumple MÁS, marcado como aproximado para que
+  // quien llama no lo presente como si fuera exactamente lo pedido. Con un
+  // tipo pedido, el tipo ya es un acierto: "chaqueta negra" sin negras trae
+  // las chaquetas que haya.
+  const mejor = Math.max(0, ...conPuntos.map((x) => x.cumple));
+  if (mejor === 0 && !tipo) return [];
+  const parecidos = conPuntos.filter((x) => x.cumple === mejor).map((x) => x.p);
+  parecidos.aproximado = true;
+  return parecidos;
 }
 
 /**
@@ -360,6 +475,7 @@ module.exports = {
   isPublic,
   fold,
   filterProducts,
+  interpretarBusqueda,
   rankByRelevance,
   param,
   intParam,
