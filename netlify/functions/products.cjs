@@ -18,10 +18,14 @@
  *   ?category=Camisas  filtro exacto de categoría
  *   ?gender=Hombre     filtro exacto de género
  *   ?size=M            solo productos que tengan esa talla
+ *   ?disponible=1      solo los que tienen STOCK (tienda o almacén). Con
+ *                      ?size=, stock EN ESA TALLA: es lo que usa el bot para
+ *                      mandar "las fotos de lo que hay en tu talla"
  *   ?limit=20          máximo 50 (por defecto 10)
  *   ?includeHidden=1   incluye los ocultos en la web (uso interno)
  *
  * Alias en español aceptados: ?talla= ?categoria= ?genero= ?codigo= ?buscar=
+ * ?enStock=
  *
  * Respuesta 200:
  *   { count, products: [...], text }
@@ -30,10 +34,24 @@
 const {
   json, HEADERS, requireApiKey, productUrl, sizeLabel, num, round2,
   offerPrice, loadCatalog, isPublic, filterProducts, rankByRelevance, param, intParam,
+  stockBreakdown, fold,
 } = require('../lib/api-common.cjs');
 
+/**
+ * Unidades disponibles (tienda + almacén) de un producto, en una talla o en
+ * todas. Mismo cálculo que `availability.cjs` (`stockBreakdown`): si las dos
+ * APIs contaran distinto, el bot mandaría la foto de algo que después dice
+ * que está agotado.
+ */
+function disponibles(product, size) {
+  const want = fold(size);
+  return (product.variants || [])
+    .filter((v) => !want || fold(sizeLabel(v.size)) === want)
+    .reduce((acc, v) => acc + stockBreakdown(v).available, 0);
+}
+
 /** Arma la ficha pública de un producto: identidad, URL, tallas y precios. */
-function shape(product) {
+function shape(product, stockSize) {
   const variants = (product.variants || []).map((v) => {
     const price = round2(num(v.price));
     const sale = offerPrice(product, price);
@@ -68,6 +86,10 @@ function shape(product) {
     colors,
     priceFrom: prices.length ? Math.min(...prices) : null,
     priceTo: prices.length ? Math.max(...prices) : null,
+    // Sólo cuando se pidió `disponible=1`: cuántas hay (en la talla pedida,
+    // o en total). Sin ese filtro no se calcula, y la ficha queda igual que
+    // siempre.
+    ...(stockSize !== undefined ? { available: disponibles(product, stockSize), availableSize: stockSize || null } : {}),
     offer: product.offer && num(product.offer.value) > 0
       ? { type: product.offer.type, value: num(product.offer.value) }
       : null,
@@ -76,8 +98,14 @@ function shape(product) {
 }
 
 /** Resumen en texto para que el bot lo mande sin tener que redactarlo. */
-function toText(products) {
-  if (!products.length) return 'No encontré ningún producto con esos datos.';
+function toText(products, disponible, size) {
+  if (!products.length) {
+    return disponible && size
+      ? `No hay productos con stock en talla ${size} para esa búsqueda.`
+      : disponible
+        ? 'No hay productos con stock para esa búsqueda.'
+        : 'No encontré ningún producto con esos datos.';
+  }
 
   return products.map((p) => {
     const precio = p.priceFrom === null ? 'precio no cargado'
@@ -90,7 +118,11 @@ function toText(products) {
       ? ` En oferta (${p.offer.type === 'percentage' ? `${p.offer.value}%` : `$${p.offer.value}`} de descuento).`
       : '';
 
-    return [`${p.name} — ${precio}.${oferta}`, tallas, colores, p.url]
+    const stock = p.available !== undefined
+      ? `Disponibles${p.availableSize ? ` en talla ${p.availableSize}` : ''}: ${p.available}.`
+      : '';
+
+    return [`${p.name} — ${precio}.${oferta}`, stock || tallas, colores, p.url]
       .filter(Boolean).join(' ');
   }).join('\n\n');
 }
@@ -114,12 +146,18 @@ exports.handler = async (event) => {
   const hasFilter = Object.values(filters).some(Boolean);
   const limit = intParam(event, ['limit', 'limite'], 10, 50);
   const includeHidden = param(event, 'includeHidden', 'incluirOcultos') === '1';
+  const disponible = param(event, 'disponible', 'enStock', 'inStock') === '1';
 
   try {
     const { products, hidden } = await loadCatalog();
 
     const visible = includeHidden ? products : products.filter((p) => isPublic(p, hidden));
-    const matched = hasFilter ? filterProducts(visible, filters) : visible;
+    const filtrados = hasFilter ? filterProducts(visible, filters) : visible;
+    // El stock filtra DESPUÉS de la búsqueda: `totalMatches` cuenta lo que
+    // de verdad se puede vender, que es lo que el bot le promete al cliente.
+    const matched = disponible
+      ? filtrados.filter((p) => disponibles(p, filters.size) > 0)
+      : filtrados;
 
     // Con búsqueda libre manda la relevancia (el match exacto primero); sin
     // ella, orden alfabético para que listar el catálogo sea predecible.
@@ -127,7 +165,7 @@ exports.handler = async (event) => {
       ? rankByRelevance(matched, filters.q)
       : [...matched].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
 
-    const page = ordered.slice(0, limit).map(shape);
+    const page = ordered.slice(0, limit).map((p) => shape(p, disponible ? filters.size : undefined));
 
     return json(200, {
       count: page.length,
@@ -135,10 +173,12 @@ exports.handler = async (event) => {
       // vale la pena pedir más o si ya tiene todo.
       totalMatches: matched.length,
       products: page,
-      text: toText(page),
+      text: toText(page, disponible, filters.size),
     }, {
-      // El catálogo (nombres, tallas, precios) cambia pocas veces al día.
-      'Cache-Control': 'public, max-age=60',
+      // El catálogo (nombres, tallas, precios) cambia pocas veces al día; el
+      // stock no, así que con `disponible` la caché es corta y privada, igual
+      // que en `availability.cjs`.
+      'Cache-Control': disponible ? 'private, max-age=15' : 'public, max-age=60',
     });
   } catch (err) {
     console.error('products error:', err);
