@@ -240,9 +240,12 @@ function fold(s) {
  * producto "PANTALON…" en singular; una chaqueta se llama "JACKET"; "negra"
  * es "negro" o "black"; "jean" son los "Cargo…" y los "Corte Recto". Con el
  * AND literal de antes, "pantalones y cargos jean denim de caballero" en
- * talla 34 daba CERO cuando había once con stock (2026-09-24).
+ * talla 34 daba CERO cuando había trece con stock (2026-09-24).
  *
- * Tres cosas, y ninguna adivina de más:
+ * Se busca en TODO lo que tiene un producto —nombre, categoría, género,
+ * descripción y, por variante, color, talla y código— para que nada quede
+ * afuera por estar escrito en un campo y no en otro.
+ *
  *   1. Palabras vacías fuera ("y", "de", "talla", "quiero"…).
  *   2. El género se reconoce ("caballero", "dama"…) y FILTRA por género en
  *      vez de buscarse como texto.
@@ -250,18 +253,23 @@ function fold(s) {
  *      sinónimos del catálogo y su raíz (sin plural ni vocal final: "negra"
  *      y "negros" encuentran "negro"). Un producto cumple la palabra si
  *      aparece CUALQUIERA de sus alternativas.
+ *   4. Errores de tipeo comunes no cuentan: se compara por cómo SUENA
+ *      ("camiza" = "camisa", "kargo" = "cargo", "blaser" = "blazer").
+ *   5. Los tipos de prenda son "uno u otro" y obligatorios; los colores se
+ *      miden contra la variante (ver `varianteDelColor`).
  *
  * Los sinónimos salen del vocabulario real del catálogo (nombres,
- * categorías y colores), no de un diccionario: si la tienda empieza a
- * nombrar distinto, esto es lo que hay que actualizar.
+ * categorías y los colores de las variantes), no de un diccionario: si la
+ * tienda empieza a nombrar distinto, esto es lo que hay que actualizar.
  */
 const PALABRAS_VACIAS = new Set([
   'y', 'o', 'u', 'e', 'de', 'del', 'la', 'las', 'el', 'los', 'lo', 'un', 'una', 'unos', 'unas',
-  'para', 'con', 'sin', 'en', 'a', 'al', 'por', 'que', 'mi', 'me', 'tu', 'su',
-  'talla', 'tallas', 'size', 'tipo', 'modelo', 'modelos', 'color', 'colores',
+  'para', 'con', 'sin', 'en', 'a', 'al', 'por', 'que', 'mi', 'me', 'tu', 'su', 'mas', 'muy',
+  'talla', 'tallas', 'size', 'tipo', 'modelo', 'modelos', 'color', 'colores', 'estilo',
   'quiero', 'busco', 'buscar', 'tienen', 'tienes', 'hay', 'tengan', 'disponible', 'disponibles',
   'ver', 'algun', 'alguna', 'algunos', 'algunas', 'otro', 'otra', 'otros', 'otras',
-  'ropa', 'prenda', 'prendas', 'articulo', 'articulos',
+  'ropa', 'prenda', 'prendas', 'articulo', 'articulos', 'bonito', 'bonita', 'lindo', 'linda',
+  'algo', 'cualquier', 'cualquiera', 'cosa', 'cosas', 'tambien', 'solo',
   // Descripciones que el catálogo no usa: todas las camisas son manga corta,
   // y buscar "corta" encontraría "Corte Recto".
   'manga', 'mangas', 'corta', 'cortas', 'corto', 'cortos', 'larga', 'largas', 'largo', 'largos',
@@ -273,25 +281,31 @@ const GENERO = {
 };
 const GENERO_DE = new Map(Object.entries(GENERO).flatMap(([g, ws]) => ws.map((w) => [w, g])));
 
-// raíz → alternativas que valen como la misma cosa en el catálogo. Las que
-// son TIPO DE PRENDA se juntan en un solo grupo cuando se nombra más de una:
-// "pantalones y cargos" es "uno u otro", no "los dos a la vez".
-const TIPOS = new Set(['pantalon', 'jean', 'cargo', 'camisa', 'chaqueta', 'blazer']);
+/**
+ * [cómo lo puede decir el cliente] → [cómo aparece en el catálogo], y qué es.
+ * `tipo`: prenda (obligatoria, varias = "uno u otro"). `color`: se mide
+ * contra la variante. `otro`: cualquier otra cosa.
+ */
 const SINONIMOS = [
-  [['pantalon', 'pantalone'], ['pantalon']],
-  [['jean', 'jeans', 'denim', 'mezclilla', 'blue jean'], ['jean', 'denim', 'cargo', 'recto']],
-  [['cargo'], ['cargo']],
-  [['camisa', 'camis', 'chemise'], ['camisa']],
-  [['chaqueta', 'chaquet', 'jacket', 'chamarra', 'campera'], ['chaquet', 'jacket']],
-  [['blazer', 'saco', 'americana'], ['blazer']],
-  [['negro', 'negr', 'black'], ['negr', 'black']],
-  [['blanco', 'blanc', 'white'], ['blanc', 'white']],
-  [['azul', 'blue', 'navy'], ['azul', 'blue', 'navy']],
-  [['rosa', 'rosad', 'pink', 'rose'], ['rosa', 'rose', 'pink', 'fucsia']],
-  [['vino', 'vinotinto', 'burdeo'], ['vino']],
-  [['beige', 'crema', 'arena'], ['beige']],
-  [['vestir', 'formal', 'gabardina'], ['vestir']],
-  [['recto', 'rect'], ['recto']],
+  { clase: 'tipo', claves: ['pantalon', 'pantalone', 'pantalo'], alts: ['pantalon'] },
+  { clase: 'tipo', claves: ['jean', 'jeans', 'denim', 'mezclilla', 'blue jean', 'blujin'], alts: ['jean', 'denim', 'cargo', 'recto'] },
+  { clase: 'tipo', claves: ['cargo'], alts: ['cargo'] },
+  { clase: 'tipo', claves: ['camisa', 'camis', 'chemise', 'chemis'], alts: ['camisa'] },
+  { clase: 'tipo', claves: ['chaqueta', 'chaquet', 'jacket', 'chamarra', 'campera', 'chaqueton'], alts: ['chaquet', 'jacket'] },
+  { clase: 'tipo', claves: ['blazer', 'saco', 'americana', 'blaser'], alts: ['blazer'] },
+  { clase: 'color', claves: ['negro', 'negr', 'black'], alts: ['negr', 'black'] },
+  { clase: 'color', claves: ['blanco', 'blanc', 'white'], alts: ['blanc', 'white'] },
+  { clase: 'color', claves: ['azul', 'blue', 'navy', 'king'], alts: ['azul', 'blue', 'navy'] },
+  { clase: 'color', claves: ['rosa', 'rosad', 'pink', 'rose'], alts: ['rosa', 'rose', 'pink', 'fucsia'] },
+  { clase: 'color', claves: ['fucsia', 'fuxia', 'fucsi'], alts: ['fucsia', 'pink'] },
+  { clase: 'color', claves: ['marron', 'brown', 'cafe', 'chocolate'], alts: ['marron', 'brown', 'cafe'] },
+  { clase: 'color', claves: ['beige', 'beig', 'crema', 'arena', 'nude', 'hueso'], alts: ['beige', 'crema'] },
+  { clase: 'color', claves: ['vino', 'vinotinto', 'burdeo', 'bordo', 'guinda'], alts: ['vino'] },
+  { clase: 'color', claves: ['verde', 'verd', 'green', 'oliva'], alts: ['verde', 'green'] },
+  { clase: 'color', claves: ['claro', 'clar'], alts: ['claro', 'hielo'] },
+  { clase: 'color', claves: ['oscuro', 'oscur'], alts: ['oscuro', 'navy'] },
+  { clase: 'otro', claves: ['vestir', 'formal', 'gabardina'], alts: ['vestir'] },
+  { clase: 'otro', claves: ['recto', 'rect'], alts: ['recto'] },
 ];
 
 /** "pantalones" → "pantalon"; "negras" → "negr"; "azul" → "azul". Mínimo 4 letras. */
@@ -304,8 +318,26 @@ function raiz(w) {
 }
 
 /**
- * La búsqueda del cliente, interpretada: el género que pidió (si lo dijo) y
- * un grupo de alternativas por cada palabra que importa.
+ * Cómo SUENA, para que un error de tipeo no deje a nadie sin respuesta:
+ * z/s, v/b, la h muda, ll/y, c/k/qu y las letras repetidas dan lo mismo.
+ * Se aplica igual al texto del producto y a lo que se busca.
+ */
+function sonido(s) {
+  return String(s)
+    .replace(/h/g, '')
+    .replace(/qu/g, 'k')
+    .replace(/c([aou])/g, 'k$1')
+    .replace(/c([ei])/g, 's$1')
+    .replace(/z/g, 's')
+    .replace(/v/g, 'b')
+    .replace(/ll/g, 'y')
+    .replace(/([a-z])\1+/g, '$1');
+}
+
+/**
+ * La búsqueda del cliente, interpretada: el género que pidió (si lo dijo),
+ * el tipo de prenda (alternativas unidas) y un grupo por cada otra palabra,
+ * marcando cuáles son colores.
  */
 function interpretarBusqueda(q) {
   const palabras = fold(q).replace(/[^a-z0-9ñ/ ]/g, ' ').split(/\s+/).filter(Boolean);
@@ -316,20 +348,53 @@ function interpretarBusqueda(q) {
     if (PALABRAS_VACIAS.has(w)) continue;
     if (GENERO_DE.has(w)) { genero = GENERO_DE.get(w); continue; }
     const r = raiz(w);
-    const sin = SINONIMOS.find(([claves]) => claves.some((k) => w === k || r === k || r.startsWith(k) || k.startsWith(r)));
-    const alternativas = [w, r, ...(sin ? sin[1] : [])];
-    if (sin && TIPOS.has(sin[0][0])) tipos.push(...alternativas);
-    else grupos.push([...new Set(alternativas)]);
+    const sin = SINONIMOS.find(({ claves }) => claves.some((k) => w === k || r === k || r.startsWith(k) || k.startsWith(r)))
+      // Si no coincide escrito, puede coincidir por cómo suena ("camiza").
+      || SINONIMOS.find(({ claves }) => claves.some((k) => sonido(w) === sonido(k) || sonido(r) === sonido(k)));
+    const alts = [...new Set([w, r, ...(sin ? sin.alts : [])].map(sonido))];
+    if (sin && sin.clase === 'tipo') tipos.push(...alts);
+    else grupos.push({ alts, color: Boolean(sin && sin.clase === 'color') });
   }
   return { genero, tipo: tipos.length ? [...new Set(tipos)] : null, grupos };
 }
 
-/** Todo el texto de un producto donde se busca, ya plegado. */
+/** Todo el texto de un producto donde se busca, ya plegado y "sonado". */
 function textoDe(p) {
-  return fold([
-    p.name, p.category, p.gender,
+  return sonido(fold([
+    p.name, p.category, p.gender, p.description,
     ...(p.variants || []).map((v) => `${v.color || ''} ${v.size || ''} ${v.barcode || ''}`),
-  ].join(' '));
+  ].join(' ')));
+}
+
+/**
+ * Qué ES el producto: nombre y categoría, nada más. El tipo de prenda se
+ * decide acá y no en `textoDe`, porque la descripción nombra OTRAS prendas
+ * ("ideal para combinar con pantalones de vestir") y un blazer terminaba
+ * saliendo cuando pedían pantalones.
+ */
+function queEs(p) {
+  return sonido(fold(`${p.name || ''} ${p.category || ''}`));
+}
+
+const cumpleGrupo = (texto, alts) => alts.some((a) => texto.includes(a));
+
+/**
+ * ¿Esta variante es del color pedido? `null` si no se pidió color o si el
+ * producto no tiene colores cargados en sus variantes (el color está en el
+ * nombre: "BLAZER NEGRO"), y entonces vale cualquier variante.
+ *
+ * Existe para el stock: "blazer negro talla M" tiene que contar las M
+ * NEGRAS, no las M de cualquier color — si no, se le ofrece al cliente un
+ * blazer que en su talla sólo queda en beige.
+ */
+function varianteDelColor(product, q) {
+  const colores = interpretarBusqueda(q).grupos.filter((g) => g.color);
+  if (!colores.length) return null;
+  const conColor = (product.variants || []).filter((v) => v.color);
+  if (!conColor.length) return null;
+  const cumple = (v) => colores.every((g) => cumpleGrupo(sonido(fold(v.color)), g.alts));
+  // Si ninguna variante tiene el color pedido, el color estaba en el nombre.
+  return conColor.some(cumple) ? cumple : null;
 }
 
 /**
@@ -337,9 +402,10 @@ function textoDe(p) {
  *
  * `q` pide TODAS sus palabras (cada una con sus variantes, ver arriba):
  * "camisa azul" no debe traer todas las camisas. Pero si así no aparece
- * NADA, se devuelve lo que cumple MÁS palabras: "camisas manga corta" trae
- * las camisas aunque ningún nombre diga "manga corta". Un "no hay" tiene que
- * ser porque no hay, no porque el cliente lo dijo con otras palabras.
+ * NADA, se devuelve lo que cumple MÁS palabras, del mismo tipo de prenda y
+ * marcado como aproximado: "camisas manga corta" trae las camisas aunque
+ * ningún nombre diga "manga corta". Un "no hay" tiene que ser porque no hay,
+ * no porque el cliente lo dijo con otras palabras.
  */
 function filterProducts(products, params) {
   const { id, barcode, q, category, gender, size } = params;
@@ -368,12 +434,12 @@ function filterProducts(products, params) {
 
   // El TIPO de prenda es obligatorio: si pidió una chaqueta negra y no hay,
   // se le pueden ofrecer chaquetas de otro color, nunca una camisa negra.
-  const delTipo = tipo ? base.filter((p) => { const t = textoDe(p); return tipo.some((a) => t.includes(a)); }) : base;
+  const delTipo = tipo ? base.filter((p) => cumpleGrupo(queEs(p), tipo)) : base;
   if (!grupos.length) return delTipo;
 
   const conPuntos = delTipo.map((p) => {
     const texto = textoDe(p);
-    return { p, cumple: grupos.filter((alts) => alts.some((a) => texto.includes(a))).length };
+    return { p, cumple: grupos.filter((g) => cumpleGrupo(texto, g.alts)).length };
   });
 
   const todas = conPuntos.filter((x) => x.cumple === grupos.length).map((x) => x.p);
@@ -476,6 +542,7 @@ module.exports = {
   fold,
   filterProducts,
   interpretarBusqueda,
+  varianteDelColor,
   rankByRelevance,
   param,
   intParam,

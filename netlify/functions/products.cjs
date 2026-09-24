@@ -34,7 +34,7 @@
 const {
   json, HEADERS, requireApiKey, productUrl, sizeLabel, num, round2,
   offerPrice, loadCatalog, isPublic, filterProducts, rankByRelevance, param, intParam,
-  stockBreakdown, fold,
+  stockBreakdown, fold, varianteDelColor,
 } = require('../lib/api-common.cjs');
 
 /**
@@ -43,15 +43,33 @@ const {
  * APIs contaran distinto, el bot mandaría la foto de algo que después dice
  * que está agotado.
  */
-function disponibles(product, size) {
+function disponibles(product, size, q) {
+  return variantesPedidas(product, size, q).reduce((acc, v) => acc + stockBreakdown(v).available, 0);
+}
+
+/**
+ * Las variantes que cuentan para lo que se pidió: esa talla y, si pidió un
+ * color que las variantes tienen, ese color. "blazer negro M" cuenta las M
+ * negras; si en M sólo queda beige, ese blazer no tiene stock para él.
+ */
+function variantesPedidas(product, size, q) {
   const want = fold(size);
+  const delColor = varianteDelColor(product, q);
   return (product.variants || [])
     .filter((v) => !want || fold(sizeLabel(v.size)) === want)
-    .reduce((acc, v) => acc + stockBreakdown(v).available, 0);
+    .filter((v) => !delColor || delColor(v));
+}
+
+/** Los colores que QUEDAN en esa talla: para que el bot diga "hay en negro y beige". */
+function coloresConStock(product, size) {
+  const want = fold(size);
+  return [...new Set((product.variants || [])
+    .filter((v) => (!want || fold(sizeLabel(v.size)) === want) && v.color && stockBreakdown(v).available > 0)
+    .map((v) => v.color))];
 }
 
 /** Arma la ficha pública de un producto: identidad, URL, tallas y precios. */
-function shape(product, stockSize) {
+function shape(product, stockSize, q) {
   const variants = (product.variants || []).map((v) => {
     const price = round2(num(v.price));
     const sale = offerPrice(product, price);
@@ -89,7 +107,11 @@ function shape(product, stockSize) {
     // Sólo cuando se pidió `disponible=1`: cuántas hay (en la talla pedida,
     // o en total). Sin ese filtro no se calcula, y la ficha queda igual que
     // siempre.
-    ...(stockSize !== undefined ? { available: disponibles(product, stockSize), availableSize: stockSize || null } : {}),
+    ...(stockSize !== undefined ? {
+      available: disponibles(product, stockSize, q),
+      availableSize: stockSize || null,
+      colorsInStock: coloresConStock(product, stockSize),
+    } : {}),
     offer: product.offer && num(product.offer.value) > 0
       ? { type: product.offer.type, value: num(product.offer.value) }
       : null,
@@ -117,6 +139,7 @@ function compacta(p) {
     ...(p.offer ? { offer: p.offer } : {}),
     available: p.available,
     availableSize: p.availableSize,
+    ...(p.colorsInStock && p.colorsInStock.length ? { colorsInStock: p.colorsInStock } : {}),
   };
 }
 
@@ -179,7 +202,7 @@ exports.handler = async (event) => {
     // El stock filtra DESPUÉS de la búsqueda: `totalMatches` cuenta lo que
     // de verdad se puede vender, que es lo que el bot le promete al cliente.
     const matched = disponible
-      ? filtrados.filter((p) => disponibles(p, filters.size) > 0)
+      ? filtrados.filter((p) => disponibles(p, filters.size, filters.q) > 0)
       : filtrados;
     // No había exactamente lo pedido (ej. "chaqueta negra" sin negras): son
     // los más parecidos, y el bot tiene que decirlo así.
@@ -191,7 +214,7 @@ exports.handler = async (event) => {
       ? rankByRelevance(matched, filters.q)
       : [...matched].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
 
-    const page = ordered.slice(0, limit).map((p) => shape(p, disponible ? filters.size : undefined));
+    const page = ordered.slice(0, limit).map((p) => shape(p, disponible ? filters.size : undefined, filters.q));
 
     return json(200, {
       count: page.length,
