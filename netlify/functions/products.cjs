@@ -22,6 +22,9 @@
  *                      ?size=, stock EN ESA TALLA: es lo que usa el bot para
  *                      mandar "las fotos de lo que hay en tu talla"
  *   ?limit=20          máximo 50 (por defecto 10)
+ *   ?pagina=2          los siguientes `limit` (1 = los primeros). Es lo que
+ *                      usa el bot cuando el cliente pide "muéstrame más": sin
+ *                      esto repetía siempre los mismos seis
  *   ?includeHidden=1   incluye los ocultos en la web (uso interno)
  *
  * Alias en español aceptados: ?talla= ?categoria= ?genero= ?codigo= ?buscar=
@@ -191,6 +194,7 @@ exports.handler = async (event) => {
 
   const hasFilter = Object.values(filters).some(Boolean);
   const limit = intParam(event, ['limit', 'limite'], 10, 50);
+  const pagina = intParam(event, ['pagina', 'page'], 1, 1000);
   const includeHidden = param(event, 'includeHidden', 'incluirOcultos') === '1';
   const disponible = param(event, 'disponible', 'enStock', 'inStock') === '1';
 
@@ -214,13 +218,18 @@ exports.handler = async (event) => {
       ? rankByRelevance(matched, filters.q)
       : [...matched].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
 
-    const page = ordered.slice(0, limit).map((p) => shape(p, disponible ? filters.size : undefined, filters.q));
+    const desde = (pagina - 1) * limit;
+    const page = ordered.slice(desde, desde + limit).map((p) => shape(p, disponible ? filters.size : undefined, filters.q));
+    // Cuántos quedan DESPUÉS de esta página: el bot sabe si ofrecer "más".
+    const quedan = Math.max(0, matched.length - (desde + page.length));
 
     return json(200, {
       count: page.length,
       // Cuántos había en total antes de cortar por `limit`: le dice al bot si
       // vale la pena pedir más o si ya tiene todo.
       totalMatches: matched.length,
+      pagina,
+      quedan,
       ...(aproximado ? {
         aproximado: true,
         aviso: 'No hay exactamente lo que pidió: estos son los más parecidos (por ejemplo, la misma prenda en otro color). Decíselo así al cliente.',
