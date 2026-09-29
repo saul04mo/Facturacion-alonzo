@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload, Send, Trash2, Loader2, CheckCircle, CheckCheck, AlertTriangle, Clock,
-  QrCode, ScanText, UserCheck, UserX, X as XIcon, Eye, RotateCcw, History,
+  QrCode, ScanText, Sparkles, UserCheck, UserX, X as XIcon, Eye, RotateCcw, History,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { useToast } from '@/components/Toast';
@@ -331,7 +331,6 @@ function QueueRow({ row: r, clients, alreadySent, disabled, onEdit, onPatch, onR
   const locked = busy || r.state === 'sent' || disabled;
   const phone = phoneFor(r);
   const phoneOk = !!toWhatsappNumber(phone);
-  const fromQr = r.read?.codes.length && !r.read.rawText;
   const input = 'input-field text-xs py-1 px-2';
 
   return (
@@ -362,7 +361,9 @@ function QueueRow({ row: r, clients, alreadySent, disabled, onEdit, onPatch, onR
             onChange={(e) => onEdit({ tracking: e.target.value.replace(/\s/g, '') })} />
           {r.read && (
             <p className="text-[10px] text-navy-400 flex items-center gap-1">
-              {fromQr ? <><QrCode size={10} /> leído del QR</> : <><ScanText size={10} /> leído por OCR — revisa</>}
+              {r.read.source === 'qr' ? <><QrCode size={10} /> leído del QR</>
+                : r.read.source === 'ia' ? <><Sparkles size={10} /> leído con IA</>
+                : <span title={r.read.aiError ? `IA no disponible: ${r.read.aiError}` : undefined}><ScanText size={10} className="inline" /> leído por OCR — revisa</span>}
             </p>
           )}
         </td>

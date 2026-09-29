@@ -13,6 +13,7 @@ import { normalizeClient, type Client } from '@/types';
 import { CARRIER_LABELS, type Carrier, type GuideData } from './guideParser';
 
 const ENDPOINT = '/.netlify/functions/whatsapp-send';
+const AI_ENDPOINT = '/.netlify/functions/guide-read';
 export const NOTIFICATIONS = 'shipmentNotifications';
 
 export type NotificationStatus = 'sent' | 'delivered' | 'read' | 'failed';
@@ -151,6 +152,32 @@ export interface SendPayload {
 }
 
 export class AlreadySentError extends Error {}
+
+/** Lo que devuelve la IA (guide-read). Campos vacíos = no se leyó. */
+export interface AiGuide {
+  carrier: Carrier;
+  tracking: string;
+  name: string;
+  cedula: string;
+  phone: string;
+  destination: string;
+}
+
+/** Lee la foto con Claude. Lanza si la función no está o no está configurada. */
+export async function readGuideWithAi(imageBase64: string, codes: string[]): Promise<AiGuide> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sesión vencida.');
+  const res = await fetch(AI_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ imageBase64, codes }),
+  });
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) throw new Error('La función de IA no respondió.');
+  const j = await res.json();
+  if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
+  return j.data;
+}
 
 export async function sendGuide(p: SendPayload): Promise<{ wamid: string }> {
   const user = auth.currentUser;

@@ -47,6 +47,8 @@ Site configuration → Environment variables:
 | `WHATSAPP_VERIFY_TOKEN`    | un texto cualquiera que inventes (para el webhook) |
 | `WHATSAPP_APP_SECRET`      | App de Meta → Configuración → Básica → *Clave secreta* (valida la firma del webhook) |
 
+| `ANTHROPIC_API_KEY`        | console.anthropic.com → API Keys. La usa `guide-read` para leer las fotos con IA |
+
 `FIREBASE_SERVICE_ACCOUNT` ya existe (la usan las otras funciones).
 
 ## 3. Webhook (entregado / leído / falló)
@@ -64,12 +66,14 @@ reglas de Firestore van aparte: `firebase deploy --only firestore:rules`.
 
 ## Cómo lee las guías
 
-Todo en el navegador, sin costo por foto:
+1. **Códigos** (zxing-wasm, en el navegador, gratis):
+   - **MRW**: el QR trae guía, destinatario, teléfono y cédula → listo, no se usa IA.
+   - **Zoom**: DataMatrix/barras traen solo la guía (exacta).
+   - **Tealca**: barras traen la guía (`6001102·84873145·001·BCL·001·000850`).
+2. **IA** (función `guide-read`, Claude Opus 5.5): lee nombre, cédula, teléfono y destino
+   de la foto. ~1–2 centavos de dólar por foto. La guía de los códigos manda sobre la de la IA.
+3. **OCR** (Tesseract, en el navegador) solo si la IA no está configurada o falla.
 
-- **MRW**: el QR trae guía, destinatario, teléfono y cédula separados por `;` → exacto.
-- **Zoom**: el DataMatrix es un código interno (no sirve); se lee el texto con OCR.
-- **Tealca**: el código de barras trae la guía (`6001102·84873145·001·BCL·001·000850`);
-  el nombre sale por OCR y en fotos de impresión térmica gris suele fallar → completar a mano.
-
-Después se cruza con Clientes por cédula → teléfono → nombre (2+ palabras). Se envía al
-teléfono **registrado** del cliente si lo tiene; si no, al de la guía.
+Después se cruza con Clientes (se cargan todos) por cédula → teléfono → nombre; una cédula
+con un dígito distinto vale si coincide el nombre. Se envía al teléfono **registrado** del
+cliente si lo tiene; si no, al de la guía.

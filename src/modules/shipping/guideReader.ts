@@ -7,7 +7,9 @@
  *        MRW     QR con todo: guía, destinatario, teléfono y cédula.
  *        Zoom    DataMatrix y barras con la guía (sin nombre ni teléfono).
  *        Tealca  barras con la guía.
- *   2. Si el código no trae al destinatario, OCR con Tesseract (español).
+ *   2. Si el código no trae al destinatario, se le pasa la foto a Claude
+ *      (función guide-read): lee bien fotos oscuras, torcidas o térmicas.
+ *   3. Si la IA no está o falla, OCR con Tesseract (español) como respaldo.
  *      Antes se RECORTA la etiqueta (el blanco sobre el paquete oscuro) y se
  *      agranda ~3.5×: WhatsApp manda 720×1280 y con letras de 12px Tesseract
  *      no lee nada; recortada y agrandada, lee nombre y cédula.
@@ -21,6 +23,7 @@ import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader';
 import zxingWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import { createWorker, type Worker } from 'tesseract.js';
 import { parseGuide, parseMrwQr, type GuideData } from './guideParser';
+import { readGuideWithAi, type AiGuide } from './shippingService';
 
 // El .wasm se sirve desde el propio sitio, no desde el CDN por defecto.
 prepareZXingModule({
@@ -185,7 +188,28 @@ async function decodeCodes(c: HTMLCanvasElement): Promise<string[]> {
   }
 }
 
+/** Datos de la IA, con la guía de los códigos por encima (es exacta). */
+function fromAi(ai: AiGuide, codes: string[]): GuideData {
+  const code = parseGuide('', codes);
+  const digits = (s: string) => (s || '').replace(/\D/g, '');
+  const data: GuideData = {
+    carrier: code.carrier !== 'OTRO' ? code.carrier : ai.carrier,
+    tracking: code.tracking || digits(ai.tracking),
+    name: (ai.name || '').trim().toUpperCase(),
+    cedula: digits(ai.cedula),
+    phone: digits(ai.phone),
+    destination: (ai.destination || '').trim(),
+    score: 0,
+  };
+  data.score = (data.tracking ? 2 : 0) + (data.name ? 2 : 0) + (data.cedula ? 1 : 0) + (data.phone ? 1 : 0);
+  return data;
+}
+
 export interface ReadResult extends GuideData {
+  /** De dónde salieron los datos, para que la tabla diga qué revisar. */
+  source: 'qr' | 'ia' | 'ocr';
+  /** Si la IA falló, por qué (se muestra junto a la fila). */
+  aiError?: string;
   codes: string[];
   rawText: string;
   /** JPEG listo para mandar por WhatsApp (base64 sin el prefijo data:). */
@@ -217,10 +241,20 @@ export async function readGuide(
   }
 
   if (codes.some((c) => parseMrwQr(c))) {
-    return { ...parseGuide('', codes), codes, rawText: '', imageBase64, previewUrl };
+    return { ...parseGuide('', codes), source: 'qr', codes, rawText: '', imageBase64, previewUrl };
   }
 
-  // ── Texto ──
+  // ── IA ──
+  onStep?.('Leyendo con IA…');
+  let aiError: string | undefined;
+  try {
+    const data = fromAi(await readGuideWithAi(imageBase64, codes), codes);
+    return { ...data, source: 'ia', codes, rawText: '', imageBase64, previewUrl };
+  } catch (e) {
+    aiError = (e as Error).message;
+  }
+
+  // ── Texto (respaldo) ──
   onStep?.('Leyendo el texto…');
   const worker = await getWorker();
   let best: { data: GuideData; text: string } | null = null;
@@ -233,5 +267,5 @@ export async function readGuide(
     if (parsed.score >= 6) break;
   }
 
-  return { ...best!.data, codes, rawText: best!.text, imageBase64, previewUrl };
+  return { ...best!.data, source: 'ocr', aiError, codes, rawText: best!.text, imageBase64, previewUrl };
 }
