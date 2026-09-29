@@ -256,6 +256,17 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════
+    // 15. COMPROBANTES DE ENVÍO POR WHATSAPP
+    // ════════════════════════════════════════
+    // Los escriben SOLO las funciones whatsapp-send y whatsapp-webhook (con
+    // firebase-admin, que no pasa por estas reglas). Desde el POS es lectura:
+    // nadie puede marcar como "leído" un mensaje que no salió.
+    match /shipmentNotifications/{id} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    // ════════════════════════════════════════
     // DENY EVERYTHING ELSE
     // ════════════════════════════════════════
     match /{document=**} {

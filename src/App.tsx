@@ -26,6 +26,7 @@ const PaymentsPage = lazy(() => import('@/modules/payments/PaymentsPage').then((
 const AnalyticsPage = lazy(() => import('@/modules/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const CashRegisterPage = lazy(() => import('@/modules/cash/CashRegisterPage').then((m) => ({ default: m.CashRegisterPage })));
 const RatesPage = lazy(() => import('@/modules/rates/RatesPage').then((m) => ({ default: m.RatesPage })));
+const EnviosPage = lazy(() => import('@/modules/shipping/EnviosPage').then((m) => ({ default: m.EnviosPage })));
 const CourierPage = lazy(() => import('@/modules/delivery/CourierPage').then((m) => ({ default: m.CourierPage })));
 const ClientRegistrationPage = lazy(() => import('@/modules/public/ClientRegistrationPage').then((m) => ({ default: m.ClientRegistrationPage })));
 
@@ -68,6 +69,7 @@ export function App() {
               <Route path={ROUTES.ANALYTICS} element={<AnalyticsPage />} />
               <Route path={ROUTES.CASH} element={<CashRegisterPage />} />
               <Route path={ROUTES.RATES} element={<RatesPage />} />
+              <Route path={ROUTES.SHIPPING} element={<EnviosPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to={ROUTES.INVOICES} replace />} />

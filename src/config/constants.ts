@@ -19,6 +19,7 @@ export const ROUTES = {
   CASH: '/caja',
   ANALYTICS: '/trafico-web',
   RATES: '/tasas',
+  SHIPPING: '/envios',
   // Vista del repartidor. Va fuera del Layout: sin sidebar, pensada para
   // usarse con una mano en la puerta del cliente.
   COURIER: '/entregas',
@@ -57,6 +58,7 @@ export const ALL_PERMISSIONS = {
   canAccessPagos: 'Acceder a Pagos Banesco',
   canAccessCaja: 'Acceder a Conteo de Efectivo',
   canConfirmHandoff: 'Confirmar Entregas en Ruta',
+  canAccessEnvios: 'Enviar Comprobantes de Envío por WhatsApp',
 } as const;
 
 export type PermissionKey = keyof typeof ALL_PERMISSIONS;
@@ -77,6 +79,8 @@ export const DEFAULT_PERMISSIONS: Record<string, Record<PermissionKey, boolean>>
     // Arranca cerrado para vendedores: se habilita por usuario si hace falta.
     canAccessCaja: false,
     canConfirmHandoff: false,
+    // Manda mensajes a nombre de la tienda: se abre a propósito por usuario.
+    canAccessEnvios: false,
   },
   /**
    * Repartidor. Arranca con TODO apagado salvo su propia vista: no tiene por
