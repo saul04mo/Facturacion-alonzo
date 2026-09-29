@@ -28,7 +28,7 @@ guia_enviada**. Hoy: `pedido_en_camino_guia` con `{{1}}`=nombre, `{{2}}`=empresa
 | Variable                  | Valor |
 |---------------------------|-------|
 | `DISMONCATECH_API_KEY`    | la llave de API del bot de Alonzo en Dismoncatech (`dmt_…`), **ya cargada** |
-| `DISMONCATECH_API_URL`    | opcional, por defecto la de producción |
+| `DISMONCATECH_API_URL`    | opcional, por defecto `https://api.dismoncatech.com/functions/v1/enviar-plantilla` |
 | `DISMONCATECH_AVISO`      | opcional, por defecto `guia_enviada` |
 
 `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` y

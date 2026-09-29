@@ -32,7 +32,7 @@
  */
 const admin = require('firebase-admin');
 
-const API_POR_DEFECTO = 'https://movqwllrkcexhbruvlxh.supabase.co/functions/v1/enviar-plantilla';
+const API_POR_DEFECTO = 'https://api.dismoncatech.com/functions/v1/enviar-plantilla';
 const COLLECTION = 'shipmentNotifications';
 
 function getAdmin() {
