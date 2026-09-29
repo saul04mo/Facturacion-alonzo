@@ -12,7 +12,8 @@ import type { Client } from '@/types';
 import { CARRIER_LABELS, type Carrier } from './guideParser';
 import { readGuide, releaseReader, type ReadResult } from './guideReader';
 import {
-  AlreadySentError, listenNotifications, matchClient, notificationKey, searchClients, sendGuide,
+  AlreadySentError, findClientByCedula, listenNotifications, matchClient, notificationKey, resolveClient,
+  searchClients, sendGuide,
   type ClientMatch, type NotificationStatus, type ShipmentNotification,
 } from './shippingService';
 
@@ -102,6 +103,16 @@ function EnviosPanel() {
       if (touchesMatch && r.match?.by !== 'manual') next.match = matchClient(next, clientsRef.current);
       return next;
     }));
+    // Cédula escrita a mano que no está en memoria: se busca en Firestore.
+    const ced = p.cedula;
+    if (ced && ced.length >= 7) {
+      void findClientByCedula(ced).then((m) => {
+        if (!m) return;
+        setRows((rs) => rs.map((r) => (
+          r.id === id && r.cedula === ced && r.match?.by !== 'manual' && !r.match ? { ...r, match: m } : r
+        )));
+      });
+    }
   }
 
   function addFiles(files: FileList | File[]) {
@@ -127,7 +138,8 @@ function EnviosPanel() {
         patch(next.id, { state: 'reading', step: 'Abriendo foto…' });
         try {
           const read = await readGuide(next.file, (step) => patch(next.id, { step }));
-          const match = matchClient(read, clientsRef.current);
+          patch(next.id, { step: 'Buscando al cliente…' });
+          const match = await resolveClient(read, clientsRef.current);
           const dup = read.tracking && sentKeysRef.current.has(notificationKey(read.carrier, read.tracking));
           const ok = read.tracking && (read.name || match);
           patch(next.id, {

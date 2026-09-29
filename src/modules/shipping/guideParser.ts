@@ -122,10 +122,14 @@ function parseZoom(text: string): Partial<GuideData> {
   const dest = text.match(/DESTINATARI[O0]\s*[:.]?\s*([^\n]+(?:\n[^\n]+)?)/i);
   if (dest) {
     const line = dest[1];
-    const ced = line.match(CEDULA_RE);
     const cut = line.search(/[(]|\b[VE]\s*[-–]\s*\d/i);
     out.name = cleanName(cut > 0 ? line.slice(0, cut) : line);
+    const ced = line.match(CEDULA_RE);
+    // El OCR a veces cambia la V por Y o \/ o pierde el guion: "(Y~14339685)".
+    // Entre paréntesis y con 7-8 dígitos no hay otra cosa que pueda ser.
+    const loose = line.match(/\(\D{0,3}(\d{7,8})\D?\)/);
     if (ced) out.cedula = digitsOnly(ced[2]);
+    else if (loose) out.cedula = loose[1];
     const tel = line.match(/Te[l1I]\s*[.:]?\s*([0-9OoIl .—–-]{9,16})/i);
     out.phone = findPhone(tel ? digitsOnly(tel[1]) : line);
   }

@@ -6,10 +6,10 @@
  * función al mandar y el webhook al llegar los estados. Desde el POS es de
  * solo lectura, así un vendedor no puede marcar como "leído" algo que no salió.
  */
-import { collection, limit, onSnapshot, orderBy, query, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, limit, onSnapshot, orderBy, query, where, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
 import { toWhatsappNumber } from '@/utils/phoneUtils';
-import type { Client } from '@/types';
+import { normalizeClient, type Client } from '@/types';
 import { CARRIER_LABELS, type Carrier, type GuideData } from './guideParser';
 
 const ENDPOINT = '/.netlify/functions/whatsapp-send';
@@ -90,6 +90,40 @@ export function matchClient(g: Pick<GuideData, 'cedula' | 'phone' | 'name'>, cli
     if (best) return { client: best, by: 'nombre' };
   }
   return null;
+}
+
+/**
+ * Busca por cédula directo en Firestore. La lista de clientes en memoria puede
+ * no tenerlos a todos (hay más de 5.000), así que no alcanza con matchClient.
+ * La cédula se guarda de varias formas: 29838797, V-29838797, V29838797…
+ */
+export async function findClientByCedula(cedula: string): Promise<ClientMatch | null> {
+  const d = cedula.replace(/\D/g, '');
+  if (d.length < 6) return null;
+  const dotted = d.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const variants = [...new Set([
+    d, `V-${d}`, `V${d}`, `V ${d}`, `E-${d}`, `E${d}`, `v-${d}`, `${d} `,
+    dotted, `V-${dotted}`, `V${dotted}`,
+  ])];
+  for (const field of ['rif_ci', 'cedula']) {
+    try {
+      const snap = await getDocs(query(collection(db, 'clients'), where(field, 'in', variants), limit(1)));
+      if (!snap.empty) {
+        const doc = snap.docs[0];
+        return { client: normalizeClient({ id: doc.id, ...doc.data() }), by: 'cédula' };
+      }
+    } catch { /* sin conexión o sin permiso: queda sin cliente, se elige a mano */ }
+  }
+  return null;
+}
+
+/** Primero en memoria (instantáneo); si no aparece, por cédula en Firestore. */
+export async function resolveClient(
+  g: Pick<GuideData, 'cedula' | 'phone' | 'name'>, clients: Client[],
+): Promise<ClientMatch | null> {
+  const local = matchClient(g, clients);
+  if (local && local.by !== 'nombre') return local;
+  return (await findClientByCedula(g.cedula)) || local;
 }
 
 /** Búsqueda libre para elegir el cliente a mano. */
