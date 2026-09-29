@@ -12,7 +12,7 @@ import type { Client } from '@/types';
 import { CARRIER_LABELS, type Carrier } from './guideParser';
 import { readGuide, releaseReader, type ReadResult } from './guideReader';
 import {
-  AlreadySentError, getAiSettings, listenNotifications, loadAllClients, matchClient, notificationKey,
+  AlreadySentError, getAiSettings, isConfidentMatch, listenNotifications, loadAllClients, matchClient, notificationKey,
   saveAiSettings, searchClients, sendGuide,
   type AiProvider, type AiSettings, type ClientMatch, type NotificationStatus, type ShipmentNotification,
 } from './shippingService';
@@ -220,9 +220,12 @@ function EnviosPanel({ isAdmin }: { isAdmin: boolean }) {
         if (!next) break;
         patch(next.id, { state: 'reading', step: 'Abriendo foto…' });
         try {
-          const read = await readGuide(next.file, (step) => patch(next.id, { step }));
+          const all = await clientsReady();
+          const read = await readGuide(next.file, (step) => patch(next.id, { step }), {
+            acceptOcr: (d) => isConfidentMatch(d, all),
+          });
           patch(next.id, { step: 'Buscando al cliente…' });
-          const match = matchClient(read, await clientsReady());
+          const match = matchClient(read, all);
           const dup = read.tracking && sentKeysRef.current.has(notificationKey(read.carrier, read.tracking));
           const ok = read.tracking && (read.name || match);
           patch(next.id, {
@@ -453,7 +456,9 @@ function QueueRow({ row: r, clients, alreadySent, disabled, onEdit, onPatch, onR
             <p className="text-[10px] text-navy-400 flex items-center gap-1">
               {r.read.source === 'qr' ? <><QrCode size={10} /> leído del QR</>
                 : r.read.source === 'ia' ? <><Sparkles size={10} /> leído con IA</>
-                : <span title={r.read.aiError ? `IA no disponible: ${r.read.aiError}` : undefined}><ScanText size={10} className="inline" /> leído por OCR — revisa</span>}
+                : r.read.aiError
+                  ? <span title={`IA no disponible: ${r.read.aiError}`}><ScanText size={10} className="inline" /> leído por OCR (IA falló) — revisa</span>
+                  : <><ScanText size={10} /> código + OCR, sin IA</>}
             </p>
           )}
         </td>

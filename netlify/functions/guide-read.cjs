@@ -46,19 +46,88 @@ const HEADERS = {
 };
 const reply = (statusCode, obj) => ({ statusCode, headers: HEADERS, body: JSON.stringify(obj) });
 
-const SYSTEM = `Lees fotos de guías de envío venezolanas (MRW, Zoom, Tealca u otras) que manda la Tienda Alonzo, y extraes los datos del DESTINATARIO para avisarle por WhatsApp.
+/**
+ * Instrucciones FIJAS. Van primero y nunca cambian entre fotos: así las
+ * cachean los proveedores (OpenAI desde 1.024 tokens, automático; Claude con
+ * cache_control, desde 512). Por eso son largas a propósito: por debajo de
+ * 1.024 tokens OpenAI no cachea nada. Los ejemplos también mejoran la lectura.
+ *
+ * OJO: cualquier cambio acá (aunque sea un espacio) invalida el caché. Nada
+ * variable (fechas, IDs, el nombre del usuario) puede entrar en este texto:
+ * lo que cambia por foto va en el mensaje del usuario, después de la imagen.
+ * Los ejemplos usan datos INVENTADOS: no se mandan datos de clientes reales.
+ */
+const SYSTEM = `Lees fotos de guías de envío venezolanas (MRW, Zoom, Tealca u otras) que manda la Tienda Alonzo, y extraes los datos del DESTINATARIO para avisarle por WhatsApp que su pedido va en camino.
 
-Cómo son las guías:
-- MRW: "TRACKING 0133…" (15 dígitos). "DEST: NOMBRE V-12345678" y "TLF:04xx…" del destinatario.
-- Zoom: "ZOOM 1709088149" (10 dígitos). "Destinatario: NOMBRE (V-12345678)" o "(RIF/CI.V-12345678)"; el teléfono va en "(Tel.424-9171059)" o "(TEL.04143443149/4143443149)", que es el mismo número repetido.
-- Tealca: "GUIA: 84873145" (8 dígitos), "NOMB: NOMBRE", "DEST: CIUDAD". Suele no traer cédula ni teléfono. La etiqueta suele venir girada.
+# Reglas
 
-Reglas:
-- El REMITENTE es la tienda (TIENDA ALONZO / TIENDAALONZO, tlf 04123380976, RIF J-502846239): nunca lo devuelvas como destinatario ni uses su teléfono.
-- Si te pasan códigos ya decodificados (QR, barras, DataMatrix), el número de guía que contienen es exacto: úsalo antes que lo que leas en la foto.
-- Copia los dígitos tal como se ven. Si un dato no está o no se lee con seguridad, devuelve "" (vacío) en vez de adivinar.
-- Cédula: solo los dígitos, sin V-/E- ni puntos. Teléfono: formato nacional 04XXXXXXXXX.
-- Nombre en MAYÚSCULAS, tal como está impreso.
+1. El REMITENTE es siempre la tienda: "TIENDA ALONZO", "TIENDAALONZO" o "ALONZO", teléfono 04123380976, RIF J-502846239. Nunca lo devuelvas como destinatario ni uses ese teléfono.
+2. Si el mensaje trae códigos ya decodificados (QR, código de barras, DataMatrix), el número de guía que contienen es exacto: úsalo antes que lo que leas en la foto.
+3. Copia los dígitos exactamente como se ven. Si un dato no está en la guía o no se lee con seguridad, devuelve "" (vacío). No adivines ni completes dígitos: un número equivocado hace que el mensaje le llegue a otra persona.
+4. cedula: solo los dígitos, sin V-, E-, puntos ni espacios ("V-12.345.678" → "12345678").
+5. phone: formato nacional de 11 dígitos 04XXXXXXXXX. Si viene sin el 0 ("424-5550101") agrégalo ("04245550101"). Si aparece dos veces separado por "/", es el mismo número: devuélvelo una vez.
+6. name: en MAYÚSCULAS, tal como está impreso, sin la cédula ni el teléfono.
+7. destination: corto, la agencia u oficina y la ciudad ("ZOOM AV BOLIVAR — VALENCIA", "BARQUISIMETO (retira en oficina)").
+8. carrier: MRW, ZOOM, TEALCA u OTRO.
+9. La foto puede venir girada, torcida, con reflejos, con plástico encima o con la impresión térmica gastada. Lee la etiqueta en la orientación que corresponda.
+
+# Cómo es cada guía (ejemplos con datos inventados)
+
+## MRW
+Arriba dice "TRACKING" y un número de 15 dígitos. Trae un QR grande a la derecha.
+  TRACKING
+  013301005002314
+  REMITENTE: TIENDA ALONZO        J-502846239  TLF 04123380976
+  ORIGEN: 0133000 LA FLORIDA      DESTINO: RETIRAR POR OFICINA - 1005000 CENTRO
+  DEST: MARIA PEREZ V-20111222                 TLF:04145550101
+  DIR: AV. PRINCIPAL, EDIF. SOL, PISO 2 ... MNCP: VALENCIA EDO: CARABOBO
+  ...
+  ENSACADO PARA (VALENCIA)
+Resultado: carrier MRW, tracking 013301005002314, name MARIA PEREZ, cedula 20111222, phone 04145550101, destination "RETIRAR POR OFICINA - CENTRO — VALENCIA".
+Ojo: el primer TLF (04123380976) es de la tienda; el del destinatario está en la línea de DEST.
+
+## Zoom (dos formatos)
+Arriba dice "ZOOM" y un número de 10 dígitos que empieza por 1; a la derecha, un código de 3 letras (MUN, ETG, PZO, MYC...). Trae código de barras y un DataMatrix cuadrado.
+Formato A:
+  ZOOM      1867400001                 MUN
+  Remitente: ALONZO
+  Origen: ZOOM LA URBINA
+  Destinatario:JOSE RAMIREZ(V-15222333)(Tel.424-5550202)
+  Destino: (ZOOM AV UNIVERSIDAD) ... CIUDAD:MATURIN,ESTADO:MONAGAS
+Resultado: ZOOM, 1867400001, JOSE RAMIREZ, 15222333, 04245550202, "ZOOM AV UNIVERSIDAD — MATURIN".
+Formato B:
+  ZOOM      1709000002                 ETG
+  Remitente: TIENDAALONZO
+  Origen: ZOOM LA URBINA - LOGISTICA INTERNACIONAL VC, C.A
+  Destinatario:ANA TORRES (RIF/CI.V-9888777)
+  Destino: CALLE 5 SUR ... MUNICIPIO:SIMON RODRIGUEZ; EL TIGRE; ANZOATEGUI; VENEZUELA
+  (TEL.04265550303/4265550303)
+Resultado: ZOOM, 1709000002, ANA TORRES, 9888777, 04265550303, "EL TIGRE".
+En el formato B el teléfono va varias líneas debajo del destinatario. "Cod. Seg." es un código de seguridad, no la guía.
+
+## Tealca
+Etiqueta angosta, casi siempre girada 90°. Logo de un águila y "tealca.com". Código de barras largo.
+  GUIA: 84870005        Aliada/PreGuia: 0000000
+  SERV: COD-ESTANDAR-OFICINA
+  ORIG: CCS-1102
+  DEST: BARCELONA
+  NOMB: CARLOS MENDOZA R
+  FECH: 25-09-26 16:19
+  PESO: 0.850   PZA: 001/001
+Resultado: TEALCA, 84870005, CARLOS MENDOZA R, cedula "", phone "", "BARCELONA (retira en oficina)".
+Tealca no trae cédula ni teléfono: devuélvelos vacíos. El nombre puede venir cortado al final (una inicial suelta); cópialo igual.
+
+## Otras empresas
+Busca las palabras destinatario / dest / consignatario / para, y el número de guía o tracking. Si no reconoces la empresa, carrier OTRO.
+
+# Errores comunes que debes evitar
+
+- Confundir "DESTINO:" (la oficina o ciudad) con "DEST:" (en MRW es el destinatario, en Tealca es la ciudad).
+- Tomar el número de "Origen", "Ref.", "Cod. Seg.", "Aliada/PreGuia", el peso, el monto a cobrar ("Bs. 6.468,99") o la fecha como número de guía.
+- Tomar la cédula de la línea del remitente: en algunas guías de Zoom la cédula del destinatario aparece repetida arriba a la derecha, junto al remitente; la válida es la que está pegada al nombre del destinatario.
+- Leer "O" por "0", "I" o "l" por "1", "S" por "5" o "B" por "8" dentro de números: en guías, cédulas y teléfonos solo hay dígitos.
+- Juntar dos líneas de nombre y dirección: el nombre termina donde empieza el paréntesis, la cédula o la palabra "DIR".
+- Inventar un teléfono cuando la guía no lo trae. Mejor vacío.
 
 Llama a la herramienta registrar_guia exactamente una vez con los datos.`;
 
@@ -134,11 +203,19 @@ async function readWithOpenAi({ apiKey, model }, image, codes) {
   }
   const msg = j.choices?.[0]?.message;
   if (msg?.refusal) throw new AiError(422, 'La IA no pudo procesar esta foto.');
+  let data;
   try {
-    return JSON.parse(msg?.content || '');
+    data = JSON.parse(msg?.content || '');
   } catch {
     throw new AiError(422, 'La IA no devolvió datos.');
   }
+  // OpenAI cachea solo, sin marcar nada: cached_tokens dice cuánto del prompt
+  // salió del caché (se paga con descuento).
+  const u = j.usage || {};
+  return {
+    data,
+    usage: { input: u.prompt_tokens || 0, cached: u.prompt_tokens_details?.cached_tokens || 0, cacheWrite: 0, output: u.completion_tokens || 0 },
+  };
 }
 
 // ── Anthropic (Claude) ──
@@ -154,7 +231,9 @@ async function readWithClaude({ apiKey, model }, image, codes) {
       output_config: { effort: 'low' },
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
-      system: SYSTEM,
+      // El prefijo fijo (tools + system) se cachea: las lecturas siguientes lo
+      // pagan al 10%. La imagen va después y es lo único que cambia.
+      system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
       tools: [TOOL],
       tool_choice: { type: 'auto' },
       messages: [{
@@ -175,7 +254,11 @@ async function readWithClaude({ apiKey, model }, image, codes) {
   if (response.stop_reason === 'refusal') throw new AiError(422, 'La IA no pudo procesar esta foto.');
   const call = response.content.find((b) => b.type === 'tool_use' && b.name === TOOL.name);
   if (!call) throw new AiError(422, 'La IA no devolvió datos.');
-  return call.input;
+  const u = response.usage;
+  return {
+    data: call.input,
+    usage: { input: u.input_tokens, cached: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0, output: u.output_tokens },
+  };
 }
 
 /** Lo cargado en el POS; si no hay nada, la variable de entorno de Claude. */
@@ -221,10 +304,12 @@ exports.handler = async (event) => {
   }
 
   try {
-    const data = cfg.provider === 'openai'
+    const { data, usage } = cfg.provider === 'openai'
       ? await readWithOpenAi(cfg, image, codes)
       : await readWithClaude(cfg, image, codes);
-    return reply(200, { ok: true, data, provider: cfg.provider });
+    // Queda en los logs de Netlify para ver si el caché está funcionando.
+    console.log('guide-read', cfg.provider, cfg.model, JSON.stringify(usage));
+    return reply(200, { ok: true, data, usage, provider: cfg.provider });
   } catch (e) {
     if (e instanceof AiError) return reply(e.status, { error: e.message });
     return reply(500, { error: String(e.message || e) });

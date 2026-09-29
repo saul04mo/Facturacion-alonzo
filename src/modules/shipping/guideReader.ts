@@ -7,9 +7,12 @@
  *        MRW     QR con todo: guía, destinatario, teléfono y cédula.
  *        Zoom    DataMatrix y barras con la guía (sin nombre ni teléfono).
  *        Tealca  barras con la guía.
- *   2. Si el código no trae al destinatario, se le pasa la foto a Claude
- *      (función guide-read): lee bien fotos oscuras, torcidas o térmicas.
- *   3. Si la IA no está o falla, OCR con Tesseract (español) como respaldo.
+ *   2. OCR con Tesseract (español), gratis. Si la guía salió exacta del
+ *      código y el OCR encontró al cliente sin dudas (`acceptOcr`), listo:
+ *      no se gasta IA.
+ *   3. Si no, IA (función guide-read) con la ETIQUETA RECORTADA, no la foto
+ *      entera: la imagen es lo único que el proveedor no puede cachear, así
+ *      que cuanto más chica, menos se paga. Si la IA falla, queda el OCR.
  *      Antes se RECORTA la etiqueta (el blanco sobre el paquete oscuro) y se
  *      agranda ~3.5×: WhatsApp manda 720×1280 y con letras de 12px Tesseract
  *      no lee nada; recortada y agrandada, lee nombre y cédula.
@@ -37,6 +40,9 @@ const OCR_SIDE = 2600;
 /** Tope del agrandado: más allá, Tesseract tarda y no lee mejor. */
 const OCR_MAX_SCALE = 4;
 const MAX_SIDE_SEND = 1600;
+/** Lado largo de la etiqueta que se le manda a la IA. No se agranda: la IA lee
+ *  bien a resolución nativa y cada píxel de más son tokens que se pagan. */
+const AI_MAX_SIDE = 1400;
 
 let workerPromise: Promise<Worker> | null = null;
 function getWorker(): Promise<Worker> {
@@ -218,9 +224,34 @@ export interface ReadResult extends GuideData {
   previewUrl: string;
 }
 
+/** Recorte de la etiqueta a resolución nativa, en JPEG base64, para la IA. */
+function labelJpeg(img: HTMLImageElement): string {
+  const src = draw(img, 1);
+  const b = labelBox(src);
+  const bw = b.x1 - b.x0 + 1;
+  const bh = b.y1 - b.y0 + 1;
+  const scale = Math.min(1, AI_MAX_SIDE / Math.max(bw, bh));
+  const out = document.createElement('canvas');
+  out.width = Math.round(bw * scale);
+  out.height = Math.round(bh * scale);
+  const ctx = ctx2d(out);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, b.x0, b.y0, bw, bh, 0, 0, out.width, out.height);
+  return out.toDataURL('image/jpeg', 0.85).split(',')[1];
+}
+
+export interface ReadOptions {
+  /**
+   * ¿Alcanza con lo que leyó el OCR? Se llama solo cuando la guía salió de un
+   * código (exacta). Si devuelve true, no se usa la IA.
+   */
+  acceptOcr?: (data: GuideData) => boolean;
+}
+
 export async function readGuide(
   file: Blob,
   onStep?: (msg: string) => void,
+  opts: ReadOptions = {},
 ): Promise<ReadResult> {
   const img = await loadImage(file);
   const imageBase64 = draw(img, fit(img, MAX_SIDE_SEND)).toDataURL('image/jpeg', 0.82).split(',')[1];
@@ -244,17 +275,7 @@ export async function readGuide(
     return { ...parseGuide('', codes), source: 'qr', codes, rawText: '', imageBase64, previewUrl };
   }
 
-  // ── IA ──
-  onStep?.('Leyendo con IA…');
-  let aiError: string | undefined;
-  try {
-    const data = fromAi(await readGuideWithAi(imageBase64, codes), codes);
-    return { ...data, source: 'ia', codes, rawText: '', imageBase64, previewUrl };
-  } catch (e) {
-    aiError = (e as Error).message;
-  }
-
-  // ── Texto (respaldo) ──
+  // ── Texto (gratis) ──
   onStep?.('Leyendo el texto…');
   const worker = await getWorker();
   let best: { data: GuideData; text: string } | null = null;
@@ -266,6 +287,19 @@ export async function readGuide(
     // Empresa + guía + nombre ya es una buena lectura: no hace falta girar más.
     if (parsed.score >= 6) break;
   }
+  const ocr = { ...best!.data, codes, rawText: best!.text, imageBase64, previewUrl };
 
-  return { ...best!.data, source: 'ocr', aiError, codes, rawText: best!.text, imageBase64, previewUrl };
+  // Guía exacta (del código) + cliente encontrado sin dudas: no hace falta IA.
+  if (parseGuide('', codes).tracking && opts.acceptOcr?.(best!.data)) {
+    return { ...ocr, source: 'ocr' };
+  }
+
+  // ── IA (pago) ──
+  onStep?.('Leyendo con IA…');
+  try {
+    const data = fromAi(await readGuideWithAi(labelJpeg(img), codes), codes);
+    return { ...data, source: 'ia', codes, rawText: best!.text, imageBase64, previewUrl };
+  } catch (e) {
+    return { ...ocr, source: 'ocr', aiError: (e as Error).message };
+  }
 }

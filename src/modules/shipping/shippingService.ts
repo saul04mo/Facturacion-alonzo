@@ -126,6 +126,20 @@ export function loadAllClients(): Promise<Client[]> {
   return allClients;
 }
 
+/**
+ * ¿El OCR encontró al cliente SIN dudas? Cédula idéntica (no a un dígito) y al
+ * menos una palabra del nombre en común. Solo con eso se evita pagar la IA:
+ * una cédula mal leída que coincide con otro cliente mandaría el mensaje a
+ * quien no es.
+ */
+export function isConfidentMatch(g: Pick<GuideData, 'cedula' | 'name'>, clients: Client[]): boolean {
+  const ced = g.cedula.replace(/\D/g, '');
+  if (ced.length < 6) return false;
+  const want = new Set(nameTokens(g.name));
+  return clients.some((c) =>
+    c.rif_ci.replace(/\D/g, '') === ced && nameTokens(c.name).some((t) => want.has(t)));
+}
+
 /** Búsqueda libre para elegir el cliente a mano. */
 export function searchClients(q: string, clients: Client[], max = 8): Client[] {
   const t = q.trim().toLowerCase();
