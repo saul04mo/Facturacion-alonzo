@@ -47,7 +47,6 @@ Site configuration → Environment variables:
 | `WHATSAPP_VERIFY_TOKEN`    | un texto cualquiera que inventes (para el webhook) |
 | `WHATSAPP_APP_SECRET`      | App de Meta → Configuración → Básica → *Clave secreta* (valida la firma del webhook) |
 
-| `ANTHROPIC_API_KEY`        | console.anthropic.com → API Keys. La usa `guide-read` para leer las fotos con IA |
 
 `FIREBASE_SERVICE_ACCOUNT` ya existe (la usan las otras funciones).
 
@@ -70,8 +69,10 @@ reglas de Firestore van aparte: `firebase deploy --only firestore:rules`.
    - **MRW**: el QR trae guía, destinatario, teléfono y cédula → listo, no se usa IA.
    - **Zoom**: DataMatrix/barras traen solo la guía (exacta).
    - **Tealca**: barras traen la guía (`6001102·84873145·001·BCL·001·000850`).
-2. **IA** (función `guide-read`, Claude Opus 5.5): lee nombre, cédula, teléfono y destino
-   de la foto. ~1–2 centavos de dólar por foto. La guía de los códigos manda sobre la de la IA.
+2. **IA** (función `guide-read`): ChatGPT (OpenAI) o Claude, lee nombre, cédula, teléfono y
+   destino de la foto. ~1 centavo de dólar por foto. La guía de los códigos manda sobre la de la IA.
+   **La API key se carga en el POS**: Envíos → "Lectura con IA" (solo administradores). Se guarda
+   en `secrets/aiConfig`, que el navegador no puede leer (lo escribe la función `ai-settings`).
 3. **OCR** (Tesseract, en el navegador) solo si la IA no está configurada o falla.
 
 Después se cruza con Clientes (se cargan todos) por cédula → teléfono → nombre; una cédula

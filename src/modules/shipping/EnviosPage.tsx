@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload, Send, Trash2, Loader2, CheckCircle, CheckCheck, AlertTriangle, Clock,
-  QrCode, ScanText, Sparkles, UserCheck, UserX, X as XIcon, Eye, RotateCcw, History,
+  QrCode, ScanText, Sparkles, Settings2, KeyRound, UserCheck, UserX, X as XIcon, Eye, RotateCcw, History,
 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { useToast } from '@/components/Toast';
@@ -12,8 +12,9 @@ import type { Client } from '@/types';
 import { CARRIER_LABELS, type Carrier } from './guideParser';
 import { readGuide, releaseReader, type ReadResult } from './guideReader';
 import {
-  AlreadySentError, listenNotifications, loadAllClients, matchClient, notificationKey, searchClients, sendGuide,
-  type ClientMatch, type NotificationStatus, type ShipmentNotification,
+  AlreadySentError, getAiSettings, listenNotifications, loadAllClients, matchClient, notificationKey,
+  saveAiSettings, searchClients, sendGuide,
+  type AiProvider, type AiSettings, type ClientMatch, type NotificationStatus, type ShipmentNotification,
 } from './shippingService';
 
 type RowState = 'queued' | 'reading' | 'ready' | 'unreadable' | 'sending' | 'sent' | 'failed';
@@ -56,14 +57,101 @@ function isSendable(r: Row): boolean {
 }
 
 export function EnviosPage() {
-  const { can } = usePermissions();
+  const { can, isAdmin } = usePermissions();
   if (!can('canAccessEnvios')) {
     return <div className="card p-12 text-center text-sm text-navy-400">No tienes permiso para enviar comprobantes.</div>;
   }
-  return <EnviosPanel />;
+  return <EnviosPanel isAdmin={isAdmin} />;
 }
 
-function EnviosPanel() {
+const DEFAULT_MODEL: Record<AiProvider, string> = { openai: 'gpt-4o', anthropic: 'claude-opus-5-5' };
+
+/**
+ * API key de la IA que lee las guías. Solo administradores. La key se manda
+ * al servidor (ai-settings) y se guarda donde el navegador no la puede leer;
+ * acá solo se ve "sk-…abcd".
+ */
+function AiSettingsCard() {
+  const toast = useToast();
+  const [cfg, setCfg] = useState<AiSettings | null>(null);
+  const [open, setOpen] = useState(false);
+  const [provider, setProvider] = useState<AiProvider>('openai');
+  const [model, setModel] = useState(DEFAULT_MODEL.openai);
+  const [apiKey, setApiKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    getAiSettings()
+      .then((c) => { setCfg(c); setProvider(c.provider); setModel(c.model); if (!c.hasKey) setOpen(true); })
+      .catch((e) => setLoadError((e as Error).message));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const c = await saveAiSettings({ provider, model, apiKey });
+      setCfg(c);
+      setApiKey('');
+      setOpen(false);
+      toast.success('Configuración de IA guardada.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const label = cfg?.provider === 'anthropic' ? 'Claude' : 'ChatGPT (OpenAI)';
+  return (
+    <div className="card p-4">
+      <button className="w-full flex items-center justify-between gap-3 text-left" onClick={() => setOpen((o) => !o)}>
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="text-purple-500" />
+          <span className="font-display font-semibold text-sm text-navy-900">Lectura con IA</span>
+          {cfg?.hasKey
+            ? <span className="badge badge-green">{label} · {cfg.keyHint}</span>
+            : loadError
+              ? <span className="badge badge-red" title={loadError}>no disponible</span>
+              : <span className="badge badge-amber">sin API key: se usa OCR</span>}
+        </div>
+        <Settings2 size={16} className="text-navy-400" />
+      </button>
+      {open && (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-[160px_1fr_180px_auto] gap-3 items-end">
+          <label className="text-xs text-navy-500">Proveedor
+            <select value={provider} className="input-field text-sm mt-1"
+              onChange={(e) => { const p = e.target.value as AiProvider; setProvider(p); setModel(DEFAULT_MODEL[p]); }}>
+              <option value="openai">ChatGPT (OpenAI)</option>
+              <option value="anthropic">Claude (Anthropic)</option>
+            </select>
+          </label>
+          <label className="text-xs text-navy-500">API key
+            <div className="relative mt-1">
+              <KeyRound size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-navy-300" />
+              <input type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+                placeholder={cfg?.hasKey && cfg.provider === provider ? `Guardada (${cfg.keyHint}) — deja vacío para no cambiarla` : 'sk-…'}
+                className="input-field text-sm pl-8 font-mono" />
+            </div>
+          </label>
+          <label className="text-xs text-navy-500">Modelo
+            <input value={model} onChange={(e) => setModel(e.target.value)} className="input-field text-sm mt-1 font-mono" />
+          </label>
+          <button onClick={save} disabled={saving || (!apiKey && !(cfg?.hasKey && cfg.provider === provider))} className="btn-primary text-sm">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Guardar
+          </button>
+          <p className="md:col-span-4 text-[11px] text-navy-400">
+            La key se guarda en el servidor y no se puede leer desde el POS. Con MRW no se usa (el QR trae todo);
+            con Zoom y Tealca cuesta alrededor de 1 centavo de dólar por foto.
+            {cfg?.updatedByName && ` Última actualización: ${cfg.updatedByName}.`}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EnviosPanel({ isAdmin }: { isAdmin: boolean }) {
   const clients = useAppStore((s) => s.clients);
   const toast = useToast();
   const [rows, setRows] = useState<Row[]>([]);
@@ -213,6 +301,8 @@ function EnviosPanel() {
           </div>
         </div>
       </div>
+
+      {isAdmin && <AiSettingsCard />}
 
       {/* ── Carga ── */}
       <div

@@ -14,6 +14,7 @@ import { CARRIER_LABELS, type Carrier, type GuideData } from './guideParser';
 
 const ENDPOINT = '/.netlify/functions/whatsapp-send';
 const AI_ENDPOINT = '/.netlify/functions/guide-read';
+const AI_SETTINGS_ENDPOINT = '/.netlify/functions/ai-settings';
 export const NOTIFICATIONS = 'shipmentNotifications';
 
 export type NotificationStatus = 'sent' | 'delivered' | 'read' | 'failed';
@@ -163,7 +164,38 @@ export interface AiGuide {
   destination: string;
 }
 
-/** Lee la foto con Claude. Lanza si la función no está o no está configurada. */
+export type AiProvider = 'openai' | 'anthropic';
+
+export interface AiSettings {
+  provider: AiProvider;
+  model: string;
+  hasKey: boolean;
+  /** "sk-…abcd": la key completa nunca llega al navegador. */
+  keyHint: string;
+  updatedByName?: string;
+}
+
+async function callJson<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sesión vencida.');
+  const res = await fetch(url, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+  });
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) throw new Error('La función no respondió. En local hay que usar `npm run dev:netlify`.');
+  const j = await res.json();
+  if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
+  return j as T;
+}
+
+export const getAiSettings = () => callJson<AiSettings>(AI_SETTINGS_ENDPOINT);
+
+/** `apiKey` vacío = se deja la que estaba. */
+export const saveAiSettings = (p: { provider: AiProvider; model: string; apiKey: string }) =>
+  callJson<AiSettings>(AI_SETTINGS_ENDPOINT, { method: 'POST', body: JSON.stringify(p) });
+
+/** Lee la foto con la IA configurada. Lanza si la función no está o no está configurada. */
 export async function readGuideWithAi(imageBase64: string, codes: string[]): Promise<AiGuide> {
   const user = auth.currentUser;
   if (!user) throw new Error('Sesión vencida.');
