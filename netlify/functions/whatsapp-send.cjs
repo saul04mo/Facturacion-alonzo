@@ -1,6 +1,6 @@
 /**
  * ══════════════════════════════════════════════════════════════
- * ALONZO — Netlify Function: comprobante de envío por WhatsApp (Meta Cloud API)
+ * ALONZO — Netlify Function: comprobante de envío por WhatsApp (vía Dismoncatech)
  * ══════════════════════════════════════════════════════════════
  *
  * Manda UNA plantilla con la foto de la guía como encabezado. El POS la llama
@@ -10,21 +10,27 @@
  * Flujo:
  *   1. Verifica el ID token de Firebase y que el usuario pueda usar Envíos.
  *   2. Si esa guía ya se mandó, no la repite (salvo `force: true`).
- *   3. Sube la foto a Meta (/media) → media id.
- *   4. Manda la plantilla con header IMAGE + 3 variables en el cuerpo.
- *   5. Guarda el resultado en `shipmentNotifications/{empresa}_{guía}`.
- *      El webhook (whatsapp-webhook) después le actualiza el estado.
+ *   3. Se la pasa a Dismoncatech (`enviar-plantilla`) con la foto en base64.
+ *   4. Guarda el resultado en `shipmentNotifications/{empresa}_{guía}`.
+ *
+ * POR QUÉ POR DISMONCATECH Y NO DIRECTO A META (2026-09-29): Dismoncatech es
+ * el que atiende el WhatsApp de Alonzo. Mandando por ahí, la guía queda en el
+ * hilo del cliente en el inbox, el bot sabe que se la mandaron si el cliente
+ * pregunta, y los estados (entregado, leído) llegan solos. Directo a Meta
+ * hacía falta un webhook propio, y Meta acepta UNO por app: configurarlo
+ * dejaba al bot sin recibir mensajes. **No configures `whatsapp-webhook` en
+ * Meta.**
  *
  * Variables de entorno (Netlify → Site settings → Environment variables):
- *   WHATSAPP_TOKEN            token permanente de un System User de Meta
- *   WHATSAPP_PHONE_NUMBER_ID  el ID del número (no el número en sí)
- *   WHATSAPP_TEMPLATE_NAME    default: comprobante_envio
+ *   DISMONCATECH_API_KEY      la llave de API del bot de Alonzo (dmt_…)
+ *   DISMONCATECH_API_URL      default: la de producción de Dismoncatech
+ *   WHATSAPP_TEMPLATE_NAME    default: pedido_en_camino_guia
  *   WHATSAPP_TEMPLATE_LANG    default: es
  *   FIREBASE_SERVICE_ACCOUNT  la misma de las otras funciones
  */
 const admin = require('firebase-admin');
 
-const GRAPH = 'https://graph.facebook.com/v21.0';
+const API_POR_DEFECTO = 'https://movqwllrkcexhbruvlxh.supabase.co/functions/v1/enviar-plantilla';
 const COLLECTION = 'shipmentNotifications';
 
 function getAdmin() {
@@ -72,24 +78,16 @@ function param(s, fallback) {
   return (v || fallback).slice(0, 200);
 }
 
-async function graphError(res) {
-  try {
-    const j = await res.json();
-    const e = j.error || {};
-    return `${e.message || res.statusText}${e.error_data?.details ? ` — ${e.error_data.details}` : ''} (code ${e.code ?? res.status})`;
-  } catch {
-    return `HTTP ${res.status}`;
-  }
-}
+
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: HEADERS, body: '' };
   if (event.httpMethod !== 'POST') return reply(405, { error: 'Método no permitido' });
 
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!token || !phoneId) {
-    return reply(500, { error: 'Falta configurar WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID en Netlify.' });
+  const apiKey = process.env.DISMONCATECH_API_KEY;
+  const apiUrl = process.env.DISMONCATECH_API_URL || API_POR_DEFECTO;
+  if (!apiKey) {
+    return reply(500, { error: 'Falta configurar DISMONCATECH_API_KEY en Netlify.' });
   }
 
   // ── 1. Quién llama ──
@@ -146,53 +144,37 @@ exports.handler = async (event) => {
   };
 
   try {
-    // ── 3. Subir la foto ──
-    const form = new FormData();
-    form.append('messaging_product', 'whatsapp');
-    form.append('type', 'image/jpeg');
-    form.append('file', new Blob([Buffer.from(image, 'base64')], { type: 'image/jpeg' }), `guia-${tracking}.jpg`);
-    const up = await fetch(`${GRAPH}/${phoneId}/media`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    });
-    if (!up.ok) throw new Error(`Subiendo la foto: ${await graphError(up)}`);
-    const { id: mediaId } = await up.json();
-
-    // ── 4. Plantilla ──
+    // ── 3. Mandar por Dismoncatech ──
     // Cuerpo: {{1}} nombre · {{2}} empresa · {{3}} número de guía
     const firstName = param(body.name, 'cliente').split(' ')[0];
     const nombre = firstName.charAt(0) + firstName.slice(1).toLowerCase();
-    const send = await fetch(`${GRAPH}/${phoneId}/messages`, {
+    // La referencia es la misma llave del historial: Dismoncatech tampoco
+    // manda dos veces la misma guía. Con `force` (reenviar a propósito) va
+    // con un sufijo, o Dismoncatech la tomaría por repetida.
+    const referencia = `${carrier}_${tracking}${body.force ? `_R${Date.now()}` : ''}`;
+    const res = await fetch(apiUrl, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to,
-        type: 'template',
-        template: {
-          name: process.env.WHATSAPP_TEMPLATE_NAME || 'comprobante_envio',
-          language: { code: process.env.WHATSAPP_TEMPLATE_LANG || 'es' },
-          components: [
-            { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
-            {
-              type: 'body',
-              parameters: [
-                { type: 'text', text: nombre },
-                { type: 'text', text: param(body.carrierLabel, carrier) },
-                { type: 'text', text: tracking },
-              ],
-            },
-          ],
-        },
+        telefono: to,
+        nombre: param(body.name, ''),
+        plantilla: process.env.WHATSAPP_TEMPLATE_NAME || 'pedido_en_camino_guia',
+        idioma: process.env.WHATSAPP_TEMPLATE_LANG || 'es',
+        variables: [nombre, param(body.carrierLabel, carrier), tracking],
+        imagen_base64: image,
+        referencia,
       }),
     });
-    if (!send.ok) throw new Error(await graphError(send));
-    const sent = await send.json();
-    const wamid = sent.messages?.[0]?.id || null;
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 409 && j.ya_enviado) {
+      await docRef.set({ ...record, status: 'sent', wamid: null, dismoncatechId: j.mensaje_id ?? null, error: null });
+      return reply(409, { error: 'Esta guía ya se envió.', alreadySent: true, status: 'sent' });
+    }
+    if (!res.ok) throw new Error(j.error || `Dismoncatech respondió ${res.status}`);
+    const wamid = null;
 
-    await docRef.set({ ...record, status: 'sent', wamid, error: null });
-    return reply(200, { ok: true, wamid });
+    await docRef.set({ ...record, status: 'sent', wamid, dismoncatechId: j.mensaje_id ?? null, error: null });
+    return reply(200, { ok: true, wamid, dismoncatechId: j.mensaje_id ?? null });
   } catch (e) {
     const msg = String(e.message || e);
     await docRef.set({ ...record, status: 'failed', wamid: null, error: msg });
