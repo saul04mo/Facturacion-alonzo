@@ -45,7 +45,7 @@ export interface GuideData {
 /** Arreglos típicos del OCR dentro de algo que debería ser un número. */
 function digitsOnly(s: string): string {
   return s
-    .replace(/[Oo]/g, '0')
+    .replace(/[OoDQ]/g, '0')
     .replace(/[Il|]/g, '1')
     .replace(/[S]/g, '5')
     .replace(/[B]/g, '8')
@@ -125,13 +125,21 @@ function parseZoom(text: string): Partial<GuideData> {
     const cut = line.search(/[(]|\b[VE]\s*[-–]\s*\d/i);
     out.name = cleanName(cut > 0 ? line.slice(0, cut) : line);
     const ced = line.match(CEDULA_RE);
-    // El OCR a veces cambia la V por Y o \/ o pierde el guion: "(Y~14339685)".
-    // Entre paréntesis y con 7-8 dígitos no hay otra cosa que pueda ser.
-    const loose = line.match(/\(\D{0,3}(\d{7,8})\D?\)/);
+    // Dos formatos: "(V-14339685)" y "(RIF/CI.V-7189412)". El OCR cambia la V
+    // por Y o U y pierde el guion: "(AIF/CI.U- 13140368)". Lo primero de 6 a 8
+    // dígitos dentro del paréntesis es la cédula.
+    const loose = line.match(/\([^)\d]{0,14}(\d{6,8})/);
     if (ced) out.cedula = digitsOnly(ced[2]);
     else if (loose) out.cedula = loose[1];
-    const tel = line.match(/Te[l1I]\s*[.:]?\s*([0-9OoIl .—–-]{9,16})/i);
-    out.phone = findPhone(tel ? digitsOnly(tel[1]) : line);
+  }
+
+  // "(Tel.424-9171059)" pegado al nombre, o "(TEL.04143443149/4143443149)"
+  // varias líneas más abajo. Trae el mismo número dos veces: se usa el
+  // primero que tenga forma de celular.
+  const from = dest?.index ?? 0;
+  const tel = text.slice(from).match(/TE[L1I]\W{0,3}([0-9A-Za-z .—–-]{9,16})(?:\s*[/|]\s*([0-9A-Za-z .—–-]{9,16}))?/i);
+  if (tel) {
+    out.phone = [tel[1], tel[2]].filter(Boolean).map((t) => findPhone(digitsOnly(t!))).find(Boolean) || '';
   }
 
   // A veces el OCR pierde el ")": se corta en la primera coma o fin de línea.
@@ -214,10 +222,20 @@ export function parseTealcaCode(code: string): Partial<GuideData> | null {
   return m ? { carrier: 'TEALCA', tracking: m[1] } : null;
 }
 
+/**
+ * Códigos de Zoom — solo traen la guía:
+ *   DataMatrix  1709089155;01;01;0046;0109;0001;00000000;0883
+ *   Barras      1867406277AAABAAABMUN
+ */
+export function parseZoomCode(code: string): Partial<GuideData> | null {
+  const m = code.trim().match(/^(1\d{9})(?:;\d{2};\d{2};|[A-Z]{4,})/);
+  return m ? { carrier: 'ZOOM', tracking: m[1] } : null;
+}
+
 export function parseGuide(text: string, codes: string[] = []): GuideData {
   let fromCode: Partial<GuideData> = {};
   for (const c of codes) {
-    const hit = parseMrwQr(c) || parseTealcaCode(c);
+    const hit = parseMrwQr(c) || parseTealcaCode(c) || parseZoomCode(c);
     if (hit) { fromCode = hit; break; }
   }
   const carrier = fromCode.carrier || detectCarrier(text);

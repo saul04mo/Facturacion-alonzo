@@ -1,27 +1,38 @@
 /**
  * Lectura de la foto de una guía, todo en el navegador (sin servidor ni IA):
  *
- *   1. Se achica la foto a ~2000px y se pasa a grises con contraste estirado.
- *      Una foto de celular de 12MP hace que Tesseract tarde medio minuto y no
- *      lee mejor.
- *   2. zxing busca QR / DataMatrix / código de barras, probando rotaciones.
- *   3. Tesseract (español) lee el texto. Las fotos llegan de lado (la de
- *      Tealca, por ejemplo), así que si la lectura derecha no encuentra la
- *      guía se prueba girada 90° y 270° y se queda con la que más campos saque.
+ *   1. Códigos con zxing-wasm (zxing-cpp compilado). La versión JS de zxing
+ *      no lee el DataMatrix de Zoom ni las barras de Tealca en fotos de
+ *      celular; esta sí. Se prueba la foto entera y agrandada.
+ *        MRW     QR con todo: guía, destinatario, teléfono y cédula.
+ *        Zoom    DataMatrix y barras con la guía (sin nombre ni teléfono).
+ *        Tealca  barras con la guía.
+ *   2. Si el código no trae al destinatario, OCR con Tesseract (español).
+ *      Antes se RECORTA la etiqueta (el blanco sobre el paquete oscuro) y se
+ *      agranda ~3.5×: WhatsApp manda 720×1280 y con letras de 12px Tesseract
+ *      no lee nada; recortada y agrandada, lee nombre y cédula.
+ *      Las fotos llegan de lado (Tealca), así que se prueba girada 90° y 270°
+ *      y se queda con la lectura que más campos saque.
  *
  * El worker de Tesseract se crea una vez y se reusa para toda la tanda: bajar
  * el modelo de español (~2MB) en cada foto sería lo más lento de todo.
  */
-import {
-  BarcodeFormat, BinaryBitmap, DecodeHintType, HybridBinarizer,
-  MultiFormatReader, RGBLuminanceSource,
-} from '@zxing/library';
+import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader';
+import zxingWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import { createWorker, type Worker } from 'tesseract.js';
 import { parseGuide, parseMrwQr, type GuideData } from './guideParser';
 
-/** Lado largo para el OCR. Se agranda también: WhatsApp manda 720×1280 y
- *  con letras de 15px Tesseract no lee nada. */
-const OCR_SIDE = 2400;
+// El .wasm se sirve desde el propio sitio, no desde el CDN por defecto.
+prepareZXingModule({
+  overrides: {
+    locateFile: (path: string, prefix: string) => (path.endsWith('.wasm') ? zxingWasmUrl : prefix + path),
+  },
+});
+
+/** Lado largo del recorte de la etiqueta que se le pasa a Tesseract. */
+const OCR_SIDE = 2600;
+/** Tope del agrandado: más allá, Tesseract tarda y no lee mejor. */
+const OCR_MAX_SCALE = 4;
 const MAX_SIDE_SEND = 1600;
 
 let workerPromise: Promise<Worker> | null = null;
@@ -53,20 +64,21 @@ function loadImage(file: Blob): Promise<HTMLImageElement> {
   });
 }
 
-/** `upscale` deja agrandar; si no, solo achica. */
-function drawScaled(
-  img: CanvasImageSource & { width: number; height: number },
-  maxSide: number, rotation = 0, upscale = false,
-) {
-  const fit = maxSide / Math.max(img.width, img.height);
-  const scale = upscale ? fit : Math.min(1, fit);
+type Drawable = CanvasImageSource & { width: number; height: number };
+
+function ctx2d(c: HTMLCanvasElement) {
+  return c.getContext('2d', { willReadFrequently: true })!;
+}
+
+/** Dibuja la imagen escalada (`scale`) y girada (0/90/180/270). */
+function draw(img: Drawable, scale: number, rotation = 0): HTMLCanvasElement {
   const w = Math.round(img.width * scale);
   const h = Math.round(img.height * scale);
   const swap = rotation === 90 || rotation === 270;
   const canvas = document.createElement('canvas');
   canvas.width = swap ? h : w;
   canvas.height = swap ? w : h;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const ctx = ctx2d(canvas);
   ctx.imageSmoothingQuality = 'high';
   ctx.translate(canvas.width / 2, canvas.height / 2);
   ctx.rotate((rotation * Math.PI) / 180);
@@ -74,16 +86,80 @@ function drawScaled(
   return canvas;
 }
 
+function fit(img: Drawable, maxSide: number): number {
+  return Math.min(1, maxSide / Math.max(img.width, img.height));
+}
+
+interface Box { x0: number; y0: number; x1: number; y1: number }
+
+/**
+ * Caja de la etiqueta: la banda más larga de filas con >35% de píxeles claros
+ * y, dentro de ella, la de columnas. Funciona porque las etiquetas son
+ * blancas y casi siempre están sobre un paquete oscuro o con estampado.
+ * Si no encuentra algo razonable, devuelve la imagen entera.
+ */
+function labelBox(c: HTMLCanvasElement): Box {
+  const full: Box = { x0: 0, y0: 0, x1: c.width - 1, y1: c.height - 1 };
+  // Se analiza una copia chica: sobra para ubicar un rectángulo.
+  const k = Math.min(1, 400 / Math.max(c.width, c.height));
+  const small = draw(c, k);
+  const { width: w, height: h } = small;
+  const px = ctx2d(small).getImageData(0, 0, w, h).data;
+  const bright = new Uint8Array(w * h);
+  for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+    bright[j] = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000 > 165 ? 1 : 0;
+  }
+  const band = (frac: (i: number) => number, n: number): [number, number] => {
+    let best: [number, number] = [0, n - 1], bestLen = 0, start = -1;
+    for (let i = 0; i <= n; i++) {
+      const on = i < n && frac(i) > 0.35;
+      if (on && start < 0) start = i;
+      if (!on && start >= 0) {
+        if (i - start > bestLen) { bestLen = i - start; best = [start, i - 1]; }
+        start = -1;
+      }
+    }
+    return best;
+  };
+  const [y0, y1] = band((y) => {
+    let s = 0; for (let x = 0; x < w; x++) s += bright[y * w + x]; return s / w;
+  }, h);
+  const [x0, x1] = band((x) => {
+    let s = 0; for (let y = y0; y <= y1; y++) s += bright[y * w + x]; return s / (y1 - y0 + 1);
+  }, w);
+  // Una "etiqueta" de menos de un cuarto de la foto es ruido (un reflejo).
+  if ((x1 - x0) * (y1 - y0) < w * h * 0.25) return full;
+  const pad = 4;
+  return {
+    x0: Math.max(0, x0 / k - pad), y0: Math.max(0, y0 / k - pad),
+    x1: Math.min(c.width - 1, x1 / k + pad), y1: Math.min(c.height - 1, y1 / k + pad),
+  };
+}
+
+/** Recorta la caja, la agranda y la pasa a grises con contraste estirado. */
+function cropForOcr(src: HTMLCanvasElement, b: Box): HTMLCanvasElement {
+  const bw = b.x1 - b.x0 + 1;
+  const bh = b.y1 - b.y0 + 1;
+  const scale = Math.min(OCR_MAX_SCALE, OCR_SIDE / Math.max(bw, bh));
+  const out = document.createElement('canvas');
+  out.width = Math.round(bw * scale);
+  out.height = Math.round(bh * scale);
+  const ctx = ctx2d(out);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, b.x0, b.y0, bw, bh, 0, 0, out.width, out.height);
+  stretchGray(out);
+  return out;
+}
+
 /** Grises + estirar el contraste entre los percentiles 2 y 98. */
-function toGrayscale(canvas: HTMLCanvasElement): Uint8ClampedArray {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+function stretchGray(canvas: HTMLCanvasElement) {
+  const ctx = ctx2d(canvas);
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const px = imgData.data;
   const lum = new Uint8ClampedArray(canvas.width * canvas.height);
   const hist = new Array(256).fill(0);
   for (let i = 0, j = 0; i < px.length; i += 4, j++) {
-    const y = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000;
-    lum[j] = y;
+    lum[j] = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000;
     hist[lum[j]]++;
   }
   const total = lum.length;
@@ -92,31 +168,20 @@ function toGrayscale(canvas: HTMLCanvasElement): Uint8ClampedArray {
   acc = 0;
   for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= total * 0.02) { hi = v; break; } }
   const range = Math.max(1, hi - lo);
-  for (let j = 0; j < lum.length; j++) lum[j] = ((lum[j] - lo) * 255) / range;
   for (let i = 0, j = 0; i < px.length; i += 4, j++) {
-    px[i] = px[i + 1] = px[i + 2] = lum[j];
+    px[i] = px[i + 1] = px[i + 2] = ((lum[j] - lo) * 255) / range;
   }
   ctx.putImageData(imgData, 0, 0);
-  return lum;
 }
 
-const codeReader = new MultiFormatReader();
-codeReader.setHints(new Map<DecodeHintType, unknown>([
-  [DecodeHintType.TRY_HARDER, true],
-  [DecodeHintType.POSSIBLE_FORMATS, [
-    BarcodeFormat.QR_CODE, BarcodeFormat.DATA_MATRIX, BarcodeFormat.CODE_128,
-    BarcodeFormat.CODE_39, BarcodeFormat.PDF_417, BarcodeFormat.ITF, BarcodeFormat.EAN_13,
-  ]],
-]));
-
-function decodeCode(lum: Uint8ClampedArray, w: number, h: number): string | null {
+async function decodeCodes(c: HTMLCanvasElement): Promise<string[]> {
   try {
-    const bmp = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(lum, w, h)));
-    return codeReader.decode(bmp).getText();
+    const res = await readBarcodes(ctx2d(c).getImageData(0, 0, c.width, c.height), {
+      tryHarder: true, tryRotate: true, tryInvert: false, tryDownscale: true, maxNumberOfSymbols: 4,
+    });
+    return res.filter((r) => r.isValid && r.text).map((r) => r.text);
   } catch {
-    return null; // NotFoundException: en esta rotación no hay código legible
-  } finally {
-    codeReader.reset();
+    return []; // wasm que no cargó: se sigue con el OCR
   }
 }
 
@@ -129,40 +194,30 @@ export interface ReadResult extends GuideData {
   previewUrl: string;
 }
 
-async function toJpegBase64(img: HTMLImageElement): Promise<{ base64: string; preview: string }> {
-  const canvas = drawScaled(img, MAX_SIDE_SEND);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-  const thumb = drawScaled(img, 240).toDataURL('image/jpeg', 0.7);
-  return { base64: dataUrl.split(',')[1], preview: thumb };
-}
-
 export async function readGuide(
   file: Blob,
   onStep?: (msg: string) => void,
 ): Promise<ReadResult> {
   const img = await loadImage(file);
-  const { base64, preview } = await toJpegBase64(img);
+  const imageBase64 = draw(img, fit(img, MAX_SIDE_SEND)).toDataURL('image/jpeg', 0.82).split(',')[1];
+  const previewUrl = draw(img, fit(img, 240)).toDataURL('image/jpeg', 0.7);
 
   // ── Códigos ──
-  // zxing encuentra el código solo a cierta escala (con la de Zoom, por
-  // ejemplo, a 0.75 sí y a 1 no), así que se prueban varias.
+  // Cada código aparece a cierta escala y no a otra (el DataMatrix de una
+  // guía de Zoom salió a 1.5× y no a 1× ni a 2×), así que se prueban varias.
   onStep?.('Buscando QR / código de barras…');
   const codes: string[] = [];
-  const longSide = Math.max(img.width, img.height);
-  outer:
-  for (const rot of [0, 90]) {
-    for (const f of [1, 0.75, 0.5]) {
-      const c = drawScaled(img, Math.min(longSide, 1600) * f, rot);
-      const code = decodeCode(toGrayscale(c), c.width, c.height);
-      if (code && !codes.includes(code)) codes.push(code);
-      // El QR de MRW ya trae todo: no hace falta seguir buscando.
-      if (code && parseMrwQr(code)) break outer;
+  const base = fit(img, 1600);
+  for (const s of [1, 1.5, 2]) {
+    for (const code of await decodeCodes(draw(img, base * s))) {
+      if (!codes.includes(code)) codes.push(code);
     }
+    // El QR de MRW ya trae todo; con la guía de Zoom/Tealca también alcanza.
+    if (codes.some((c) => parseMrwQr(c)) || parseGuide('', codes).tracking) break;
   }
 
-  const fromQr = codes.map(parseMrwQr).find(Boolean);
-  if (fromQr) {
-    return { ...parseGuide('', codes), codes, rawText: '', imageBase64: base64, previewUrl: preview };
+  if (codes.some((c) => parseMrwQr(c))) {
+    return { ...parseGuide('', codes), codes, rawText: '', imageBase64, previewUrl };
   }
 
   // ── Texto ──
@@ -170,14 +225,13 @@ export async function readGuide(
   const worker = await getWorker();
   let best: { data: GuideData; text: string } | null = null;
   for (const rot of [0, 90, 270]) {
-    const c = drawScaled(img, OCR_SIDE, rot, true);
-    toGrayscale(c);
-    const { data } = await worker.recognize(c);
+    const rotated = draw(img, 1, rot);
+    const { data } = await worker.recognize(cropForOcr(rotated, labelBox(rotated)));
     const parsed = parseGuide(data.text, codes);
     if (!best || parsed.score > best.data.score) best = { data: parsed, text: data.text };
     // Empresa + guía + nombre ya es una buena lectura: no hace falta girar más.
     if (parsed.score >= 6) break;
   }
 
-  return { ...best!.data, codes, rawText: best!.text, imageBase64: base64, previewUrl: preview };
+  return { ...best!.data, codes, rawText: best!.text, imageBase64, previewUrl };
 }

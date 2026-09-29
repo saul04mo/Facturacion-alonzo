@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@google-analytics/data": "^6.1.0",
-    "@zxing/library": "^0.21.3",
     "firebase": "^10.12.2",
     "firebase-admin": "^12.7.0",
     "html2pdf.js": "^0.14.0",
@@ -24,7 +23,8 @@
     "react-router-dom": "^6.25.0",
     "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5",
-    "zustand": "^4.5.4"
+    "zustand": "^4.5.4",
+    "zxing-wasm": "^3.1.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",

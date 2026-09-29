@@ -6,7 +6,7 @@
  * función al mandar y el webhook al llegar los estados. Desde el POS es de
  * solo lectura, así un vendedor no puede marcar como "leído" algo que no salió.
  */
-import { collection, getDocs, limit, onSnapshot, orderBy, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, limit, onSnapshot, orderBy, query, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
 import { toWhatsappNumber } from '@/utils/phoneUtils';
 import { normalizeClient, type Client } from '@/types';
@@ -62,16 +62,33 @@ function nameTokens(s: string): string[] {
     .filter((t) => t.length >= 3 && !NAME_STOP.has(t));
 }
 
+/** Cuántos dígitos distintos hay entre dos cédulas del mismo largo. */
+function digitDiff(a: string, b: string): number {
+  if (a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+  return d;
+}
+
 /**
  * Cédula primero (es lo único inequívoco), después teléfono y por último
  * nombre. Por nombre se exige que coincidan al menos dos palabras: "JOSE" solo
  * matchea con media base.
+ *
+ * El OCR se equivoca de dígito (13140368 → 13140388), así que una cédula con
+ * UN dígito distinto también vale si además coincide alguna palabra del nombre.
  */
 export function matchClient(g: Pick<GuideData, 'cedula' | 'phone' | 'name'>, clients: Client[]): ClientMatch | null {
   const ced = g.cedula.replace(/\D/g, '');
   if (ced.length >= 6) {
     const c = clients.find((c) => c.rif_ci.replace(/\D/g, '') === ced);
     if (c) return { client: c, by: 'cédula' };
+    const want = new Set(nameTokens(g.name));
+    if (want.size) {
+      const near = clients.find((c) =>
+        digitDiff(c.rif_ci.replace(/\D/g, ''), ced) === 1 && nameTokens(c.name).some((t) => want.has(t)));
+      if (near) return { client: near, by: 'cédula' };
+    }
   }
   const tel = toWhatsappNumber(g.phone);
   if (tel) {
@@ -93,37 +110,18 @@ export function matchClient(g: Pick<GuideData, 'cedula' | 'phone' | 'name'>, cli
 }
 
 /**
- * Busca por cédula directo en Firestore. La lista de clientes en memoria puede
- * no tenerlos a todos (hay más de 5.000), así que no alcanza con matchClient.
- * La cédula se guarda de varias formas: 29838797, V-29838797, V29838797…
+ * TODOS los clientes, una vez por sesión. La lista del store no los trae a
+ * todos (hay más de 5.000) y sin eso guías de clientes registrados salían como
+ * "no está registrado". Son ~5.400 lecturas: menos de medio centavo.
  */
-export async function findClientByCedula(cedula: string): Promise<ClientMatch | null> {
-  const d = cedula.replace(/\D/g, '');
-  if (d.length < 6) return null;
-  const dotted = d.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const variants = [...new Set([
-    d, `V-${d}`, `V${d}`, `V ${d}`, `E-${d}`, `E${d}`, `v-${d}`, `${d} `,
-    dotted, `V-${dotted}`, `V${dotted}`,
-  ])];
-  for (const field of ['rif_ci', 'cedula']) {
-    try {
-      const snap = await getDocs(query(collection(db, 'clients'), where(field, 'in', variants), limit(1)));
-      if (!snap.empty) {
-        const doc = snap.docs[0];
-        return { client: normalizeClient({ id: doc.id, ...doc.data() }), by: 'cédula' };
-      }
-    } catch { /* sin conexión o sin permiso: queda sin cliente, se elige a mano */ }
+let allClients: Promise<Client[]> | null = null;
+export function loadAllClients(): Promise<Client[]> {
+  if (!allClients) {
+    allClients = getDocs(collection(db, 'clients'))
+      .then((snap) => snap.docs.map((d) => normalizeClient({ id: d.id, ...d.data() })))
+      .catch((e) => { allClients = null; throw e; });
   }
-  return null;
-}
-
-/** Primero en memoria (instantáneo); si no aparece, por cédula en Firestore. */
-export async function resolveClient(
-  g: Pick<GuideData, 'cedula' | 'phone' | 'name'>, clients: Client[],
-): Promise<ClientMatch | null> {
-  const local = matchClient(g, clients);
-  if (local && local.by !== 'nombre') return local;
-  return (await findClientByCedula(g.cedula)) || local;
+  return allClients;
 }
 
 /** Búsqueda libre para elegir el cliente a mano. */

@@ -12,8 +12,7 @@ import type { Client } from '@/types';
 import { CARRIER_LABELS, type Carrier } from './guideParser';
 import { readGuide, releaseReader, type ReadResult } from './guideReader';
 import {
-  AlreadySentError, findClientByCedula, listenNotifications, matchClient, notificationKey, resolveClient,
-  searchClients, sendGuide,
+  AlreadySentError, listenNotifications, loadAllClients, matchClient, notificationKey, searchClients, sendGuide,
   type ClientMatch, type NotificationStatus, type ShipmentNotification,
 } from './shippingService';
 
@@ -76,8 +75,14 @@ function EnviosPanel() {
   const processing = useRef(false);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
-  const clientsRef = useRef(clients);
-  clientsRef.current = clients;
+  // Todos los clientes (no solo los del store). Mientras cargan se usa el store.
+  const [allClients, setAllClients] = useState<Client[] | null>(null);
+  const clientsRef = useRef<Client[]>(clients);
+  clientsRef.current = allClients ?? clients;
+  const clientsReady = () => loadAllClients().catch(() => clientsRef.current);
+  useEffect(() => {
+    loadAllClients().then(setAllClients).catch(() => toast.warning('No se pudo cargar la lista completa de clientes.'));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => listenNotifications(setHistory), []);
   useEffect(() => () => { void releaseReader(); }, []);
@@ -103,16 +108,6 @@ function EnviosPanel() {
       if (touchesMatch && r.match?.by !== 'manual') next.match = matchClient(next, clientsRef.current);
       return next;
     }));
-    // Cédula escrita a mano que no está en memoria: se busca en Firestore.
-    const ced = p.cedula;
-    if (ced && ced.length >= 7) {
-      void findClientByCedula(ced).then((m) => {
-        if (!m) return;
-        setRows((rs) => rs.map((r) => (
-          r.id === id && r.cedula === ced && r.match?.by !== 'manual' && !r.match ? { ...r, match: m } : r
-        )));
-      });
-    }
   }
 
   function addFiles(files: FileList | File[]) {
@@ -139,7 +134,7 @@ function EnviosPanel() {
         try {
           const read = await readGuide(next.file, (step) => patch(next.id, { step }));
           patch(next.id, { step: 'Buscando al cliente…' });
-          const match = await resolveClient(read, clientsRef.current);
+          const match = matchClient(read, await clientsReady());
           const dup = read.tracking && sentKeysRef.current.has(notificationKey(read.carrier, read.tracking));
           const ok = read.tracking && (read.name || match);
           patch(next.id, {
@@ -254,7 +249,7 @@ function EnviosPanel() {
               </tr></thead>
               <tbody className="divide-y divide-surface-100">
                 {rows.map((r) => (
-                  <QueueRow key={r.id} row={r} clients={clients}
+                  <QueueRow key={r.id} row={r} clients={allClients ?? clients}
                     alreadySent={!!r.tracking && sentKeys.get(notificationKey(r.carrier, r.tracking))}
                     disabled={sending}
                     onEdit={(p) => edit(r.id, p)}
