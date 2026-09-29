@@ -10,7 +10,10 @@
  * Flujo:
  *   1. Verifica el ID token de Firebase y que el usuario pueda usar Envíos.
  *   2. Si esa guía ya se mandó, no la repite (salvo `force: true`).
- *   3. Se la pasa a Dismoncatech (`enviar-plantilla`) con la foto en base64.
+ *   3. Le avisa a Dismoncatech (`enviar-plantilla`) que salió una guía, con
+ *      sus datos y la foto en base64. QUÉ plantilla sale y qué dato va en
+ *      cada parte se configura en Dismoncatech → Ajustes → API, en el aviso
+ *      `guia_enviada`: cambiar el texto o la plantilla NO toca este código.
  *   4. Guarda el resultado en `shipmentNotifications/{empresa}_{guía}`.
  *
  * POR QUÉ POR DISMONCATECH Y NO DIRECTO A META (2026-09-29): Dismoncatech es
@@ -24,8 +27,7 @@
  * Variables de entorno (Netlify → Site settings → Environment variables):
  *   DISMONCATECH_API_KEY      la llave de API del bot de Alonzo (dmt_…)
  *   DISMONCATECH_API_URL      default: la de producción de Dismoncatech
- *   WHATSAPP_TEMPLATE_NAME    default: pedido_en_camino_guia
- *   WHATSAPP_TEMPLATE_LANG    default: es
+ *   DISMONCATECH_AVISO        default: guia_enviada
  *   FIREBASE_SERVICE_ACCOUNT  la misma de las otras funciones
  */
 const admin = require('firebase-admin');
@@ -144,8 +146,8 @@ exports.handler = async (event) => {
   };
 
   try {
-    // ── 3. Mandar por Dismoncatech ──
-    // Cuerpo: {{1}} nombre · {{2}} empresa · {{3}} número de guía
+    // ── 3. Avisar a Dismoncatech ──
+    // Se mandan TODOS los datos que se tienen; el aviso elige cuáles usa.
     const firstName = param(body.name, 'cliente').split(' ')[0];
     const nombre = firstName.charAt(0) + firstName.slice(1).toLowerCase();
     // La referencia es la misma llave del historial: Dismoncatech tampoco
@@ -156,12 +158,15 @@ exports.handler = async (event) => {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        aviso: process.env.DISMONCATECH_AVISO || 'guia_enviada',
         telefono: to,
-        nombre: param(body.name, ''),
-        plantilla: process.env.WHATSAPP_TEMPLATE_NAME || 'pedido_en_camino_guia',
-        idioma: process.env.WHATSAPP_TEMPLATE_LANG || 'es',
-        variables: [nombre, param(body.carrierLabel, carrier), tracking],
-        imagen_base64: image,
+        nombre,
+        nombre_completo: param(body.name, ''),
+        empresa: param(body.carrierLabel, carrier),
+        guia: tracking,
+        cedula: record.cedula,
+        destino: record.destination,
+        foto: image,
         referencia,
       }),
     });

@@ -15,12 +15,13 @@ los estados (entregado, leído) llegan solos.
 apunta al POS, Dismoncatech deja de recibir los mensajes de los clientes y el bot de Alonzo
 se queda mudo. `whatsapp-webhook.cjs` queda sin usar.
 
-## 1. Plantilla
+## 1. Qué mensaje sale: se edita en Dismoncatech, no acá
 
-`pedido_en_camino_guia` (Utilidad, español), **aprobada**: encabezado con imagen (la foto
-de la guía) y el cuerpo con `{{1}}` nombre · `{{2}}` empresa · `{{3}}` número de guía.
-Las plantillas nuevas se crean en el WhatsApp de Alonzo; si cambia el nombre, ajusta
-`WHATSAPP_TEMPLATE_NAME`.
+El POS manda el aviso `guia_enviada` con todos los datos que tiene: `nombre` (primer
+nombre), `nombre_completo`, `empresa`, `guia`, `cedula`, `destino` y `foto`. Qué plantilla
+sale y qué dato va en cada `{{n}}` se configura en **Dismoncatech → Ajustes → API →
+guia_enviada**. Hoy: `pedido_en_camino_guia` con `{{1}}`=nombre, `{{2}}`=empresa,
+`{{3}}`=guia y la foto. Para cambiar el texto o la plantilla no hay que tocar el POS.
 
 ## 2. Variables de entorno en Netlify
 
@@ -28,8 +29,7 @@ Las plantillas nuevas se crean en el WhatsApp de Alonzo; si cambia el nombre, aj
 |---------------------------|-------|
 | `DISMONCATECH_API_KEY`    | la llave de API del bot de Alonzo en Dismoncatech (`dmt_…`), **ya cargada** |
 | `DISMONCATECH_API_URL`    | opcional, por defecto la de producción |
-| `WHATSAPP_TEMPLATE_NAME`  | opcional, por defecto `pedido_en_camino_guia` |
-| `WHATSAPP_TEMPLATE_LANG`  | opcional, por defecto `es` |
+| `DISMONCATECH_AVISO`      | opcional, por defecto `guia_enviada` |
 
 `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN` y
 `WHATSAPP_APP_SECRET` **ya no hacen falta**.
