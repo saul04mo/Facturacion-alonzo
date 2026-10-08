@@ -23,7 +23,12 @@
  *
  * POST /.netlify/functions/create-order
  *   Body: { idempotencyKey, client, items, deliveryType, deliveryCostUsd,
- *           payments, observation, sellerName, branch, expectedTotalUsd }
+ *           payments, observation, sellerName, sellerUid, branch,
+ *           expectedTotalUsd }
+ *
+ * `sellerUid` (opcional): el usuario del POS que hizo la venta. Si viene,
+ * tiene que existir en `users` y la factura le suma a ÉL en Informes y
+ * Nómina, con su nombre real. Sin él la venta queda a nombre de 'BOT'.
  *
  * Respuestas: 201 creada · 200 duplicada (idempotencia) · 400 datos malos
  *             · 401 llave · 409 sin stock o total no cuadra · 500 servidor
@@ -185,6 +190,12 @@ exports.handler = async (event) => {
     // adentro. El set() de después va con merge, así que si alguien lo creó
     // en el medio no se pisa nada importante.
     const existingClientId = await findClient(db, clientRif, clientPhone);
+
+    // El vendedor, también fuera de la transacción. Un uid que no existe se
+    // rechaza en vez de caer a 'BOT': si no, la venta se registra y la
+    // comisión se pierde sin que nadie se entere. Como el dryRun pasa por
+    // acá, el ensayo ya lo avisa antes de mandarle nada al cliente.
+    const seller = await resolveSeller(db, body);
 
     const result = await db.runTransaction(async (tx) => {
       // ══ TODAS LAS LECTURAS PRIMERO (Firestore lo exige) ══
@@ -408,8 +419,8 @@ exports.handler = async (event) => {
           ? 'Pendiente de pago'
           : deliveryType === 'showroom' ? 'Finalizado' : 'Por Preparar',
         abonos: [],
-        sellerName: String(body.sellerName || 'BOT').trim().slice(0, 60),
-        sellerUid: 'BOT',
+        sellerName: seller.name,
+        sellerUid: seller.uid,
         deliveryType,
         deliveryCostUsd,
         // En este sistema el campo funciona como "ya está pagada"
@@ -457,6 +468,7 @@ exports.handler = async (event) => {
     if (result.dryRun) {
       return json(200, {
         ...result,
+        seller,
         text: `ENSAYO (no se creó nada). Total: $${result.total} (${formatBs(result.totalBs)}). Hay stock para todo.`,
       });
     }
@@ -468,7 +480,7 @@ exports.handler = async (event) => {
       });
     }
 
-    return json(201, { ...result, text: toText(result, clientName) });
+    return json(201, { ...result, seller, text: toText(result, clientName) });
   } catch (err) {
     if (err instanceof HttpError) {
       return json(err.status, { error: err.message, ...(err.extra || {}) });
@@ -505,6 +517,27 @@ async function findClient(db, rif, phone) {
     if (!snap.empty) return snap.docs[0].id;
   }
   return null;
+}
+
+/**
+ * Quién figura como vendedor. Con `sellerUid`, el usuario del POS con su
+ * nombre tal como lo escribe la caja (`nombre apellido`, igual que
+ * processSale); sin él, 'BOT' con el `sellerName` que mandaron.
+ */
+async function resolveSeller(db, body) {
+  const uid = String(body.sellerUid || '').trim();
+  if (!uid) {
+    return { uid: 'BOT', name: String(body.sellerName || 'BOT').trim().slice(0, 60) };
+  }
+  // Un uid de Firebase nunca lleva '/': así no se puede apuntar a otra ruta.
+  if (uid.includes('/') || uid.length > 128) throw new HttpError(400, 'sellerUid inválido.');
+  const snap = await db.collection('users').doc(uid).get();
+  if (!snap.exists) {
+    throw new HttpError(400, 'El vendedor no existe en el POS. Revisa a qué usuario está vinculado.');
+  }
+  const u = snap.data();
+  const name = `${u.nombre || ''} ${u.apellido || ''}`.trim() || String(body.sellerName || '').trim() || uid;
+  return { uid, name: name.slice(0, 60) };
 }
 
 /** Resumen para que el bot se lo mande al cliente tal cual. */

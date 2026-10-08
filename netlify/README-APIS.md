@@ -8,6 +8,7 @@ Dos endpoints para que un bot (WhatsApp, agente IA, n8n) pueda responder
 | `/.netlify/functions/products` | Qué se vende | producto, **URL**, **tallas**, **precios** |
 | `/.netlify/functions/availability` | Si hay y a cuánto en Bs. | **tasa BCV**, stock en **tienda**, **almacén** y **total** |
 | `/.netlify/functions/create-order` | Finalizar la orden | crea la **factura**, descuenta stock, registra el cliente |
+| `/.netlify/functions/sellers` | Quién puede vender | los **usuarios** del POS, para elegir el vendedor de una orden |
 
 Están separadas a propósito: el catálogo cambia poco y se cachea 60 s; el
 stock cambia con cada venta y se cachea 15 s.
@@ -230,6 +231,7 @@ atómica** — o queda todo, o no queda nada.
 | `expectedTotalUsd` | recomendado | Si no cuadra con el servidor, se rechaza |
 | `dryRun` | no | Valida todo y **no escribe nada** |
 | `branch` | no | `store` / `warehouse`. Por defecto sale del `deliveryType` |
+| `sellerUid` | no | El usuario del POS que vendió (ver API 4). Tiene que existir: si no, 400. La factura sale con su nombre real y le suma en Informes y Nómina. Sin él, `sellerUid: 'BOT'` con el `sellerName` que mandes |
 
 **Precios y tasa NO se toman del request.** Se leen de Firestore y de
 `config/exchangeRate`. El bot no puede fijar el precio de una venta.
@@ -356,6 +358,20 @@ curl -X POST "https://admin.alonzoapp.com/.netlify/functions/create-order"   -H 
 Desde el panel de Facturas, cancelarla: el POS la pasa a `Cancelado` y
 **devuelve el stock**. No borrar el documento a mano — las reglas lo prohíben
 (`allow delete: if false`) y dejaría el inventario descuadrado.
+
+---
+
+## API 4 — `GET /.netlify/functions/sellers`
+
+Los usuarios del POS que pueden figurar como vendedor (todos menos los
+repartidores). Dismoncatech la usa para vincular a cada asesor del chat con
+su usuario, y manda ese `uid` como `sellerUid` en `create-order`.
+
+```json
+{ "count": 2, "sellers": [ { "uid": "Xy12...", "name": "Ana Pérez", "rol": "vendedor" } ] }
+```
+
+Sólo uid, nombre y rol: ni cédula, ni teléfono, ni correo.
 
 ---
 
