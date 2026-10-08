@@ -114,6 +114,12 @@ export function CRMPage() {
   }
 
   async function handleLoadAll() {
+    // Baja la colección completa (miles de facturas, una lectura por cada una).
+    // Casi siempre basta con un rango de fechas.
+    if (!window.confirm(
+      'Esto descarga TODAS las facturas del historial (más de 6.000) y gasta una lectura de Firestore por cada una.\n\n' +
+      'Si solo necesitas un período, usa el filtro de fechas.\n\n¿Cargar todo el historial?',
+    )) return;
     setIsLoading(true);
     try {
       const { getDocs, query: q, collection: col, orderBy: ob } = await import('firebase/firestore');

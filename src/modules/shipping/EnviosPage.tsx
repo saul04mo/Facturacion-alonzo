@@ -167,10 +167,14 @@ function EnviosPanel({ isAdmin }: { isAdmin: boolean }) {
   const [allClients, setAllClients] = useState<Client[] | null>(null);
   const clientsRef = useRef<Client[]>(clients);
   clientsRef.current = allClients ?? clients;
-  const clientsReady = () => loadAllClients().catch(() => clientsRef.current);
-  useEffect(() => {
-    loadAllClients().then(setAllClients).catch(() => toast.warning('No se pudo cargar la lista completa de clientes.'));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Se cargan con la primera guía, no al abrir la página: son ~5.500
+  // lecturas y abrir Envíos solo para mirar el historial no las necesita.
+  const clientsReady = () => loadAllClients()
+    .then((all) => { setAllClients(all); return all; })
+    .catch(() => {
+      toast.warning('No se pudo cargar la lista completa de clientes.');
+      return clientsRef.current;
+    });
 
   useEffect(() => listenNotifications(setHistory), []);
   useEffect(() => () => { void releaseReader(); }, []);

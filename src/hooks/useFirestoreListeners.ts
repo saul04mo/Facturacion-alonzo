@@ -16,8 +16,19 @@ export function useFirestoreListeners() {
   const setAllowNegativeStock = useAppStore((s) => s.setAllowNegativeStock);
   const setLoading = useAppStore((s) => s.setLoading);
 
+  // Las dependencias del effect son valores primitivos, NO el objeto
+  // currentUser. AuthProvider crea un objeto nuevo en cada snapshot del perfil
+  // (incluidos los cambios de solo metadata: cada corte y vuelta de la red), y
+  // con el objeto como dependencia se cerraban y reabrían todos los listeners:
+  // cada vez eran ~650 lecturas nuevas (productos + 500 facturas + el resto),
+  // porque con memoryLocalCache no queda nada guardado de la suscripción vieja.
+  const uid = currentUser?.uid ?? null;
+  const needsUsers =
+    currentUser?.rol === 'administrador' ||
+    currentUser?.permissions?.canReassignSeller === true;
+
   useEffect(() => {
-    if (!currentUser) return;
+    if (!uid) return;
 
     // Mark all as loading on fresh mount
     setLoading('products', true);
@@ -73,9 +84,6 @@ export function useFirestoreListeners() {
 
     // Users: admins, o quien pueda reasignar el vendedor de una factura
     // (necesita la lista de nombres para poblar el selector).
-    const needsUsers =
-      currentUser.rol === 'administrador' ||
-      currentUser.permissions?.canReassignSeller === true;
     if (needsUsers) {
       unsubs.push(
         onSnapshot(collection(db, 'users'), (snap) => {
@@ -108,10 +116,11 @@ export function useFirestoreListeners() {
     );
 
     return () => unsubs.forEach((u) => u());
-    // Solo re-suscribimos cuando cambia el usuario (login/logout). Los setters
-    // del store son estables (Zustand) — incluirlos en deps causaba que el
-    // effect se re-ejecutara cada render, abriendo y cerrando los 8 listeners
-    // de Firestore innecesariamente y disparando F5 lento.
+    // Solo re-suscribimos cuando cambia el usuario (login/logout) o si gana o
+    // pierde el acceso a la lista de usuarios. Los setters del store son
+    // estables (Zustand) — incluirlos en deps causaba que el effect se
+    // re-ejecutara cada render, abriendo y cerrando los 8 listeners de
+    // Firestore innecesariamente y disparando F5 lento.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser]);
+  }, [uid, needsUsers]);
 }

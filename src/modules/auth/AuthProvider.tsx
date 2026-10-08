@@ -36,6 +36,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     let profileUnsub: (() => void) | undefined;
+    let lastProfile: string | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
 
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
           if (cancelled) return;
           if (profileUnsub) profileUnsub(); // clear previous
+          lastProfile = null;
           clearTimeoutIfAny();
 
           // Si el servidor no responde en X segundos, avisamos en pantalla en
@@ -73,7 +75,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
               if (snap.exists()) {
                 const profile = { id: snap.id, uid: firebaseUser.uid, ...snap.data() } as any;
-                setCurrentUser(profile);
+                // Con includeMetadataChanges el callback también se dispara
+                // cuando solo cambia la metadata (fromCache al cortarse y volver
+                // la red). Publicar un objeto nuevo con los mismos datos hace
+                // que todo lo que depende de currentUser se vuelva a cargar
+                // desde Firestore, así que solo se publica si cambió algo.
+                const serialized = JSON.stringify(profile);
+                if (serialized !== lastProfile) {
+                  lastProfile = serialized;
+                  setCurrentUser(profile);
+                }
                 if (!fromCache) {
                   clearTimeoutIfAny();
                   setConnectionError(null);

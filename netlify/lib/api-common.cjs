@@ -188,11 +188,12 @@ function offerPrice(product, base) {
 /**
  * Caché en memoria del proceso. Netlify reutiliza el contenedor entre
  * invocaciones seguidas, así que una ráfaga de preguntas del bot sobre el
- * mismo producto se responde sin volver a leer toda la colección. 60 s es
- * suficientemente fresco para stock de una boutique y corta el costo de
- * lecturas de Firestore.
+ * mismo producto se responde sin volver a leer toda la colección (~120
+ * lecturas cada vez que vence). 5 min: el stock que ve el bot puede ir hasta
+ * 5 min atrasado, pero no se vende de más porque create-order relee cada
+ * producto dentro de su transacción antes de descontar.
  */
-const CACHE_TTL_MS = 60 * 1000;
+const CACHE_TTL_MS = 5 * 60 * 1000;
 let cache = { at: 0, products: null, hidden: null };
 
 async function loadCatalog() {
